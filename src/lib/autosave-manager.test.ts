@@ -93,6 +93,55 @@ describe('autosave-manager', () => {
 
   // ── Writer routing ──────────────────────────────────────────────────
 
+  it('never reuses a path for two autosaves in the same second', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-09-05T00:00:00Z'));
+      const d = makeDeps();
+      initAutosaveManager(d);
+      const handler = getRegisteredHandler('autosave-file');
+      const first = await handler({}, { description: 'first' });
+      const second = await handler({}, { description: 'second' });
+      expect(first.success).toBe(true);
+      expect(second.success).toBe(true);
+      expect(second.path).not.toBe(first.path);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps the completed artifact and sidecar when updating the recovery record fails', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      const d = makeDeps({
+        onAutosaveSuccess: () => {
+          throw new Error('record disk full');
+        },
+      });
+      initAutosaveManager(d);
+      const result = await getRegisteredHandler('autosave-file')({}, { description: 'recoverable draft' });
+      expect(result).toMatchObject({ success: false, error: 'record disk full' });
+      expect(d.saveCharx).toHaveBeenCalledOnce();
+      expect(d.writeFileSync).toHaveBeenCalledOnce();
+      expect(d.unlinkSync).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it('keeps registered handlers bound to their own dependencies', async () => {
+    const first = makeDeps();
+    initAutosaveManager(first);
+    const handler = getRegisteredHandler('autosave-file');
+    const second = makeDeps();
+    initAutosaveManager(second);
+
+    await handler({}, { description: 'updated' });
+
+    expect(first.saveCharx).toHaveBeenCalledOnce();
+    expect(second.saveCharx).not.toHaveBeenCalled();
+  });
+
   describe('same-type writer dispatch', () => {
     it('writes charx autosaves with saveCharx and a .charx extension', async () => {
       const saveCharx = vi.fn();
@@ -174,7 +223,7 @@ describe('autosave-manager', () => {
       await handler({}, { description: 'updated' });
 
       const autosavePath = saveCharx.mock.calls[0][0] as string;
-      expect(autosavePath).toMatch(/_autosave_\d{14}\.charx$/);
+      expect(autosavePath).toMatch(/_autosave_\d{14}_[\da-f-]+\.charx$/);
       expect(autosavePath).not.toContain('..charx');
     });
   });
@@ -465,7 +514,7 @@ describe('autosave-manager', () => {
 
       expect(unlinkSync).toHaveBeenCalledWith(path.join(customDir, matchingPayload));
       expect(unlinkSync).toHaveBeenCalledWith(path.join(customDir, matchingSidecar));
-      expect(unlinkSync).toHaveBeenCalledWith(path.join(customDir, legacyPayload));
+      expect(unlinkSync).not.toHaveBeenCalledWith(path.join(customDir, legacyPayload));
       expect(unlinkSync).not.toHaveBeenCalledWith(path.join(customDir, otherPayload));
       expect(unlinkSync).not.toHaveBeenCalledWith(path.join(customDir, otherSidecar));
     });
@@ -670,6 +719,53 @@ describe('autosave-manager', () => {
         );
         expect(unlinkSync).toHaveBeenCalledWith(expect.stringMatching(/_autosave_.*\.charx$/));
         expect(unlinkSync).toHaveBeenCalledWith(expect.stringContaining('.toki-recovery.json'));
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('attempts sidecar cleanup even when payload cleanup fails', async () => {
+      const unlinkSync = vi.fn((filePath: string) => {
+        if (filePath.endsWith('.charx')) throw new Error('payload locked');
+      });
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        initAutosaveManager(
+          makeDeps({
+            writeFileSync: vi.fn(() => {
+              throw new Error('disk full');
+            }),
+            unlinkSync,
+          }),
+        );
+
+        const result = await getRegisteredHandler('autosave-file')({}, { description: 'updated' });
+
+        expect(result).toEqual({ success: false, error: 'disk full' });
+        expect(unlinkSync).toHaveBeenCalledTimes(2);
+        expect(unlinkSync).toHaveBeenLastCalledWith(expect.stringContaining('.toki-recovery.json'));
+      } finally {
+        errorSpy.mockRestore();
+      }
+    });
+
+    it('does not delete any artifacts before a write starts', async () => {
+      const unlinkSync = vi.fn();
+      const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        initAutosaveManager(
+          makeDeps({
+            mkdirSync: vi.fn(() => {
+              throw new Error('directory denied');
+            }),
+            unlinkSync,
+          }),
+        );
+
+        const result = await getRegisteredHandler('autosave-file')({}, { description: 'updated' });
+
+        expect(result).toEqual({ success: false, error: 'directory denied' });
+        expect(unlinkSync).not.toHaveBeenCalled();
       } finally {
         errorSpy.mockRestore();
       }

@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import { captureFileBaseline, FileConflictError } from './file-baseline';
 
 import {
   extractDocumentToProject,
@@ -76,6 +77,12 @@ export function createFacadeFilesEngine({
     }
   }
 
+  function fileContentHash(filePath: string): string {
+    const baseline = captureFileBaseline(filePath);
+    if (!baseline) throw new FileConflictError(`Cannot read file baseline: ${filePath}`);
+    return baseline.sha256;
+  }
+
   function filePathStateDigest(filePath: string): string {
     const state = filePathState(filePath);
     return hashStableValue({
@@ -84,6 +91,8 @@ export function createFacadeFilesEngine({
       kind: state.kind,
       size: state.size,
       mtimeMs: state.mtimeMs,
+      sha256: state.kind === 'file' ? fileContentHash(state.path) : undefined,
+      treeDigest: state.kind === 'directory' ? projectTreeDigest(state.path) : undefined,
     });
   }
 
@@ -100,6 +109,7 @@ export function createFacadeFilesEngine({
           relativePath,
           kind: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other',
           size: entry.isFile() ? stat.size : null,
+          sha256: entry.isFile() ? fileContentHash(fullPath) : undefined,
           mtimeMs: stat.mtimeMs,
         });
         if (entry.isDirectory()) walk(fullPath);

@@ -300,6 +300,8 @@ export interface LoadedDocumentData {
   _card: Record<string, unknown>;
   _moduleData: Record<string, unknown> | null;
   _presetData: Record<string, unknown> | null;
+  _risupEnvelope?: Record<string, unknown>;
+  _zipEntries?: CharxAsset[];
 
   // Compression format detected when opening a .risup file (used on save to preserve compatibility)
   _compressionMode?: 'gzip' | 'zlib' | 'raw';
@@ -340,9 +342,13 @@ function applyRisumModuleFields(mod: Record<string, unknown>, data: LoadedDocume
   if (data.customModuleToggle !== undefined) mod.customModuleToggle = data.customModuleToggle || undefined;
 
   if (data.mcpUrl) {
-    mod.mcp = { url: data.mcpUrl };
+    mod.mcp = { ...(mod.mcp as Record<string, unknown>), url: data.mcpUrl };
   } else if (data.mcpUrl === '') {
-    delete mod.mcp;
+    const mcp = mod.mcp as Record<string, unknown> | undefined;
+    if (mcp && typeof mcp === 'object') {
+      delete mcp.url;
+      if (Object.keys(mcp).length === 0) delete mod.mcp;
+    }
   }
 }
 
@@ -500,7 +506,9 @@ function buildLoadedDocumentDataFromCardParts({
       : {};
   delete risuExt.virtualscript;
   const mod = ((moduleData as Record<string, unknown>)?.module as Record<string, unknown>) || {};
-  const triggerScripts: TriggerScript[] = cloneTriggerScripts(mod.trigger || []);
+  const triggerScripts: TriggerScript[] = cloneTriggerScripts(
+    Array.isArray(mod.trigger) ? mod.trigger : risuExt.triggerscript,
+  );
   const characterBook = data.character_book as Record<string, unknown> | undefined;
   const cardLorebookEntries = Array.isArray(characterBook?.entries)
     ? ccv3ArrayToRisu(characterBook.entries as Partial<Ccv3LorebookEntry>[])
@@ -629,24 +637,37 @@ export function openCharx(filePath: string): LoadedDocumentData {
   // Collect image assets
   const assets: CharxAsset[] = [];
   const xMeta: Record<string, unknown> = {};
+  const extraEntries: CharxAsset[] = [];
   for (const entry of entries) {
+    if (entry.isDirectory || entry.entryName === 'card.json' || entry.entryName === 'module.risum') continue;
     if (entry.entryName.startsWith('assets/') && !entry.isDirectory) {
       assets.push({
         path: entry.entryName,
         data: entry.getData(),
       });
+      continue;
     }
     if (entry.entryName.startsWith('x_meta/') && entry.entryName.endsWith('.json')) {
-      const metaName: string = path.basename(entry.entryName, '.json');
+      const metaName: string = entry.entryName.slice('x_meta/'.length, -'.json'.length);
       try {
-        xMeta[metaName] = JSON.parse(entry.getData().toString('utf-8'));
+        Object.defineProperty(xMeta, metaName, {
+          value: JSON.parse(entry.getData().toString('utf-8')),
+          enumerable: true,
+          writable: true,
+          configurable: true,
+        });
+        continue;
       } catch {
-        console.warn(`[charx-io] Skipping corrupted x_meta/${metaName}.json`);
+        // Preserve opaque metadata even when the editor cannot parse it.
       }
     }
+    extraEntries.push({ path: entry.entryName, data: entry.getData() });
   }
 
-  return buildLoadedDocumentDataFromCardParts({ assets, card, moduleData, risumAssets, xMeta });
+  return {
+    ...buildLoadedDocumentDataFromCardParts({ assets, card, moduleData, risumAssets, xMeta }),
+    _zipEntries: extraEntries,
+  };
 }
 
 /**
@@ -655,6 +676,7 @@ export function openCharx(filePath: string): LoadedDocumentData {
 export function buildCharxZip(data: LoadedDocumentData): InstanceType<typeof AdmZip> {
   const zip = new AdmZip();
   const zipAssets = normalizeCharxAssetsForZip(data.assets);
+  for (const entry of data._zipEntries || []) zip.addFile(entry.path, coerceAssetBuffer(entry.data));
 
   // Build card.json
   const card: Record<string, unknown> = cloneJson(data._card || {});
@@ -1310,6 +1332,9 @@ export function openRisup(filePath: string): LoadedDocumentData {
     _card: {},
     _moduleData: null,
     _presetData: sanitized,
+    _risupEnvelope: Object.fromEntries(
+      Object.entries(validatedEnvelope).filter(([key]) => key !== 'preset' && key !== 'pres'),
+    ),
     _compressionMode: compressionMode,
   };
 }
@@ -1320,45 +1345,29 @@ export function openRisup(filePath: string): LoadedDocumentData {
  */
 export function saveRisup(filePath: string, data: LoadedDocumentData): void {
   // Start from preserved preset data, or create minimal preset
-  const preset: Record<string, unknown> = data._presetData ? cloneJson(data._presetData) : {};
+  const preset: Record<string, unknown> = data._presetData ? structuredClone(data._presetData) : {};
 
   // Apply edited fields
   applyPresetFields(preset, data);
 
-  // Clear sensitive keys (never re-export API keys)
-  delete preset.openAIKey;
-  delete preset.proxyKey;
-  stripDeprecatedRisupSaveFields(preset);
-
-  // Step 1: MessagePack encode preset
-  const presetBuf = pack(preset);
-
-  // Step 2: AES-GCM encrypt
-  const encrypted = encryptAesGcm(presetBuf);
-
-  // Step 3: MessagePack encode envelope
-  const envelope = pack({
-    presetVersion: 2,
-    type: 'preset',
-    preset: encrypted,
-  });
-
-  // Step 4: Compress — preserve detected format, or default to gzip (most RisuAI-compatible)
-  const compressionMode: RisupCompressionMode = (data._compressionMode as RisupCompressionMode) ?? 'gzip';
-  const compressed = risupCompress(envelope, compressionMode);
-
-  // Step 5: RPack encode
-  const encoded = rpackEncode(compressed);
-
-  writeFileAtomicSync(filePath, encoded);
+  writeRisupPreset(filePath, preset, data._compressionMode ?? 'gzip', data._risupEnvelope);
 }
 
 export function saveRisupPresetPayload(
   filePath: string,
   presetPayload: Record<string, unknown>,
   compressionMode: RisupCompressionMode = 'gzip',
+  envelopeExtras: Record<string, unknown> = {},
 ): void {
-  const preset = cloneJson(presetPayload);
+  writeRisupPreset(filePath, structuredClone(presetPayload), compressionMode, envelopeExtras);
+}
+
+function writeRisupPreset(
+  filePath: string,
+  preset: Record<string, unknown>,
+  compressionMode: RisupCompressionMode,
+  envelopeExtras: Record<string, unknown> = {},
+): void {
   delete preset.openAIKey;
   delete preset.proxyKey;
   stripDeprecatedRisupSaveFields(preset);
@@ -1367,6 +1376,7 @@ export function saveRisupPresetPayload(
   const encrypted = encryptAesGcm(presetBuf);
   const envelope = pack({
     presetVersion: 2,
+    ...envelopeExtras,
     type: 'preset',
     preset: encrypted,
   });

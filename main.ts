@@ -1,11 +1,12 @@
 'use strict';
+import { captureFileBaseline, assertFileUnchanged } from './src/lib/file-baseline';
+import { captureDocumentSaveScope } from './src/lib/document-save-scope';
 
 import { app, BrowserWindow, ipcMain, dialog, net, shell, type MessageBoxOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import * as path from 'path';
 import * as fs from 'fs';
 import * as os from 'os';
-import * as crypto from 'crypto';
 
 import {
   extractPrimaryLuaFromTriggerScripts,
@@ -20,7 +21,7 @@ import {
   stringifyTriggerScripts,
   type LoadedDocumentData,
 } from './src/charx-io';
-import type { RendererDocumentPatch } from './src/lib/document-types';
+import type { RendererDocumentData, RendererDocumentPatch } from './src/lib/document-types';
 import {
   startApiServer as startApiServerImpl,
   type McpApiServer,
@@ -35,7 +36,12 @@ import { writeFileAtomicSync } from './src/lib/atomic-write';
 import { initAutosaveManager } from './src/lib/autosave-manager';
 import { resolveCloseWindowAction, shouldPromptForUnsavedClose } from './src/lib/close-window-policy';
 import { resolveGuideRootDirs, resolveSkillRootDirs } from './src/lib/content-roots';
-import { applyUpdates, initDataSerializer, serializeForRenderer } from './src/lib/data-serializer';
+import { initDataSerializer } from './src/lib/data-serializer';
+import {
+  applyRendererUpdates as applyUpdates,
+  serializeActiveDocument as serializeForRenderer,
+  hasRendererDocumentChanges,
+} from './src/lib/renderer-document-state';
 import {
   extractDocumentToProject,
   getProjectFileType,
@@ -157,6 +163,7 @@ interface RendererSessionStatus {
 }
 
 interface RendererSessionStatusResponse {
+  document?: RendererDocumentData | null;
   success: boolean;
   error?: string;
   renderer?: RendererSessionStatus | null;
@@ -267,22 +274,6 @@ function getSaveDialogOptionsForFileType(fileType: 'charx' | 'risum' | 'risup'):
   return { filters: [{ name: 'Character Card', extensions: ['charx'] }], defaultExt: '.charx' };
 }
 
-function captureFileBaseline(filePath: string): Record<string, unknown> | null {
-  try {
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) return null;
-    return {
-      path: filePath,
-      mtimeMs: stat.mtimeMs,
-      size: stat.size,
-      sha256: crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'),
-      capturedAt: new Date().toISOString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
 function sameDocumentPath(a: string, b: string): boolean {
   const normalizedA = path.normalize(a);
   const normalizedB = path.normalize(b);
@@ -317,7 +308,7 @@ function activateProjectDocument(
 ): Record<string, unknown> {
   clearImportSource();
   mainState.setCurrentProject(projectPath, nextData, sourceFilePath || null);
-  mainState.setCurrentFileBaseline(null);
+  mainState.setCurrentFileBaseline(sourceFilePath ? captureFileBaseline(sourceFilePath) : null);
   invalidateAssetsMapCache();
   if (mcpApi) mcpApi.invalidateSectionCaches();
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -801,25 +792,13 @@ function createWindow(): void {
   // 창 닫기 전 저장 확인 (MomoTalk 스타일)
   let isClosingForReal = false;
   async function saveDocumentBeforeClose(): Promise<SaveResult> {
-    if (!mainState.currentData) {
-      return { success: false, error: 'No file open' };
-    }
-
-    if (!mainState.currentFilePath) {
-      return saveCurrentFileAs({});
-    }
-
     try {
-      const fileType = mainState.currentData._fileType;
-      if (fileType === 'risum') {
-        saveRisum(mainState.currentFilePath, mainState.currentData);
-      } else if (fileType === 'risup') {
-        saveRisup(mainState.currentFilePath, mainState.currentData);
-      } else {
-        saveCharx(mainState.currentFilePath, mainState.currentData);
+      const status = await requestRendererSessionStatus();
+      if (!status.success || !status.document || !mainState.currentData) {
+        return { success: false, error: 'Cannot read the current editor draft. Keep the window open and retry.' };
       }
-      mainState.setCurrentFileBaseline(captureFileBaseline(mainState.currentFilePath));
-      return { success: true, path: mainState.currentFilePath };
+      applyUpdates(mainState.currentData, status.document);
+      return await saveCurrentDocumentFromMcp();
     } catch (error) {
       return { success: false, error: (error as Error).message };
     }
@@ -964,6 +943,15 @@ app.whenReady().then(() => {
     getCurrentData: () => mainState.currentData,
     getReferenceFiles: () => mainState.referenceFiles,
     askRendererConfirm,
+    hasRendererDraftChanges: async () => {
+      const response = await requestRendererSessionStatus();
+      return (
+        !response.success ||
+        !!response.renderer?.documentSwitchInProgress ||
+        !mainState.currentData ||
+        hasRendererDocumentChanges(mainState.currentData, response.document)
+      );
+    },
     requestRendererOpenFile,
     saveCurrentDocument: () => saveCurrentDocumentFromMcp(),
     broadcastToAll,
@@ -1059,13 +1047,7 @@ app.whenReady().then(() => {
     readdirSync: (dirPath) => fs.readdirSync(dirPath),
     unlinkSync: (filePath) => fs.unlinkSync(filePath),
     applyUpdates,
-    onAutosaveSuccess: (autosavePath, sidecarPath) => {
-      if (recoveryManager) {
-        recoveryManager
-          .updateAutosavePaths(autosavePath, sidecarPath)
-          .catch((e) => console.warn('[main] recovery updateAutosavePaths error:', e));
-      }
-    },
+    onAutosaveSuccess: (autosavePath, sidecarPath) => recoveryManager?.updateAutosavePaths(autosavePath, sidecarPath),
   });
 
   // Initialize session recovery manager (after autosave so the callback can reference it)
@@ -1075,10 +1057,12 @@ app.whenReady().then(() => {
     writeFileAtomicSync: (p, data) => writeFileAtomicSync(p, data, { encoding: 'utf8' }),
     existsSync: (p) => fs.existsSync(p),
     statSync: (p) => fs.statSync(p),
-    unlinkSync: (p) => fs.unlinkSync(p),
     userDataPath: app.getPath('userData'),
     openDocument: (filePath) => openDocumentByPath(filePath),
-    setCurrentDocument: (filePath, data) => mainState.setCurrentDocument(filePath, data),
+    setCurrentDocument: (filePath, data) => {
+      mainState.setCurrentDocument(filePath, data);
+      mainState.setCurrentFileBaseline(captureFileBaseline(filePath));
+    },
   });
 
   scheduleAppUpdateCheck();
@@ -1363,6 +1347,7 @@ ipcMain.handle('save-project-folder', async (_event, updatedFields: RendererDocu
 
 async function handleReassembleProjectDocument(_event: unknown, updatedFields?: RendererDocumentPatch) {
   if (!mainState.currentProjectPath) return { success: false, error: 'No project folder open' };
+  const assertSaveScope = captureDocumentSaveScope(mainState);
   try {
     if (updatedFields && mainState.currentData) saveCurrentProject(updatedFields);
     const fileType = getProjectFileType(mainState.currentProjectPath);
@@ -1377,8 +1362,13 @@ async function handleReassembleProjectDocument(_event: unknown, updatedFields?: 
         ),
     });
     if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
+    assertSaveScope();
+    if (mainState.currentFilePath && sameDocumentPath(result.filePath, mainState.currentFilePath)) {
+      assertFileUnchanged(result.filePath, mainState.currentFileBaseline);
+    }
     reassembleProjectDocument(mainState.currentProjectPath, result.filePath);
     mainState.currentFilePath = result.filePath;
+    mainState.setCurrentFileBaseline(captureFileBaseline(result.filePath));
     return { success: true, path: result.filePath };
   } catch (error) {
     return { success: false, error: (error as Error).message };
@@ -1421,6 +1411,7 @@ async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
     return saveCurrentFileAs({});
   }
   try {
+    assertFileUnchanged(mainState.currentFilePath, mainState.currentFileBaseline);
     invalidateAssetsMapCache();
     if (mcpApi) mcpApi.invalidateSectionCaches();
     if (mainState.currentData._fileType === 'risum') {
@@ -1440,6 +1431,7 @@ async function saveCurrentDocumentFromMcp(): Promise<SaveResult> {
 
 // Save to current path
 async function saveCurrentFileAs(updatedFields: RendererDocumentPatch): Promise<SaveResult> {
+  const assertSaveScope = captureDocumentSaveScope(mainState);
   try {
     if (mainState.currentProjectPath) {
       applyUpdates(mainState.currentData!, updatedFields);
@@ -1455,9 +1447,14 @@ async function saveCurrentFileAs(updatedFields: RendererDocumentPatch): Promise<
           ),
       });
       if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
+      assertSaveScope();
+      if (mainState.currentFilePath && sameDocumentPath(result.filePath, mainState.currentFilePath)) {
+        assertFileUnchanged(result.filePath, mainState.currentFileBaseline);
+      }
       saveCurrentProject({});
       reassembleProjectDocument(mainState.currentProjectPath, result.filePath);
       mainState.currentFilePath = result.filePath;
+      mainState.setCurrentFileBaseline(captureFileBaseline(result.filePath));
       return { success: true, path: result.filePath };
     }
 
@@ -1484,6 +1481,10 @@ async function saveCurrentFileAs(updatedFields: RendererDocumentPatch): Promise<
       defaultPath: mainState.currentFilePath || `untitled${defaultExt}`,
     });
     if (result.canceled || !result.filePath) return { success: false, error: 'Cancelled' };
+    assertSaveScope();
+    if (mainState.currentFilePath && sameDocumentPath(result.filePath, mainState.currentFilePath)) {
+      assertFileUnchanged(result.filePath, mainState.currentFileBaseline);
+    }
 
     if (fileType === 'risum') {
       saveRisum(result.filePath, mainState.currentData!);
@@ -1519,6 +1520,7 @@ ipcMain.handle('save-file', async (_event, updatedFields: RendererDocumentPatch)
       return result;
     }
 
+    assertFileUnchanged(mainState.currentFilePath, mainState.currentFileBaseline);
     applyUpdates(mainState.currentData, updatedFields);
     invalidateAssetsMapCache();
     if (mcpApi) mcpApi.invalidateSectionCaches();

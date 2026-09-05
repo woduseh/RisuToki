@@ -148,117 +148,121 @@ describe('agent eval: real artifact workflow routing matrix', () => {
     expect(missing).toEqual([]);
   });
 
-  it('detects representative surfaces in the local ignored risu corpus when those files are present', () => {
-    const charxFiles = LOCAL_CORPUS_ROOTS.charx.flatMap((root) => collectFiles(root, ['.charx'], 60));
-    const risupFiles = LOCAL_CORPUS_ROOTS.risup.flatMap((root) => collectFiles(root, ['.risup'], 60));
-    const risumFiles = LOCAL_CORPUS_ROOTS.risum.flatMap((root) => collectFiles(root, ['.risum'], 60));
-    const pluginFiles = LOCAL_CORPUS_ROOTS['plugin-v3'].flatMap((root) => collectFiles(root, ['.js', '.ts'], 20));
-    const totalFiles = charxFiles.length + risupFiles.length + risumFiles.length + pluginFiles.length;
+  it.skipIf(process.env.RISUTOKI_TEST_LOCAL_CORPUS !== '1')(
+    'detects representative surfaces in the local ignored risu corpus when those files are present',
+    () => {
+      const charxFiles = LOCAL_CORPUS_ROOTS.charx.flatMap((root) => collectFiles(root, ['.charx'], 60));
+      const risupFiles = LOCAL_CORPUS_ROOTS.risup.flatMap((root) => collectFiles(root, ['.risup'], 60));
+      const risumFiles = LOCAL_CORPUS_ROOTS.risum.flatMap((root) => collectFiles(root, ['.risum'], 60));
+      const pluginFiles = LOCAL_CORPUS_ROOTS['plugin-v3'].flatMap((root) => collectFiles(root, ['.js', '.ts'], 20));
+      const totalFiles = charxFiles.length + risupFiles.length + risumFiles.length + pluginFiles.length;
 
-    if (totalFiles === 0) {
-      expect(totalFiles).toBe(0);
-      return;
-    }
+      if (totalFiles === 0) {
+        expect(totalFiles).toBe(0);
+        return;
+      }
 
-    const physicalCoverage = new Set<string>();
+      const physicalCoverage = new Set<string>();
 
-    for (const filePath of charxFiles) {
-      const data = tryOpen(filePath, openCharx);
-      if (!data || typeof data !== 'object') continue;
-      if (text((data as { name?: unknown }).name)) physicalCoverage.add('charx:character metadata');
-      if (text((data as { description?: unknown }).description)) physicalCoverage.add('charx:description');
-      if (text((data as { firstMessage?: unknown }).firstMessage)) physicalCoverage.add('charx:first messages');
-      if (array((data as { alternateGreetings?: unknown }).alternateGreetings).length > 0) {
-        physicalCoverage.add('charx:alternate greetings');
+      for (const filePath of charxFiles) {
+        const data = tryOpen(filePath, openCharx);
+        if (!data || typeof data !== 'object') continue;
+        if (text((data as { name?: unknown }).name)) physicalCoverage.add('charx:character metadata');
+        if (text((data as { description?: unknown }).description)) physicalCoverage.add('charx:description');
+        if (text((data as { firstMessage?: unknown }).firstMessage)) physicalCoverage.add('charx:first messages');
+        if (array((data as { alternateGreetings?: unknown }).alternateGreetings).length > 0) {
+          physicalCoverage.add('charx:alternate greetings');
+        }
+        if (array((data as { groupOnlyGreetings?: unknown }).groupOnlyGreetings).length > 0) {
+          physicalCoverage.add('charx:group greetings');
+        }
+        if (array((data as { lorebook?: unknown }).lorebook).length > 0) physicalCoverage.add('charx:lorebooks');
+        if (array((data as { regex?: unknown }).regex).length > 0) physicalCoverage.add('charx:regex scripts');
+        if (array((data as { triggerScripts?: unknown }).triggerScripts).length > 0)
+          physicalCoverage.add('charx:triggers');
+        if (text((data as { lua?: unknown }).lua)) physicalCoverage.add('charx:Lua');
+        if (hasOwn(data, 'css')) physicalCoverage.add('charx:CSS');
+        if (
+          array((data as { assets?: unknown }).assets).length > 0 ||
+          array((data as { cardAssets?: unknown }).cardAssets).length > 0 ||
+          array((data as { risumAssets?: unknown }).risumAssets).length > 0
+        ) {
+          physicalCoverage.add('charx:assets');
+        }
       }
-      if (array((data as { groupOnlyGreetings?: unknown }).groupOnlyGreetings).length > 0) {
-        physicalCoverage.add('charx:group greetings');
-      }
-      if (array((data as { lorebook?: unknown }).lorebook).length > 0) physicalCoverage.add('charx:lorebooks');
-      if (array((data as { regex?: unknown }).regex).length > 0) physicalCoverage.add('charx:regex scripts');
-      if (array((data as { triggerScripts?: unknown }).triggerScripts).length > 0)
-        physicalCoverage.add('charx:triggers');
-      if (text((data as { lua?: unknown }).lua)) physicalCoverage.add('charx:Lua');
-      if (hasOwn(data, 'css')) physicalCoverage.add('charx:CSS');
-      if (
-        array((data as { assets?: unknown }).assets).length > 0 ||
-        array((data as { cardAssets?: unknown }).cardAssets).length > 0 ||
-        array((data as { risumAssets?: unknown }).risumAssets).length > 0
-      ) {
-        physicalCoverage.add('charx:assets');
-      }
-    }
 
-    for (const filePath of risupFiles) {
-      const data = tryOpen(filePath, openRisup);
-      if (!data || typeof data !== 'object') continue;
-      if (text((data as { promptTemplate?: unknown }).promptTemplate))
-        physicalCoverage.add('risup:promptTemplate items');
-      if (text((data as { formatingOrder?: unknown }).formatingOrder)) physicalCoverage.add('risup:formatingOrder');
-      if (hasOwn(data, 'customPromptTemplateToggle')) physicalCoverage.add('risup:toggles');
-    }
+      for (const filePath of risupFiles) {
+        const data = tryOpen(filePath, openRisup);
+        if (!data || typeof data !== 'object') continue;
+        if (text((data as { promptTemplate?: unknown }).promptTemplate))
+          physicalCoverage.add('risup:promptTemplate items');
+        if (text((data as { formatingOrder?: unknown }).formatingOrder)) physicalCoverage.add('risup:formatingOrder');
+        if (hasOwn(data, 'customPromptTemplateToggle')) physicalCoverage.add('risup:toggles');
+      }
 
-    for (const filePath of risumFiles) {
-      const data = tryOpen(filePath, openRisum);
-      if (!data || typeof data !== 'object') continue;
-      if (text((data as { moduleName?: unknown }).moduleName) || text((data as { name?: unknown }).name)) {
-        physicalCoverage.add('risum:module metadata');
+      for (const filePath of risumFiles) {
+        const data = tryOpen(filePath, openRisum);
+        if (!data || typeof data !== 'object') continue;
+        if (text((data as { moduleName?: unknown }).moduleName) || text((data as { name?: unknown }).name)) {
+          physicalCoverage.add('risum:module metadata');
+        }
+        if (typeof (data as { lowLevelAccess?: unknown }).lowLevelAccess === 'boolean') {
+          physicalCoverage.add('risum:lowLevelAccess behavior');
+        }
+        if (hasOwn(data, 'backgroundEmbedding')) physicalCoverage.add('risum:backgroundEmbedding');
+        if (hasOwn(data, 'customModuleToggle')) physicalCoverage.add('risum:customModuleToggle');
+        if (array((data as { risumAssets?: unknown }).risumAssets).length > 0 || hasOwn(data, 'risumAssets')) {
+          physicalCoverage.add('risum:assets');
+        }
+        if (
+          hasOwn(data, 'cjs') ||
+          hasOwn(data, 'moduleNamespace') ||
+          hasOwn(data, 'mcpUrl') ||
+          array((data as { lorebook?: unknown }).lorebook).length > 0
+        ) {
+          physicalCoverage.add('risum:module-specific surfaces');
+        }
       }
-      if (typeof (data as { lowLevelAccess?: unknown }).lowLevelAccess === 'boolean') {
-        physicalCoverage.add('risum:lowLevelAccess behavior');
-      }
-      if (hasOwn(data, 'backgroundEmbedding')) physicalCoverage.add('risum:backgroundEmbedding');
-      if (hasOwn(data, 'customModuleToggle')) physicalCoverage.add('risum:customModuleToggle');
-      if (array((data as { risumAssets?: unknown }).risumAssets).length > 0 || hasOwn(data, 'risumAssets')) {
-        physicalCoverage.add('risum:assets');
-      }
-      if (
-        hasOwn(data, 'cjs') ||
-        hasOwn(data, 'moduleNamespace') ||
-        hasOwn(data, 'mcpUrl') ||
-        array((data as { lorebook?: unknown }).lorebook).length > 0
-      ) {
-        physicalCoverage.add('risum:module-specific surfaces');
-      }
-    }
 
-    const pluginText = pluginFiles.map((filePath) => fs.readFileSync(filePath, 'utf-8')).join('\n');
-    if (pluginText) {
-      if (/^\/\/@name\s+/m.test(pluginText) && /^\/\/@api\s+3\.0/m.test(pluginText)) {
-        physicalCoverage.add('plugin-v3:metadata header');
+      const pluginText = pluginFiles.map((filePath) => fs.readFileSync(filePath, 'utf-8')).join('\n');
+      if (pluginText) {
+        if (/^\/\/@name\s+/m.test(pluginText) && /^\/\/@api\s+3\.0/m.test(pluginText)) {
+          physicalCoverage.add('plugin-v3:metadata header');
+        }
+        if (/requestPluginPermission|requestPermission|mainDom/.test(pluginText)) {
+          physicalCoverage.add('plugin-v3:permissions');
+        }
+        if (/showContainer|hideContainer|document\.body|getRootDocument/.test(pluginText)) {
+          physicalCoverage.add('plugin-v3:iframe/API usage');
+        }
+        if (/await\s+(?:Risuai|risuai|Risu\$1|R)\./.test(pluginText)) {
+          physicalCoverage.add('plugin-v3:async API usage');
+        }
+        if (/pluginStorage|safeLocalStorage|getLocalPluginStorage/.test(pluginText)) {
+          physicalCoverage.add('plugin-v3:storage tiers');
+        }
+        if (/registerSetting|registerButton|onUnload/.test(pluginText)) {
+          physicalCoverage.add('plugin-v3:UI registration');
+        }
+        if (/addProvider/.test(pluginText)) physicalCoverage.add('plugin-v3:providers');
+        if (/registerMCP/.test(pluginText)) physicalCoverage.add('plugin-v3:MCP integration');
+        if (!/\beval\s*\(|new Function/.test(pluginText)) {
+          physicalCoverage.add('plugin-v3:security boundaries');
+        }
       }
-      if (/requestPluginPermission|requestPermission|mainDom/.test(pluginText)) {
-        physicalCoverage.add('plugin-v3:permissions');
-      }
-      if (/showContainer|hideContainer|document\.body|getRootDocument/.test(pluginText)) {
-        physicalCoverage.add('plugin-v3:iframe/API usage');
-      }
-      if (/await\s+(?:Risuai|risuai|Risu\$1|R)\./.test(pluginText)) {
-        physicalCoverage.add('plugin-v3:async API usage');
-      }
-      if (/pluginStorage|safeLocalStorage|getLocalPluginStorage/.test(pluginText)) {
-        physicalCoverage.add('plugin-v3:storage tiers');
-      }
-      if (/registerSetting|registerButton|onUnload/.test(pluginText)) {
-        physicalCoverage.add('plugin-v3:UI registration');
-      }
-      if (/addProvider/.test(pluginText)) physicalCoverage.add('plugin-v3:providers');
-      if (/registerMCP/.test(pluginText)) physicalCoverage.add('plugin-v3:MCP integration');
-      if (!/\beval\s*\(|new Function/.test(pluginText)) {
-        physicalCoverage.add('plugin-v3:security boundaries');
-      }
-    }
 
-    const physicalSurfaceRequirements = [
-      ...REQUIRED_SURFACES_BY_FAMILY.charx.map((surface) => `charx:${surface}`),
-      'risup:promptTemplate items',
-      'risup:formatingOrder',
-      'risup:toggles',
-      ...REQUIRED_SURFACES_BY_FAMILY.risum.map((surface) => `risum:${surface}`),
-      ...REQUIRED_SURFACES_BY_FAMILY['plugin-v3'].map((surface) => `plugin-v3:${surface}`),
-    ];
+      const physicalSurfaceRequirements = [
+        ...REQUIRED_SURFACES_BY_FAMILY.charx.map((surface) => `charx:${surface}`),
+        'risup:promptTemplate items',
+        'risup:formatingOrder',
+        'risup:toggles',
+        ...REQUIRED_SURFACES_BY_FAMILY.risum.map((surface) => `risum:${surface}`),
+        ...REQUIRED_SURFACES_BY_FAMILY['plugin-v3'].map((surface) => `plugin-v3:${surface}`),
+      ];
 
-    const missing = physicalSurfaceRequirements.filter((surface) => !physicalCoverage.has(surface));
-    expect(missing).toEqual([]);
-  }, 15000);
+      const missing = physicalSurfaceRequirements.filter((surface) => !physicalCoverage.has(surface));
+      expect(missing).toEqual([]);
+    },
+    15000,
+  );
 });

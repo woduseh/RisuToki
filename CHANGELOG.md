@@ -9,6 +9,38 @@
 
 ---
 
+## [3.4.2] - 2026-09-05
+
+### Fixed
+
+- Made deterministic workflow replay fail on any scenario failure and made local user-corpus evaluation opt-in, keeping default pre-commit/CI tests synthetic.
+- Preserved unknown CHARX ZIP entries, nested/opaque x_meta, card-only triggers, lorebook activation/placement/extensions, RISUM MCP extensions, and RISUP envelope metadata and binary values across file and project-folder round trips.
+- Fixed project saves reverting module edits or resurrecting deleted greetings; missing indexed assets now stop export instead of shifting subsequent asset identities. Opaque ZIP entries use a separate sidecar to avoid project-control filename collisions.
+- Reused file SHA256 baselines and project content fingerprints to reject stale saves. MCP previews bind active path/content, confirmation rechecks pending mutations, and file/directory preview fingerprints detect same-size/same-time content changes.
+- Rejected stale renderer snapshots after document replacement, preserved edits made during asynchronous save/reload, and synchronized the editor draft before close-save. MCP conflicts distinguish local drafts from already-synchronized dirty state.
+- Enforced the standalone write gate on document saves, saved the current file when requested before opening another, and retained the current state when a new file fails to open.
+- Made autosave names unique, retained complete recovery pairs when session-record writes fail, and kept unowned legacy autosaves during cleanup. Recovery-record failures no longer replace the active document.
+
+### Added
+
+- Checkpointed multi-file project saves: interrupted saves retain a complete sibling backup and block normal load/save/export until recovery is resolved. Project exports reuse atomic file replacement.
+- Added synthetic round-trip, concurrency, stale-index, failed-save, and next-session recovery regressions and documented the normalization allowlist, conflict policy, reproduction commands, and limits in `docs/analysis/DATA_INTEGRITY_AUDIT.md`.
+
+## [3.4.1] - 2026-09-05
+
+### Changed
+
+- Consolidated duplicate lorebook and RISUP prompt ID-based edit previews while preserving MCP routes, guards, and response contracts.
+- Unified folder, lorebook, and asset inline rename handling; reused sidebar transitions and menu-close handling, and removed unused menu state.
+- Consolidated atomic file replacement and cleanup, kept autosave dependencies local to their IPC handlers, and removed redundant autosave helpers and unused recovery code.
+- Corrected workflow skill and module-map guidance for generated build outputs and autosave/backup ownership.
+
+### Fixed
+
+- Prevented backup tab-key collisions and false duplicate matches between text and object content; duplicate backups no longer require an object clone.
+- Autosave failure cleanup now attempts both payload and sidecar even if one removal fails, and avoids removing files before writing begins.
+- Inline rename failures remain retryable, and asynchronous renames display the submitted name even if the input changes while saving.
+
 ## [3.4.0] - 2026-09-05
 
 ### Added

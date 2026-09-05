@@ -24,6 +24,7 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 - **`docs/PROJECT_RULES.md`** — versioning, CI/release workflow, and guide locations
 - **`docs/MODULE_MAP.md`** — source navigation map for the active TypeScript codebase
 - **`docs/analysis/ARCHITECTURE.md`** — **canonical** TypeScript runtime architecture, process boundaries, ownership rules, and large-module hotspots
+- **`docs/analysis/DATA_INTEGRITY_AUDIT.md`** — synthetic round-trip/concurrency regressions, permitted normalization, conflict handling, and save recovery
 
 ## Boundary notes
 

@@ -18,37 +18,21 @@ export function writeFileAtomicSync(
   data: string | NodeJS.ArrayBufferView,
   options: AtomicWriteOptions = {},
 ): void {
-  const tempPath = buildTempPath(filePath);
-  let fd: number | null = null;
-
-  try {
-    fd = fs.openSync(tempPath, 'w');
-    if (typeof data === 'string') {
+  writePathAtomicSync(filePath, (tempPath) => {
+    const fd = fs.openSync(tempPath, 'w');
+    try {
       fs.writeFileSync(fd, data, { encoding: options.encoding ?? 'utf8' });
-    } else {
-      fs.writeFileSync(fd, data);
-    }
-    if (options.flush) {
-      fs.fsyncSync(fd);
-    }
-    fs.closeSync(fd);
-    fd = null;
-    fs.renameSync(tempPath, filePath);
-  } catch (error) {
-    if (fd !== null) {
+      if (options.flush) fs.fsyncSync(fd);
+      fs.closeSync(fd);
+    } catch (error) {
       try {
         fs.closeSync(fd);
       } catch {
-        // Preserve the original write/rename error.
+        // Preserve the original write/flush/close error.
       }
+      throw error;
     }
-    try {
-      fs.unlinkSync(tempPath);
-    } catch {
-      // Best-effort cleanup only; callers need the original failure.
-    }
-    throw error;
-  }
+  });
 }
 
 export function writePathAtomicSync(filePath: string, writeTempPath: (tempPath: string) => void): void {

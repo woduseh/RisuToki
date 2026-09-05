@@ -29,7 +29,6 @@ export interface SessionRecoveryManagerDeps<TDocument extends Record<string, unk
   writeFileAtomicSync?: (path: string, data: string) => void;
   existsSync(path: string): boolean;
   statSync(path: string): { mtimeMs: number };
-  unlinkSync(path: string): void;
   userDataPath: string;
   openDocument(filePath: string): TDocument;
   setCurrentDocument(filePath: string, data: TDocument): void;
@@ -227,7 +226,6 @@ export function createSessionRecoveryManager<TDocument extends Record<string, un
 
     async restoreFromRecovery(candidate) {
       const data = deps.openDocument(candidate.autosavePath);
-      deps.setCurrentDocument(candidate.sourceFilePath, data);
       writeRecord(
         createRecord(
           candidate.sourceFilePath,
@@ -237,14 +235,15 @@ export function createSessionRecoveryManager<TDocument extends Record<string, un
           false,
         ),
       );
+      deps.setCurrentDocument(candidate.sourceFilePath, data);
       lastRestoredProvenance = candidate.provenance;
       dismissed = true;
     },
 
     async openOriginal(candidate) {
       const data = deps.openDocument(candidate.sourceFilePath);
-      deps.setCurrentDocument(candidate.sourceFilePath, data);
       writeRecord(createRecord(candidate.sourceFilePath, candidate.provenance.sourceFileType, null, null, false));
+      deps.setCurrentDocument(candidate.sourceFilePath, data);
       lastRestoredProvenance = null;
       dismissed = true;
     },

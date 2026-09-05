@@ -248,6 +248,89 @@ describe('right-manager-panel', () => {
     expect(commitLorebookName).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps failed inline edits editable and allows a corrected name', () => {
+    const commitLorebookName = vi.fn().mockReturnValueOnce('중복 이름').mockReturnValueOnce(null);
+    initRightManagerPanel(makeDeps({ commitLorebookName }));
+    const row = document.querySelector<HTMLElement>('.manager-lore-row')!;
+    row.querySelector<HTMLButtonElement>('button[aria-label="이름 변경"]')!.click();
+    const input = row.querySelector<HTMLInputElement>('.manager-inline-rename')!;
+    input.value = 'duplicate';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(row.textContent).toContain('중복 이름');
+    expect(document.activeElement).toBe(input);
+    input.value = 'corrected';
+    input.dispatchEvent(new Event('blur'));
+    expect(commitLorebookName).toHaveBeenCalledTimes(2);
+    expect(row.querySelector('.manager-inline-rename')).toBeNull();
+    expect(row.querySelector('.manager-row-title')?.textContent).toBe('corrected');
+  });
+
+  it('does not submit an async asset rename twice on Enter followed by blur', async () => {
+    let complete!: (error: string | null) => void;
+    const renameAsset = vi.fn(
+      () =>
+        new Promise<string | null>((resolve) => {
+          complete = resolve;
+        }),
+    );
+    initRightManagerPanel(makeDeps({ renameAsset }));
+    await flushTimers();
+    document.querySelector<HTMLButtonElement>('button[aria-label="썸네일 보기"]')!.click();
+    await flushTimers();
+    const card = document.querySelector<HTMLElement>('.manager-asset-card')!;
+    card.querySelector<HTMLButtonElement>('button[aria-label="이름 변경"]')!.click();
+    const input = card.querySelector<HTMLInputElement>('.manager-inline-rename')!;
+    input.value = 'updated.webp';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    input.dispatchEvent(new Event('blur'));
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(renameAsset).toHaveBeenCalledTimes(1);
+    expect(card.querySelector('.manager-inline-rename')).toBe(input);
+    input.value = 'unsaved.webp';
+    complete(null);
+    await Promise.resolve();
+    expect(card.querySelector('.manager-asset-name')?.textContent).toBe('updated.webp');
+  });
+
+  it('allows retry after a synchronous rename exception', () => {
+    const commitLorebookName = vi
+      .fn()
+      .mockImplementationOnce(() => {
+        throw new Error('저장 실패');
+      })
+      .mockReturnValue(null);
+    initRightManagerPanel(makeDeps({ commitLorebookName }));
+    const row = document.querySelector<HTMLElement>('.manager-lore-row')!;
+    row.querySelector<HTMLButtonElement>('button[aria-label="이름 변경"]')!.click();
+    const input = row.querySelector<HTMLInputElement>('.manager-inline-rename')!;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(row.textContent).toContain('저장 실패');
+    input.value = 'retry';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(commitLorebookName).toHaveBeenCalledTimes(2);
+    expect(row.querySelector('.manager-row-title')?.textContent).toBe('retry');
+  });
+
+  it('allows retry after an asynchronous rename rejection', async () => {
+    const renameAsset = vi.fn().mockRejectedValueOnce(new Error('저장 실패')).mockResolvedValue(null);
+    initRightManagerPanel(makeDeps({ renameAsset }));
+    await flushTimers();
+    document.querySelector<HTMLButtonElement>('button[aria-label="썸네일 보기"]')!.click();
+    await flushTimers();
+    const card = document.querySelector<HTMLElement>('.manager-asset-card')!;
+    card.querySelector<HTMLButtonElement>('button[aria-label="이름 변경"]')!.click();
+    const input = card.querySelector<HTMLInputElement>('.manager-inline-rename')!;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await Promise.resolve();
+    expect(card.textContent).toContain('저장 실패');
+    expect(document.activeElement).toBe(input);
+    input.value = 'retry.webp';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    await Promise.resolve();
+    expect(renameAsset).toHaveBeenCalledTimes(2);
+    expect(card.querySelector('.manager-asset-name')?.textContent).toBe('retry.webp');
+  });
+
   it('uses an in-panel folder picker instead of window.prompt', async () => {
     const moveLorebookManyToFolder = vi.fn().mockResolvedValue(undefined);
     const promptSpy = vi.spyOn(window, 'prompt');

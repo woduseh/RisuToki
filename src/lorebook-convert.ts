@@ -1,4 +1,10 @@
 export interface RisuLorebookEntry {
+  [key: string]: unknown;
+  enabled?: boolean;
+  id?: number;
+  name?: string;
+  priority?: number;
+  extensions?: Partial<Ccv3LorebookEntry['extensions']>;
   alwaysActive?: boolean;
   comment?: string;
   content?: string;
@@ -16,11 +22,13 @@ export interface RisuLorebookEntry {
 }
 
 export interface Ccv3LorebookEntry {
+  [key: string]: unknown;
   comment: string;
   constant: boolean;
   content: string;
   enabled: boolean;
   extensions: {
+    [key: string]: unknown;
     addMemo: boolean;
     automationId: string;
     caseSensitive: null;
@@ -52,24 +60,40 @@ export interface Ccv3LorebookEntry {
 }
 
 export function risuToCCV3(risuEntry: RisuLorebookEntry, index = 0): Ccv3LorebookEntry {
+  const preserved = { ...risuEntry };
+  for (const key of [
+    'key',
+    'secondkey',
+    'alwaysActive',
+    'insertorder',
+    'depth',
+    'selectiveLogic',
+    'probability',
+    'useProbability',
+    'mode',
+  ])
+    delete preserved[key];
   const keys = risuEntry.key
-    ? risuEntry.key.split(',').map((key) => key.trim()).filter(Boolean)
+    ? risuEntry.key
+        .split(',')
+        .map((key) => key.trim())
+        .filter(Boolean)
     : [];
   const secondaryKeys = risuEntry.secondkey
-    ? risuEntry.secondkey.split(',').map((key) => key.trim()).filter(Boolean)
+    ? risuEntry.secondkey
+        .split(',')
+        .map((key) => key.trim())
+        .filter(Boolean)
     : [];
 
   return {
+    ...preserved,
     keys,
     content: risuEntry.content || '',
     extensions: {
-      depth: risuEntry.depth ?? 0,
-      selectiveLogic: risuEntry.selectiveLogic ?? 0,
       addMemo: true,
       excludeRecursion: false,
       displayIndex: index,
-      probability: risuEntry.probability ?? 100,
-      useProbability: risuEntry.useProbability ?? true,
       group: '',
       groupOverride: false,
       groupWeight: 100,
@@ -79,32 +103,36 @@ export function risuToCCV3(risuEntry: RisuLorebookEntry, index = 0): Ccv3Loreboo
       useGroupScoring: null,
       automationId: '',
       role: null,
-      vectorized: false
+      vectorized: false,
+      ...risuEntry.extensions,
+      depth: risuEntry.depth ?? risuEntry.extensions?.depth ?? 0,
+      selectiveLogic: risuEntry.selectiveLogic ?? risuEntry.extensions?.selectiveLogic ?? 0,
+      probability: risuEntry.probability ?? risuEntry.extensions?.probability ?? 100,
+      useProbability: risuEntry.useProbability ?? risuEntry.extensions?.useProbability ?? true,
     },
-    enabled: true,
+    enabled: risuEntry.enabled ?? true,
     insertion_order: risuEntry.insertorder ?? 100,
-    name: risuEntry.comment || '',
-    priority: risuEntry.insertorder ?? 100,
-    id: index,
+    name: risuEntry.name ?? risuEntry.comment ?? '',
+    priority: risuEntry.priority ?? risuEntry.insertorder ?? 100,
+    id: risuEntry.id ?? index,
     comment: risuEntry.comment || '',
     selective: risuEntry.selective ?? false,
     secondary_keys: secondaryKeys,
     constant: risuEntry.alwaysActive ?? false,
     position: risuEntry.position || 'before_char',
     ...(risuEntry.mode === 'folder' ? { mode: 'folder' } : {}),
-    ...(risuEntry.folder ? { folder: risuEntry.folder } : {})
+    ...(risuEntry.folder ? { folder: risuEntry.folder } : {}),
   };
 }
 
 export function ccv3ToRisu(ccv3Entry: Partial<Ccv3LorebookEntry>): RisuLorebookEntry {
-  const key = Array.isArray(ccv3Entry.keys)
-    ? ccv3Entry.keys.join(', ')
-    : '';
-  const secondkey = Array.isArray(ccv3Entry.secondary_keys)
-    ? ccv3Entry.secondary_keys.join(', ')
-    : '';
+  const preserved = { ...ccv3Entry };
+  for (const key of ['keys', 'secondary_keys', 'constant', 'insertion_order']) delete preserved[key];
+  const key = Array.isArray(ccv3Entry.keys) ? ccv3Entry.keys.join(', ') : '';
+  const secondkey = Array.isArray(ccv3Entry.secondary_keys) ? ccv3Entry.secondary_keys.join(', ') : '';
 
   return {
+    ...preserved,
     key,
     comment: ccv3Entry.comment || ccv3Entry.name || '',
     content: ccv3Entry.content || '',
@@ -113,7 +141,12 @@ export function ccv3ToRisu(ccv3Entry: Partial<Ccv3LorebookEntry>): RisuLorebookE
     alwaysActive: ccv3Entry.constant ?? false,
     secondkey,
     selective: ccv3Entry.selective ?? false,
-    ...(ccv3Entry.folder ? { folder: ccv3Entry.folder } : {})
+    position: ccv3Entry.position,
+    depth: ccv3Entry.extensions?.depth,
+    selectiveLogic: ccv3Entry.extensions?.selectiveLogic,
+    probability: ccv3Entry.extensions?.probability,
+    useProbability: ccv3Entry.extensions?.useProbability,
+    ...(ccv3Entry.folder ? { folder: ccv3Entry.folder } : {}),
   };
 }
 

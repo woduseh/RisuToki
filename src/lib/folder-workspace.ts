@@ -20,7 +20,8 @@ import {
   stripDeprecatedRisumSaveFields,
   stripDeprecatedRisupSaveFields,
 } from './deprecated-save-policy';
-import { cloneJson } from './shared-utils';
+import { writeFileAtomicSync, writePathAtomicSync } from './atomic-write';
+import { assertProjectRecoveryResolved, withProjectSaveRecovery } from './project-save-recovery';
 
 export type ProjectFileType = 'charx' | 'risum' | 'risup';
 
@@ -36,6 +37,8 @@ interface ExtractableField {
   path: string;
 }
 
+type BinaryPath = Array<string | number>;
+
 interface WorkspaceMarker {
   version: number;
   sourceFileType?: ProjectFileType;
@@ -44,6 +47,9 @@ interface WorkspaceMarker {
   compressionMode?: RisupCompressionMode;
   risumAssetFiles?: string[];
   charxManagedFiles?: string[];
+  charxExtraEntries?: boolean;
+  risupEnvelope?: Record<string, unknown>;
+  risupBinaryPaths?: BinaryPath[];
 }
 
 const CHARX_EXTRACTABLE_FIELDS: ExtractableField[] = [
@@ -74,6 +80,46 @@ const GREETING_PATH = 'data.alternate_greetings';
 const PROJECT_META_DIR = '.risutoki';
 const WORKSPACE_MARKER_PATH = path.join(PROJECT_META_DIR, 'workspace.json');
 const RISUM_ASSET_DIR = path.join(PROJECT_META_DIR, 'risum-assets');
+const CHARX_EXTRA_ENTRIES_PATH = path.join(PROJECT_META_DIR, 'charx-extra-entries.zip');
+
+const projectBaselines = new WeakMap<object, Map<string, string>>();
+const projectDocumentFiles = new Set([
+  'card.json',
+  'module.json',
+  'preset.json',
+  'manifest.json',
+  ...CHARX_EXTRACTABLE_FIELDS.map((field) => field.file),
+  ...RISUP_EXTRACTABLE_FIELDS.map((field) => field.file),
+]);
+
+function projectFingerprint(projectPath: string): string {
+  const hash = crypto.createHash('sha256');
+  const visit = (directory: string, prefix = ''): void => {
+    for (const entry of fs
+      .readdirSync(directory, { withFileTypes: true })
+      .sort((a, b) => a.name.localeCompare(b.name))) {
+      const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (
+        !prefix &&
+        !projectDocumentFiles.has(entry.name) &&
+        !/^greeting_\d+\.md$/.test(entry.name) &&
+        !['assets', 'x_meta', PROJECT_META_DIR].includes(entry.name)
+      )
+        continue;
+      const filePath = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(filePath, relativePath);
+      else if (entry.isFile()) hash.update(relativePath).update('\0').update(fs.readFileSync(filePath)).update('\0');
+    }
+  };
+  if (fs.existsSync(projectPath)) visit(projectPath);
+  return hash.digest('hex');
+}
+
+function recordProjectBaseline(projectPath: string, data: object): void {
+  const baselines = projectBaselines.get(data) ?? new Map<string, string>();
+  baselines.set(path.resolve(projectPath), projectFingerprint(projectPath));
+  projectBaselines.set(data, baselines);
+}
 
 function ensureDir(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
@@ -146,6 +192,8 @@ function extractTextFields(
   fields: ExtractableField[],
   options: { includeGreetings?: boolean } = {},
 ): void {
+  const manifestPath = path.join(projectPath, 'manifest.json');
+  const previousManifest = fs.existsSync(manifestPath) ? readJson(manifestPath) : {};
   const manifest: Record<string, string> = {};
   for (const field of fields) {
     const value = getNestedValue(document, field.path);
@@ -177,7 +225,13 @@ function extractTextFields(
     }
   }
 
-  const manifestPath = path.join(projectPath, 'manifest.json');
+  if (options.includeGreetings) {
+    for (const fileName of Object.keys(previousManifest)) {
+      if (/^greeting_\d+\.md$/.test(fileName) && !(fileName in manifest)) {
+        fs.rmSync(path.join(projectPath, fileName), { force: true });
+      }
+    }
+  }
   if (Object.keys(manifest).length > 0) {
     writeJson(manifestPath, manifest);
   } else if (fs.existsSync(manifestPath)) {
@@ -269,16 +323,15 @@ function addRemainingFiles(zip: InstanceType<typeof AdmZip>, currentDir: string,
   }
 }
 
-function decodeModuleRisum(projectPath: string): void {
+function decodeModuleRisum(projectPath: string): string[] {
   const risumPath = path.join(projectPath, 'module.risum');
   const moduleJsonPath = path.join(projectPath, 'module.json');
-  if (!fs.existsSync(risumPath)) return;
-  if (!fs.existsSync(moduleJsonPath)) {
-    const parsed = parseRisum(fs.readFileSync(risumPath));
-    writeJson(moduleJsonPath, parsed.module);
-    writeRisumAssets(projectPath, parsed.assets || []);
-  }
+  if (!fs.existsSync(risumPath)) return [];
+  const parsed = parseRisum(fs.readFileSync(risumPath));
+  writeJson(moduleJsonPath, parsed.module);
+  const assetFiles = writeRisumAssets(projectPath, parsed.assets || []);
   fs.rmSync(risumPath, { force: true });
+  return assetFiles;
 }
 
 function isProjectFileType(value: unknown): value is ProjectFileType {
@@ -414,10 +467,7 @@ function readRisumAssets(projectPath: string): Buffer[] {
   const marker = readProjectMarker(projectPath);
   const markerFiles = Array.isArray(marker?.risumAssetFiles) ? marker.risumAssetFiles : [];
   if (markerFiles.length > 0) {
-    return markerFiles
-      .map((relativePath) => resolveInsideProject(projectPath, relativePath))
-      .filter((assetPath) => fs.existsSync(assetPath))
-      .map((assetPath) => fs.readFileSync(assetPath));
+    return markerFiles.map((relativePath) => fs.readFileSync(resolveInsideProject(projectPath, relativePath)));
   }
   const assetDir = path.join(projectPath, RISUM_ASSET_DIR);
   if (!fs.existsSync(assetDir)) return [];
@@ -428,8 +478,49 @@ function readRisumAssets(projectPath: string): Buffer[] {
     .map((name) => fs.readFileSync(path.join(assetDir, name)));
 }
 
+function encodeProjectBinary(value: unknown, binaryPaths: BinaryPath[], currentPath: BinaryPath = []): unknown {
+  if (value instanceof Uint8Array) {
+    binaryPaths.push(currentPath);
+    return Array.from(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item, index) => encodeProjectBinary(item, binaryPaths, [...currentPath, index]));
+  }
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, encodeProjectBinary(item, binaryPaths, [...currentPath, key])]),
+    );
+  }
+  return value;
+}
+
+function restoreProjectBinary(document: Record<string, unknown>, binaryPaths: BinaryPath[]): void {
+  for (const binaryPath of binaryPaths) {
+    if (binaryPath.length === 0) continue;
+    let parent: unknown = document;
+    for (const segment of binaryPath.slice(0, -1)) {
+      if (!parent || typeof parent !== 'object' || !Object.hasOwn(parent, segment)) {
+        parent = undefined;
+        break;
+      }
+      parent = (parent as Record<string, unknown>)[segment];
+    }
+    const key = binaryPath[binaryPath.length - 1];
+    if (!parent || typeof parent !== 'object' || !Object.hasOwn(parent, key)) continue;
+    const value = (parent as Record<string, unknown>)[key];
+    if (Array.isArray(value) && value.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) {
+      Object.defineProperty(parent, key, {
+        value: Buffer.from(value),
+        enumerable: true,
+        configurable: true,
+        writable: true,
+      });
+    }
+  }
+}
+
 function sanitizePresetPayload(preset: Record<string, unknown>): Record<string, unknown> {
-  const next = cloneJson(preset);
+  const next = structuredClone(preset);
   delete next.openAIKey;
   delete next.proxyKey;
   return next;
@@ -476,14 +567,16 @@ export function extractCharxToProject(charxPath: string, projectPath: string): {
 }
 
 export function reassembleProjectCharx(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+  assertProjectRecoveryResolved(projectPath);
   const cardPath = path.join(projectPath, 'card.json');
   if (!fs.existsSync(cardPath)) throw new Error('card.json not found in project folder');
   const card = readJson(cardPath);
   applyTextFields(projectPath, card, CHARX_EXTRACTABLE_FIELDS, { includeGreetings: true });
   stripDeprecatedCharxSaveFields(card);
-  removeProjectFiles(projectPath, CHARX_PROTECTED_PROJECT_FILES);
 
-  const zip = new AdmZip();
+  const zip = readProjectMarker(projectPath)?.charxExtraEntries
+    ? new AdmZip(path.join(projectPath, CHARX_EXTRA_ENTRIES_PATH))
+    : new AdmZip();
   zip.addFile('card.json', Buffer.from(JSON.stringify(card, null, 2), 'utf-8'));
 
   const modulePath = path.join(projectPath, 'module.json');
@@ -496,27 +589,33 @@ export function reassembleProjectCharx(projectPath: string, outputPath: string):
   addDirectoryToZip(zip, path.join(projectPath, 'assets'), 'assets');
   addDirectoryToZip(zip, path.join(projectPath, 'x_meta'), 'x_meta');
   addRemainingFiles(zip, projectPath, projectPath);
-  zip.writeZip(outputPath);
+  writePathAtomicSync(outputPath, (tempPath) => zip.writeZip(tempPath));
   return { success: true, outputPath };
 }
 
 function reassembleProjectRisum(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+  assertProjectRecoveryResolved(projectPath);
   const modulePath = path.join(projectPath, 'module.json');
   if (!fs.existsSync(modulePath)) throw new Error('module.json not found in project folder');
   const moduleJson = readJson(modulePath);
   stripDeprecatedRisumSaveFields(moduleJson);
-  fs.writeFileSync(outputPath, buildRisum(moduleJson, readRisumAssets(projectPath)));
+  writeFileAtomicSync(outputPath, buildRisum(moduleJson, readRisumAssets(projectPath)));
   return { success: true, outputPath };
 }
 
 function reassembleProjectRisup(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+  assertProjectRecoveryResolved(projectPath);
   const presetPath = path.join(projectPath, 'preset.json');
   if (!fs.existsSync(presetPath)) throw new Error('preset.json not found in project folder');
-  const preset = sanitizePresetPayload(readJson(presetPath));
-  applyTextFields(projectPath, preset, RISUP_EXTRACTABLE_FIELDS);
-  stripDeprecatedRisupSaveFields(preset);
   const marker = readProjectMarker(projectPath);
-  saveRisupPresetPayload(outputPath, preset, marker?.compressionMode || 'gzip');
+  const document = {
+    preset: sanitizePresetPayload(readJson(presetPath)),
+    envelope: marker?.risupEnvelope || {},
+  };
+  restoreProjectBinary(document, marker?.risupBinaryPaths || []);
+  applyTextFields(projectPath, document.preset, RISUP_EXTRACTABLE_FIELDS);
+  stripDeprecatedRisupSaveFields(document.preset);
+  saveRisupPresetPayload(outputPath, document.preset, marker?.compressionMode || 'gzip', document.envelope);
   return { success: true, outputPath };
 }
 
@@ -531,6 +630,7 @@ export function reassembleProjectDocument(
 }
 
 export function loadProjectData(projectPath: string): Record<string, unknown> {
+  assertProjectRecoveryResolved(projectPath);
   const fileType = getProjectFileType(projectPath);
   const tempPath = path.join(os.tmpdir(), `risutoki-project-${crypto.randomUUID()}.${fileType}`);
   try {
@@ -545,6 +645,7 @@ export function loadProjectData(projectPath: string): Record<string, unknown> {
     data._fileType = fileType;
     const marker = readProjectMarker(projectPath);
     if (marker?.sourcePath) data._sourceFilePath = marker.sourcePath;
+    recordProjectBaseline(projectPath, data);
     return data;
   } finally {
     fs.rmSync(tempPath, { force: true });
@@ -552,6 +653,19 @@ export function loadProjectData(projectPath: string): Record<string, unknown> {
 }
 
 export function saveProjectData(projectPath: string, data: Record<string, unknown>): void {
+  const baseline = projectBaselines.get(data)?.get(path.resolve(projectPath));
+  const verify = () => {
+    if (baseline !== undefined && baseline !== projectFingerprint(projectPath)) {
+      throw new Error(
+        '프로젝트 원본 파일이 외부에서 변경되어 저장하지 않았습니다. 변경 내용을 확인하고 프로젝트를 다시 불러오세요.',
+      );
+    }
+  };
+  verify();
+  withProjectSaveRecovery(projectPath, () => writeProjectData(projectPath, data), verify);
+}
+
+function writeProjectData(projectPath: string, data: Record<string, unknown>): void {
   ensureDir(projectPath);
   const fileType = isProjectFileType(data._fileType) ? data._fileType : 'charx';
 
@@ -570,6 +684,7 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
     } finally {
       fs.rmSync(tempPath, { force: true });
     }
+    recordProjectBaseline(projectPath, data);
     return;
   }
 
@@ -578,21 +693,42 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
     try {
       saveRisup(tempPath, data as unknown as LoadedDocumentData);
       const normalized = openRisup(tempPath);
-      const preset = sanitizePresetPayload((normalized._presetData as Record<string, unknown>) || {});
-      extractTextFields(projectPath, preset, RISUP_EXTRACTABLE_FIELDS);
-      writeJson(path.join(projectPath, 'preset.json'), preset);
+      const risupBinaryPaths: BinaryPath[] = [];
+      const document = encodeProjectBinary(
+        {
+          preset: sanitizePresetPayload(normalized._presetData || {}),
+          envelope: normalized._risupEnvelope || {},
+        },
+        risupBinaryPaths,
+      ) as { preset: Record<string, unknown>; envelope: Record<string, unknown> };
+      extractTextFields(projectPath, document.preset, RISUP_EXTRACTABLE_FIELDS);
+      writeJson(path.join(projectPath, 'preset.json'), document.preset);
       writeProjectMarker(projectPath, {
         sourceFileType: 'risup',
         sourcePath: typeof data._sourceFilePath === 'string' ? data._sourceFilePath : undefined,
         compressionMode: (normalized._compressionMode as RisupCompressionMode) || 'gzip',
+        risupEnvelope: document.envelope,
+        risupBinaryPaths,
       });
     } finally {
       fs.rmSync(tempPath, { force: true });
     }
+    recordProjectBaseline(projectPath, data);
     return;
   }
 
-  const zip = buildCharxZip(data as never);
+  const loaded = data as unknown as LoadedDocumentData;
+  const zip = buildCharxZip({ ...loaded, _zipEntries: [] });
+  const extraEntries = loaded._zipEntries || [];
+  const extraPath = path.join(projectPath, CHARX_EXTRA_ENTRIES_PATH);
+  if (extraEntries.length > 0) {
+    const extras = new AdmZip();
+    for (const entry of extraEntries) extras.addFile(entry.path, entry.data);
+    ensureDir(path.dirname(extraPath));
+    writePathAtomicSync(extraPath, (tempPath) => extras.writeZip(tempPath));
+  } else {
+    fs.rmSync(extraPath, { force: true });
+  }
   const marker = readProjectMarker(projectPath);
   const previousManagedFiles = readLegacyManagedCharxFiles(marker);
   const currentManagedFiles = listManagedCharxZipEntries(zip);
@@ -603,7 +739,7 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
     ensureDir(path.dirname(outPath));
     fs.writeFileSync(outPath, entry.getData());
   }
-  decodeModuleRisum(projectPath);
+  const risumAssetFiles = decodeModuleRisum(projectPath);
   const cardPath = path.join(projectPath, 'card.json');
   const card = readJson(cardPath);
   extractTextFields(projectPath, card, CHARX_EXTRACTABLE_FIELDS, { includeGreetings: true });
@@ -613,7 +749,10 @@ export function saveProjectData(projectPath: string, data: Record<string, unknow
     sourceFileType: 'charx',
     sourcePath: typeof data._sourceFilePath === 'string' ? data._sourceFilePath : undefined,
     charxManagedFiles: currentManagedFiles,
+    charxExtraEntries: extraEntries.length > 0,
+    risumAssetFiles,
   });
+  recordProjectBaseline(projectPath, data);
 }
 
 export function listProjectTree(projectPath: string): ProjectTreeNode {
@@ -650,6 +789,7 @@ export function readProjectFile(projectPath: string, relativePath: string): stri
 }
 
 export function writeProjectFile(projectPath: string, relativePath: string, content: string): void {
+  assertProjectRecoveryResolved(projectPath);
   const filePath = resolveInsideProject(projectPath, relativePath);
   ensureDir(path.dirname(filePath));
   fs.writeFileSync(filePath, content, 'utf-8');

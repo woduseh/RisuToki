@@ -4,7 +4,7 @@ This map is for source navigation. It is not a full API reference.
 
 ## Reading rules
 
-- Prefer `.ts` over generated `.js` siblings in `src/lib/`.
+- Edit `.ts` and `.vue` sources. Node and Electron outputs live in `.build/`, renderer output in `dist/`, and the bundled MCP entrypoint is `toki-mcp-server.js`.
 - Use nearby `.test.ts` files as executable behavior specs.
 - Treat `main.ts` and `src/app/controller.ts` as integration layers; shared logic usually lives in `src/lib/`.
 
@@ -176,12 +176,16 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/app-update-manager.ts` — packaged installer/portable update checks, prompt persistence, and approved download orchestration
 - `src/lib/app-settings.ts` — normalized app settings and recent-item persistence
 - `src/lib/stored-state-validation.ts` — persisted-state validation
-- `src/lib/backup-store.ts` — backup persistence
-- `src/lib/autosave-manager.ts` — autosave policy and scheduling
+- `src/lib/backup-store.ts` — bounded in-memory tab backups, duplicate detection, and restore menu
+- `src/lib/autosave-manager.ts` — autosave IPC handlers, same-format writes, provenance sidecars, and source-aware cleanup
 - `src/lib/session-recovery.ts` — recovery data model/helpers
 - `src/lib/session-recovery-main.ts` — main-process recovery hooks
 - `src/lib/session-recovery-manager.ts` — recovery orchestration
 - `src/lib/main-state-store.ts` — main-process state store
+- `src/lib/renderer-document-state.ts` — renderer-only document identities, stale draft rejection, and main/draft comparison
+- `src/lib/file-baseline.ts` — shared file SHA256 baselines and stale-save conflicts
+- `src/lib/document-save-scope.ts` — active-document identity checks across asynchronous save dialogs
+- `src/lib/project-save-recovery.ts` — durable project-save checkpoints and unresolved-save access guards
 - `src/lib/main-utility-ipc.ts` — MCP info, JSON import, persona, and system-prompt IPC registration
 - `src/lib/file-actions.ts` — file open/save actions
 - `src/lib/close-window-policy.ts` — close-window guards

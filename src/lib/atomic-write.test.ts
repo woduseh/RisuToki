@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { writeFileAtomicSync, writePathAtomicSync } from './atomic-write';
 
 const tempDirs: string[] = [];
@@ -13,6 +13,7 @@ function makeTempDir(): string {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
   for (const dir of tempDirs.splice(0)) {
     fs.rmSync(dir, { recursive: true, force: true });
   }
@@ -37,6 +38,58 @@ describe('writeFileAtomicSync', () => {
     writeFileAtomicSync(target, 'new');
 
     expect(fs.readFileSync(target, 'utf8')).toBe('new');
+  });
+
+  it('flushes and closes the temporary file before replacing the target', () => {
+    const target = path.join(makeTempDir(), 'state.json');
+    const flush = vi.spyOn(fs, 'fsyncSync');
+    const close = vi.spyOn(fs, 'closeSync');
+    const rename = vi.spyOn(fs, 'renameSync');
+
+    writeFileAtomicSync(target, 'new', { flush: true, encoding: 'utf16le' });
+
+    expect(flush).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledWith(flush.mock.calls[0][0]);
+    expect(flush.mock.invocationCallOrder[0]).toBeLessThan(close.mock.invocationCallOrder[0]);
+    expect(close.mock.invocationCallOrder[0]).toBeLessThan(rename.mock.invocationCallOrder[0]);
+    expect(fs.readFileSync(target, 'utf16le')).toBe('new');
+  });
+
+  it.each(['writeFileSync', 'fsyncSync', 'renameSync'] as const)(
+    'preserves the original file and error when %s fails',
+    (operation) => {
+      const dir = makeTempDir();
+      const target = path.join(dir, 'state.json');
+      fs.writeFileSync(target, 'old');
+      const failure = new Error(`${operation} failed`);
+      vi.spyOn(fs, operation).mockImplementationOnce(() => {
+        throw failure;
+      });
+
+      expect(() => writeFileAtomicSync(target, 'new', { flush: true })).toThrow(failure);
+      expect(fs.readFileSync(target, 'utf8')).toBe('old');
+      expect(fs.readdirSync(dir)).toEqual(['state.json']);
+    },
+  );
+
+  it('preserves the write error even if closing and removing the temporary file also fail', () => {
+    const target = path.join(makeTempDir(), 'state.json');
+    fs.writeFileSync(target, 'old');
+    const failure = new Error('write failed');
+    const close = fs.closeSync;
+    vi.spyOn(fs, 'writeFileSync').mockImplementationOnce(() => {
+      throw failure;
+    });
+    vi.spyOn(fs, 'closeSync').mockImplementationOnce((fd) => {
+      close(fd);
+      throw new Error('close failed');
+    });
+    vi.spyOn(fs, 'unlinkSync').mockImplementationOnce(() => {
+      throw new Error('cleanup failed');
+    });
+
+    expect(() => writeFileAtomicSync(target, 'new')).toThrow(failure);
+    expect(fs.readFileSync(target, 'utf8')).toBe('old');
   });
 
   it('cleans up temp files when the write cannot be completed', () => {

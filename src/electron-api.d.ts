@@ -145,6 +145,7 @@ interface McpRendererSessionStatusIpc {
 
 interface McpSessionStatusResponseIpc {
   success: boolean;
+  document?: import('./lib/document-types').RendererDocumentData | null;
   error?: string;
   renderer?: McpRendererSessionStatusIpc | null;
   suggestion?: string;

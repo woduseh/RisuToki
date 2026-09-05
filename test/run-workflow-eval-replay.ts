@@ -6,6 +6,7 @@ import { openCharx, openRisum, openRisup } from '../src/charx-io';
 import { WORKFLOW_EVAL_TASKS, type CanonicalReplayScenarioId, type WorkflowEvalTask } from './workflow-eval-catalog';
 import { callJson, startStandaloneClient, type McpCallJson, type StandaloneClientRuntime } from './mcp-test-client';
 import { createWorkflowEvalFixtures, WORKFLOW_MARKERS } from './workflow-eval-fixtures';
+import { assertReplayScenariosPassed } from './workflow-eval-gate';
 
 const DEFAULT_MAX_BYTES = 24 * 1024;
 
@@ -1678,6 +1679,8 @@ async function main(): Promise<void> {
     scenarios: results,
   };
   console.log(JSON.stringify(summary, null, 2));
+
+  assertReplayScenariosPassed(results);
 
   assert.ok(
     measuredMetrics.scenarioCompletion >= TARGET_METRICS.scenarioCompletion,

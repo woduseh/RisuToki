@@ -80,30 +80,3 @@ export function classifyRecoveryCandidateStaleness(params: {
   }
   return originalMtimeMs - autosaveMtimeMs > STALE_THRESHOLD_MS;
 }
-
-export function selectLatestViableRecoveryCandidate(
-  candidates: PendingRecoveryCandidate[],
-): PendingRecoveryCandidate | null {
-  let latestCandidate: PendingRecoveryCandidate | null = null;
-  let latestTimestamp = Number.NEGATIVE_INFINITY;
-
-  for (const candidate of candidates) {
-    const candidateTimestamp = getRecoveryCandidateTimestamp(candidate);
-
-    if (latestCandidate === null || candidateTimestamp > latestTimestamp) {
-      latestCandidate = candidate;
-      latestTimestamp = candidateTimestamp;
-    }
-  }
-
-  return latestCandidate;
-}
-
-function getRecoveryCandidateTimestamp(candidate: PendingRecoveryCandidate): number {
-  if (candidate.autosaveMtimeMs != null) {
-    return candidate.autosaveMtimeMs;
-  }
-
-  const parsedSavedAt = Date.parse(candidate.provenance.savedAt);
-  return Number.isFinite(parsedSavedAt) ? parsedSavedAt : Number.NEGATIVE_INFINITY;
-}

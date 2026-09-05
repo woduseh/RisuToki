@@ -214,11 +214,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function toggleInspector() {
-    abandonPreviewFocusMode();
-    rightSidebarView.value = rightSidebarView.value === 'inspector' ? null : 'inspector';
-    if (rightSidebarView.value === 'inspector') {
-      if (typeof window !== 'undefined' && window.innerWidth < 1180) navigatorVisible.value = false;
-    }
+    setRightSidebarView(rightSidebarView.value === 'inspector' ? null : 'inspector');
   }
 
   function toggleUtility(tool: UtilityToolId) {
@@ -232,11 +228,7 @@ export const useAppStore = defineStore('app', () => {
   }
 
   function toggleReferences() {
-    abandonPreviewFocusMode();
-    rightSidebarView.value = rightSidebarView.value === 'references' ? null : 'references';
-    if (rightSidebarView.value === 'references' && typeof window !== 'undefined' && window.innerWidth < 1180) {
-      navigatorVisible.value = false;
-    }
+    setRightSidebarView(rightSidebarView.value === 'references' ? null : 'references');
   }
 
   function setReferencesVisible(visible: boolean) {

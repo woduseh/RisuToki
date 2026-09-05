@@ -5,8 +5,6 @@ import {
   getAutosaveExtension,
   getAutosaveSidecarPath,
   getSessionRecoveryRecordPath,
-  selectLatestViableRecoveryCandidate,
-  type PendingRecoveryCandidate,
 } from './session-recovery';
 
 describe('session-recovery helpers', () => {
@@ -91,100 +89,6 @@ describe('session-recovery helpers', () => {
           autosaveMtimeMs: null,
         }),
       ).toBeFalsy();
-    });
-  });
-
-  describe('selectLatestViableRecoveryCandidate', () => {
-    function createCandidate(overrides: Partial<PendingRecoveryCandidate>): PendingRecoveryCandidate {
-      return {
-        sourceFilePath: 'C:\\cards\\hero.charx',
-        autosavePath: 'C:\\cards\\hero_autosave_20260401.charx',
-        provenance: {
-          sourceFilePath: 'C:\\cards\\hero.charx',
-          sourceFileType: 'charx',
-          autosavePath: 'C:\\cards\\hero_autosave_20260401.charx',
-          savedAt: '2026-04-01T10:00:00.000Z',
-          dirtyFields: ['description'],
-          appVersion: '0.31.0',
-        },
-        staleWarning: null,
-        originalMtimeMs: 2_000,
-        autosaveMtimeMs: 1_000,
-        ...overrides,
-      };
-    }
-
-    it('returns the latest candidate by autosave mtime when available', () => {
-      const olderCandidate = createCandidate({
-        autosavePath: 'C:\\cards\\older_autosave_20260401.charx',
-        autosaveMtimeMs: 1_000,
-        provenance: {
-          ...createCandidate({}).provenance,
-          autosavePath: 'C:\\cards\\older_autosave_20260401.charx',
-          savedAt: '2026-04-01T09:00:00.000Z',
-        },
-      });
-      const newerCandidate = createCandidate({
-        autosavePath: 'C:\\cards\\newer_autosave_20260401.charx',
-        autosaveMtimeMs: 2_000,
-        provenance: {
-          ...createCandidate({}).provenance,
-          autosavePath: 'C:\\cards\\newer_autosave_20260401.charx',
-          savedAt: '2026-04-01T10:00:00.000Z',
-        },
-      });
-
-      expect(selectLatestViableRecoveryCandidate([olderCandidate, newerCandidate])).toBe(newerCandidate);
-    });
-
-    it('falls back to provenance savedAt when autosave mtime is missing', () => {
-      const olderCandidate = createCandidate({
-        autosavePath: 'C:\\cards\\older_autosave_20260401.charx',
-        autosaveMtimeMs: null,
-        provenance: {
-          ...createCandidate({}).provenance,
-          autosavePath: 'C:\\cards\\older_autosave_20260401.charx',
-          savedAt: '2026-04-01T09:00:00.000Z',
-        },
-      });
-      const newerCandidate = createCandidate({
-        autosavePath: 'C:\\cards\\newer_autosave_20260401.charx',
-        autosaveMtimeMs: null,
-        provenance: {
-          ...createCandidate({}).provenance,
-          autosavePath: 'C:\\cards\\newer_autosave_20260401.charx',
-          savedAt: '2026-04-01T10:00:00.000Z',
-        },
-      });
-
-      expect(selectLatestViableRecoveryCandidate([olderCandidate, newerCandidate])).toBe(newerCandidate);
-    });
-
-    it('returns null when there are no viable candidates', () => {
-      expect(selectLatestViableRecoveryCandidate([])).toBeNull();
-    });
-
-    it('treats invalid savedAt metadata as older than valid candidates', () => {
-      const invalidCandidate = createCandidate({
-        autosavePath: 'C:\\cards\\invalid_autosave_20260401.charx',
-        autosaveMtimeMs: null,
-        provenance: {
-          ...createCandidate({}).provenance,
-          autosavePath: 'C:\\cards\\invalid_autosave_20260401.charx',
-          savedAt: 'not-a-date',
-        },
-      });
-      const validCandidate = createCandidate({
-        autosavePath: 'C:\\cards\\valid_autosave_20260401.charx',
-        autosaveMtimeMs: null,
-        provenance: {
-          ...createCandidate({}).provenance,
-          autosavePath: 'C:\\cards\\valid_autosave_20260401.charx',
-          savedAt: '2026-04-01T10:00:00.000Z',
-        },
-      });
-
-      expect(selectLatestViableRecoveryCandidate([invalidCandidate, validCandidate])).toBe(validCandidate);
     });
   });
 });

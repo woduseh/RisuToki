@@ -5,43 +5,35 @@ interface BackupEntry {
   content: unknown;
 }
 
-const backupStore: Record<string, BackupEntry[]> = {};
-// Cache the stringified form of the last entry per tab to avoid re-serializing
-const lastStringCache: Record<string, string> = {};
+const backupStore = new Map<string, { entries: BackupEntry[]; fingerprint: string }>();
 
 export function createBackup(tabId: string, content: unknown): void {
   if (!content && content !== '') return;
-  if (!backupStore[tabId]) backupStore[tabId] = [];
-  const store = backupStore[tabId];
+  const previous = backupStore.get(tabId);
+  const fingerprint = `${typeof content}:${typeof content === 'object' ? JSON.stringify(content) : String(content)}`;
+  if (previous?.fingerprint === fingerprint) return;
 
-  // Deep copy objects to prevent reference mutation
   const stored = typeof content === 'object' && content !== null ? structuredClone(content) : content;
-
-  // Skip duplicate of same content (use cached last-entry string)
-  const curStr = typeof stored === 'object' ? JSON.stringify(stored) : String(stored);
-  if (lastStringCache[tabId] !== undefined && lastStringCache[tabId] === curStr) return;
-
-  store.push({ time: new Date(), content: stored });
-  lastStringCache[tabId] = curStr;
-  if (store.length > MAX_BACKUPS) {
-    backupStore[tabId] = store.slice(-MAX_BACKUPS);
-  }
+  const entries = previous?.entries ?? [];
+  entries.push({ time: new Date(), content: stored });
+  backupStore.set(tabId, {
+    entries: entries.length > MAX_BACKUPS ? entries.slice(-MAX_BACKUPS) : entries,
+    fingerprint,
+  });
 }
 
 export function getBackups(tabId: string): BackupEntry[] {
-  return backupStore[tabId] || [];
+  return backupStore.get(tabId)?.entries ?? [];
 }
 
 /** Release all backup data and caches for a closed tab */
 export function clearBackups(tabId: string): void {
-  delete backupStore[tabId];
-  delete lastStringCache[tabId];
+  backupStore.delete(tabId);
 }
 
 /** Release all backup data across all tabs */
 export function clearAllBackups(): void {
-  for (const key of Object.keys(backupStore)) delete backupStore[key];
-  for (const key of Object.keys(lastStringCache)) delete lastStringCache[key];
+  backupStore.clear();
 }
 
 export function formatBackupTime(date: Date): string {

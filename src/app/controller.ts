@@ -405,6 +405,7 @@ window.tokiAPI.onMcpSessionStatusRequest((id) => {
   const dirtyFields = documentSwitchInProgress ? [] : [...tabMgr.dirtyFields].sort();
   window.tokiAPI.sendMcpSessionStatusResponse(id, {
     success: true,
+    document: fileData,
     renderer: {
       autosaveDir,
       autosaveEnabled,

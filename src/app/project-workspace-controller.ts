@@ -76,13 +76,19 @@ export function getProjectRelativePathFromTabId(tabId: string): string | null {
 export function createProjectWorkspaceController(deps: ProjectWorkspaceControllerDeps): ProjectWorkspaceController {
   const rawSyncTimers = new Map<string, ReturnType<typeof setTimeout>>();
   const syncDelayMs = deps.syncDelayMs ?? 700;
+  let generation = 0;
 
-  async function reloadAfterRawFileSync(tabId: string, relativePath: string): Promise<boolean> {
+  async function reloadAfterRawFileSync(
+    tabId: string,
+    relativePath: string,
+    isCurrent: () => boolean,
+  ): Promise<boolean> {
     const result = await deps.api.reloadProjectFolder();
     if (!result.success) {
       deps.setStatus(`프로젝트 원본 파일 오류: ${result.error || '프로젝트를 다시 읽을 수 없습니다.'}`);
       return false;
     }
+    if (!isCurrent()) return false;
     deps.applyReloadedProject(result.data, result.projectPath);
     deps.tabManager.dirtyFields.delete(tabId);
     deps.tabManager.renderTabs();
@@ -91,6 +97,18 @@ export function createProjectWorkspaceController(deps: ProjectWorkspaceControlle
   }
 
   async function syncRawFileTab(tabId: string, relativePath: string, content: string): Promise<boolean> {
+    const syncGeneration = generation;
+    const tab = deps.tabManager.findTab(tabId);
+    const isCurrent = (): boolean => {
+      if (generation !== syncGeneration || deps.tabManager.findTab(tabId) !== tab) return false;
+      const currentContent = deps.tabManager.activeTabId === tabId ? deps.getEditorValue() : tab?.getValue?.();
+      if ([...deps.tabManager.dirtyFields].some((id) => id !== tabId) || currentContent !== content) {
+        deps.setStatus('저장되지 않은 편집 내용이 있어 프로젝트 원본 파일 동기화를 보류했습니다.');
+        return false;
+      }
+      return true;
+    };
+    if (!isCurrent()) return false;
     const validationError = validateProjectRawFile(relativePath, content);
     if (validationError) {
       deps.setStatus(`프로젝트 원본 파일 오류: ${relativePath} JSON 형식 오류 - ${validationError}`);
@@ -98,8 +116,13 @@ export function createProjectWorkspaceController(deps: ProjectWorkspaceControlle
     }
 
     try {
-      await deps.api.writeProjectFile(relativePath, content);
-      return await reloadAfterRawFileSync(tabId, relativePath);
+      const written = await deps.api.writeProjectFile(relativePath, content);
+      if (!written) {
+        deps.setStatus(`프로젝트 원본 파일 저장 실패: ${relativePath}`);
+        return false;
+      }
+      if (!isCurrent()) return false;
+      return await reloadAfterRawFileSync(tabId, relativePath, isCurrent);
     } catch (error) {
       deps.setStatus(`프로젝트 원본 파일 오류: ${(error as Error).message}`);
       return false;
@@ -178,11 +201,13 @@ export function createProjectWorkspaceController(deps: ProjectWorkspaceControlle
     },
 
     clearRawSyncState() {
+      generation++;
       for (const timer of rawSyncTimers.values()) clearTimeout(timer);
       rawSyncTimers.clear();
     },
 
     async handleFolderChanged(payload) {
+      const reloadGeneration = generation;
       if (deps.tabManager.dirtyFields.size > 0) {
         deps.setStatus(
           `프로젝트 파일 변경 감지됨: ${payload.fileName || payload.path}. 저장되지 않은 탭이 있어 자동 반영하지 않았습니다.`,
@@ -192,6 +217,11 @@ export function createProjectWorkspaceController(deps: ProjectWorkspaceControlle
       const result = await deps.api.reloadProjectFolder();
       if (!result.success) {
         deps.setStatus(`프로젝트 다시 불러오기 실패: ${result.error || '알 수 없는 오류'}`);
+        return;
+      }
+      if (generation !== reloadGeneration) return;
+      if (deps.tabManager.dirtyFields.size > 0) {
+        deps.setStatus('저장되지 않은 편집 내용이 있어 프로젝트 변경을 자동 반영하지 않았습니다.');
         return;
       }
       deps.applyReloadedProject(result.data, result.projectPath);
@@ -204,12 +234,7 @@ export function createProjectWorkspaceController(deps: ProjectWorkspaceControlle
       if (!tabId?.startsWith('project:') || content === null) return true;
       const tab = deps.tabManager.openTabs.find((entry) => entry.id === tabId);
       if (!tab?.setValue) return true;
-      const ok = await flushRawFileTab(tab.id, content);
-      if (ok) {
-        deps.tabManager.dirtyFields.delete(tab.id);
-        deps.tabManager.renderTabs();
-      }
-      return ok;
+      return flushRawFileTab(tab.id, content);
     },
   };
 }

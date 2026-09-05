@@ -245,7 +245,7 @@ Renderer action
                  └─ controller updates tabs, editors, inspectors, and Pinia UI state
 ```
 
-Renderer edits synchronize to the main-process state. Save, autosave, project-folder writes, and MCP mutations operate against that authoritative state.
+Renderer drafts synchronize through save/autosave; they can temporarily differ from main state. Renderer-only document IDs reject snapshots belonging to a replaced document. MCP confirmation compares the current renderer draft with main state, while file and project saves check their existing content baselines. See [the data integrity audit](DATA_INTEGRITY_AUDIT.md) for conflict, checkpoint recovery, and normalization policies.
 
 ### 5.2 MCP tool call
 
@@ -288,13 +288,13 @@ main-process PTY output ── IPC ──► terminal session/controller/UI
 
 ## 6. Build and Generated Outputs
 
-| Command or config | Responsibility |
-| --- | --- |
-| `vite.config.ts` | Builds the single `index.html` renderer entry and copies browser runtime assets |
-| `tsconfig.electron.json` | Type-checks/compiles `main.ts`, `preload.ts`, and Electron bridge declarations as CommonJS under `.build/electron` |
-| `build:preload` | Bundles `preload.ts` to `.build/electron/preload.js` with esbuild |
-| `tsconfig.node-libs.json` | Compiles selected Node-compatible TypeScript modules and test harnesses under `.build/node` |
-| `build/build-mcp.js` | Bundles `toki-mcp-server.ts`, embeds runtime version metadata, and copies required WASM files |
+| Command or config         | Responsibility                                                                                                     |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `vite.config.ts`          | Builds the single `index.html` renderer entry and copies browser runtime assets                                    |
+| `tsconfig.electron.json`  | Type-checks/compiles `main.ts`, `preload.ts`, and Electron bridge declarations as CommonJS under `.build/electron` |
+| `build:preload`           | Bundles `preload.ts` to `.build/electron/preload.js` with esbuild                                                  |
+| `tsconfig.node-libs.json` | Compiles selected Node-compatible TypeScript modules and test harnesses under `.build/node`                        |
+| `build/build-mcp.js`      | Bundles `toki-mcp-server.ts`, embeds runtime version metadata, and copies required WASM files                      |
 
 TypeScript sources no longer receive generated JavaScript siblings. Node and Electron compiler outputs are cleaned and rebuilt in their respective `.build/` subdirectories; the public standalone `toki-mcp-server.js` bundle and its WASM assets remain at the repository/application root. Electron packaging includes `.build/electron`, the renderer and MCP bundles, resources, and skill/document roots declared in `package.json`.
 

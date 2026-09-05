@@ -233,6 +233,61 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
     checkEditGuardValue,
   });
 
+  async function previewPromptItemById(operation: FacadeV1EditOperation, id: string) {
+    const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(id)}`;
+    const read = await apiRequest('GET', promptRoute);
+    if (isApiError(read)) return read;
+    const readRecord = asRecord(read);
+    const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
+    const currentPreview = recordString(readRecord, 'preview');
+    const typeConflict = guardConflict(operation.guards, 'expected_type', currentType, `risup-prompt:${id}`);
+    if (typeConflict) return typeConflict;
+    const previewConflict = guardConflict(operation.guards, 'expected_preview', currentPreview, `risup-prompt:${id}`);
+    if (previewConflict) return previewConflict;
+    const item = asRecord(operation.content);
+    if (operation.op === 'write_content' && !item) {
+      return facadeApiError(
+        400,
+        'risup-prompt write_content requires an item object',
+        'Set operations[].content to the replacement prompt item object.',
+        { operation },
+      );
+    }
+    return {
+      data: {
+        dryRun: true,
+        resolved_id: id,
+        resolved_index: recordNumber(readRecord, 'index'),
+        currentType,
+        currentPreview,
+        ...(operation.op === 'write_content'
+          ? { replacementType: recordString(item, 'type') }
+          : { operation: 'delete_item' }),
+      },
+      routes: [
+        route('read_risup_prompt_item_by_id', 'GET', promptRoute),
+        operation.op === 'write_content'
+          ? route('write_risup_prompt_item_by_id', 'POST', promptRoute)
+          : route('delete_risup_prompt_item_by_id', 'POST', `${promptRoute}/delete`),
+      ],
+      touched: [selectorTarget(operation.selector)],
+      requiredGuards: mergeGuards(operation.guards, [
+        currentType === undefined
+          ? undefined
+          : buildGuard('expected_type', currentType, '/expected_type', ['read_risup_prompt_item_by_id'], '/type'),
+        currentPreview === undefined
+          ? undefined
+          : buildGuard(
+              'expected_preview',
+              currentPreview,
+              '/expected_preview',
+              ['read_risup_prompt_item_by_id'],
+              '/preview',
+            ),
+      ]),
+    };
+  }
+
   async function previewFacadeOperation(
     target: FacadeV1Target,
     operation: FacadeV1EditOperation,
@@ -412,7 +467,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
 
     if (
       target.kind === 'active' &&
-      operation.op === 'write_content' &&
+      (operation.op === 'write_content' || operation.op === 'delete_item') &&
       operation.selector.family === 'lorebook' &&
       operation.selector.id
     ) {
@@ -437,7 +492,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
       if (conflict) return conflict;
       operation.selector.index = index;
       const content = asRecord(operation.content);
-      if (!content) {
+      if (operation.op === 'write_content' && !content) {
         return facadeApiError(
           400,
           'lorebook write_content requires an object',
@@ -451,61 +506,13 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
           resolved_id: operation.selector.id,
           resolved_index: index,
           currentComment,
-          updatedKeys: Object.keys(content),
-        },
-        routes: [route('read_lorebook_by_id', 'GET', readRoute), route('write_lorebook_by_id', 'POST', readRoute)],
-        touched,
-        requiredGuards: mergeGuards(operation.guards, [
-          currentComment === undefined
-            ? undefined
-            : buildGuard(
-                'expected_comment',
-                currentComment,
-                '/expected_comment',
-                ['read_lorebook_by_id'],
-                '/entry/comment',
-              ),
-        ]),
-      };
-    }
-
-    if (
-      target.kind === 'active' &&
-      operation.op === 'delete_item' &&
-      operation.selector.family === 'lorebook' &&
-      operation.selector.id
-    ) {
-      const readRoute = `/lorebook/by-id/${encodeURIComponent(operation.selector.id)}`;
-      const read = await apiRequest('GET', readRoute);
-      if (isApiError(read)) return read;
-      const index = recordNumber(asRecord(read), 'index');
-      const entry = asRecord(asRecord(read)?.entry);
-      if (index === undefined)
-        return facadeApiError(
-          404,
-          'Lorebook id did not resolve to an index',
-          'Run read_content/list_lorebook again and retry preview_edit.',
-        );
-      const currentComment = recordString(entry, 'comment');
-      const conflict = guardConflict(
-        operation.guards,
-        'expected_comment',
-        currentComment,
-        `lorebook:${operation.selector.id}`,
-      );
-      if (conflict) return conflict;
-      operation.selector.index = index;
-      return {
-        data: {
-          dryRun: true,
-          operation: 'delete_item',
-          resolved_id: operation.selector.id,
-          resolved_index: index,
-          currentComment,
+          ...(operation.op === 'write_content' ? { updatedKeys: Object.keys(content!) } : { operation: 'delete_item' }),
         },
         routes: [
           route('read_lorebook_by_id', 'GET', readRoute),
-          route('delete_lorebook_by_id', 'POST', `${readRoute}/delete`),
+          operation.op === 'write_content'
+            ? route('write_lorebook_by_id', 'POST', readRoute)
+            : route('delete_lorebook_by_id', 'POST', `${readRoute}/delete`),
         ],
         touched,
         requiredGuards: mergeGuards(operation.guards, [
@@ -986,64 +993,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
       operation.selector.family === 'risup-prompt' &&
       operation.selector.id
     ) {
-      const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(operation.selector.id)}`;
-      const read = await apiRequest('GET', promptRoute);
-      if (isApiError(read)) return read;
-      const readRecord = asRecord(read);
-      const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
-      const currentPreview = recordString(readRecord, 'preview');
-      const typeConflict = guardConflict(
-        operation.guards,
-        'expected_type',
-        currentType,
-        `risup-prompt:${operation.selector.id}`,
-      );
-      if (typeConflict) return typeConflict;
-      const previewConflict = guardConflict(
-        operation.guards,
-        'expected_preview',
-        currentPreview,
-        `risup-prompt:${operation.selector.id}`,
-      );
-      if (previewConflict) return previewConflict;
-      const item = asRecord(operation.content);
-      if (!item) {
-        return facadeApiError(
-          400,
-          'risup-prompt write_content requires an item object',
-          'Set operations[].content to the replacement prompt item object.',
-          { operation },
-        );
-      }
-      return {
-        data: {
-          dryRun: true,
-          resolved_id: operation.selector.id,
-          resolved_index: recordNumber(readRecord, 'index'),
-          currentType,
-          currentPreview,
-          replacementType: recordString(item, 'type'),
-        },
-        routes: [
-          route('read_risup_prompt_item_by_id', 'GET', promptRoute),
-          route('write_risup_prompt_item_by_id', 'POST', promptRoute),
-        ],
-        touched,
-        requiredGuards: mergeGuards(operation.guards, [
-          currentType === undefined
-            ? undefined
-            : buildGuard('expected_type', currentType, '/expected_type', ['read_risup_prompt_item_by_id'], '/type'),
-          currentPreview === undefined
-            ? undefined
-            : buildGuard(
-                'expected_preview',
-                currentPreview,
-                '/expected_preview',
-                ['read_risup_prompt_item_by_id'],
-                '/preview',
-              ),
-        ]),
-      };
+      return previewPromptItemById(operation, operation.selector.id);
     }
 
     if (
@@ -1597,55 +1547,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
       operation.selector.family === 'risup-prompt' &&
       operation.selector.id
     ) {
-      const promptRoute = `/risup/prompt-item-by-id/${encodeURIComponent(operation.selector.id)}`;
-      const read = await apiRequest('GET', promptRoute);
-      if (isApiError(read)) return read;
-      const readRecord = asRecord(read);
-      const currentType = recordString(readRecord, 'type') ?? recordString(asRecord(readRecord?.item), 'type');
-      const currentPreview = recordString(readRecord, 'preview');
-      const typeConflict = guardConflict(
-        operation.guards,
-        'expected_type',
-        currentType,
-        `risup-prompt:${operation.selector.id}`,
-      );
-      if (typeConflict) return typeConflict;
-      const previewConflict = guardConflict(
-        operation.guards,
-        'expected_preview',
-        currentPreview,
-        `risup-prompt:${operation.selector.id}`,
-      );
-      if (previewConflict) return previewConflict;
-      return {
-        data: {
-          dryRun: true,
-          operation: 'delete_item',
-          resolved_id: operation.selector.id,
-          resolved_index: recordNumber(readRecord, 'index'),
-          currentType,
-          currentPreview,
-        },
-        routes: [
-          route('read_risup_prompt_item_by_id', 'GET', promptRoute),
-          route('delete_risup_prompt_item_by_id', 'POST', `${promptRoute}/delete`),
-        ],
-        touched,
-        requiredGuards: mergeGuards(operation.guards, [
-          currentType === undefined
-            ? undefined
-            : buildGuard('expected_type', currentType, '/expected_type', ['read_risup_prompt_item_by_id'], '/type'),
-          currentPreview === undefined
-            ? undefined
-            : buildGuard(
-                'expected_preview',
-                currentPreview,
-                '/expected_preview',
-                ['read_risup_prompt_item_by_id'],
-                '/preview',
-              ),
-        ]),
-      };
+      return previewPromptItemById(operation, operation.selector.id);
     }
 
     if (

@@ -104,6 +104,52 @@ describe('project-workspace-controller', () => {
     expect(fixture.renderTabs).toHaveBeenCalled();
   });
 
+  it('does not replace dirty structured edits when synchronizing a raw file', async () => {
+    const fixture = createDeps();
+    fixture.dirtyFields.add('description');
+    const controller = createProjectWorkspaceController(fixture.deps);
+    await expect(controller.syncActiveFileTab()).resolves.toBe(false);
+    expect(fixture.writeProjectFile).not.toHaveBeenCalled();
+    expect(fixture.applyReloadedProject).not.toHaveBeenCalled();
+    expect(fixture.dirtyFields.has('description')).toBe(true);
+  });
+
+  it('keeps a newer raw draft dirty when a write completes late', async () => {
+    const fixture = createDeps();
+    let finish!: (ok: boolean) => void;
+    fixture.writeProjectFile.mockImplementation(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const controller = createProjectWorkspaceController(fixture.deps);
+    const pending = controller.syncActiveFileTab();
+    fixture.deps.getEditorValue = () => '{"name":"Newer draft"}';
+    finish(true);
+    await expect(pending).resolves.toBe(false);
+    expect(fixture.applyReloadedProject).not.toHaveBeenCalled();
+    expect(fixture.dirtyFields.has('project:card.json')).toBe(true);
+  });
+
+  it('does not apply an external reload if an editor became dirty while it was loading', async () => {
+    const fixture = createDeps({ dirty: false });
+    let finish!: (result: unknown) => void;
+    fixture.reloadProjectFolder.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const controller = createProjectWorkspaceController(fixture.deps);
+    const pending = controller.handleFolderChanged({ fileName: 'card.json' });
+    fixture.dirtyFields.add('description');
+    finish({ success: true, data: { description: 'External' }, projectPath: 'C:\\cards\\project' });
+    await pending;
+    expect(fixture.applyReloadedProject).not.toHaveBeenCalled();
+    expect(fixture.dirtyFields.has('description')).toBe(true);
+  });
+
   it('does not reload an externally changed project while editor tabs are dirty', async () => {
     const fixture = createDeps();
     const controller = createProjectWorkspaceController(fixture.deps);

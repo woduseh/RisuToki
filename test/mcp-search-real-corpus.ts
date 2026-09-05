@@ -6,6 +6,10 @@ import { callJson, startStandaloneClient, type StandaloneClientRuntime } from '.
 import { TEST_DIR, buildRealCorpusFacadeCases, nestedArray, nestedRecord, routedTools } from './mcp-search-shared';
 
 export async function runStandaloneRealCorpusFacadeReadEval(): Promise<void> {
+  if (process.env.RISUTOKI_TEST_LOCAL_CORPUS !== '1') {
+    console.log('real-corpus facade eval skipped: opt in with npm run test:corpus');
+    return;
+  }
   const cases = buildRealCorpusFacadeCases();
   if (cases.length === 0) {
     console.log('real-corpus facade external read eval skipped: no ignored local artifacts found');

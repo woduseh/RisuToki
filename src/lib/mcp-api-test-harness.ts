@@ -150,6 +150,9 @@ export interface McpNoOpRecoveryEnvelope extends McpRecoveryEnvelope {
 }
 
 export interface TestDepsOverrides {
+  hasRendererDraftChanges?: () => Promise<boolean>;
+  askRendererConfirm?: (title: string, message: string) => Promise<boolean>;
+  getCurrentData?: () => LoadedDocumentData | null;
   guideRoots?: ResolvedGuideRoot[];
   getSessionStatus?: () => TestSessionStatus | Promise<TestSessionStatus>;
   getRuntimeInfo?: () => RuntimeMetadata;
@@ -392,9 +395,10 @@ export async function startTestApiServer(
   });
 
   const api = startApiServer({
-    getCurrentData: () => activeData,
+    hasRendererDraftChanges: overrides?.hasRendererDraftChanges,
+    getCurrentData: overrides?.getCurrentData ?? (() => activeData),
     getReferenceFiles: () => referenceFiles,
-    askRendererConfirm: async () => true,
+    askRendererConfirm: overrides?.askRendererConfirm ?? (async () => true),
     requestRendererOpenFile:
       overrides?.requestRendererOpenFile ??
       (async (request) => {

@@ -104,6 +104,30 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
   } = deps;
   const { previewManageAssetsOperation, readManageAssetsOperation, applyManageAssetsOperation } = assets;
 
+  async function readActiveDocumentBinding() {
+    const surfaces = await apiRequest('GET', '/surfaces');
+    if (isApiError(surfaces)) return surfaces;
+    const session = await apiRequest('GET', '/session/status');
+    if (isApiError(session)) return session;
+    const hash = recordString(asRecord(surfaces), 'document_hash');
+    if (!hash)
+      return facadeApiError(409, 'Active document hash is unavailable', 'Read the current document and preview again.');
+    return { hash, path: recordString(asRecord(asRecord(session)?.document), 'filePath') ?? null };
+  }
+
+  async function checkActiveDocumentBinding(expected: { path: string | null; hash: string }) {
+    const current = await readActiveDocumentBinding();
+    if (isApiError(current)) return current;
+    if (current.hash !== expected.hash || current.path !== expected.path) {
+      return facadeApiError(
+        409,
+        'The active document changed since preview',
+        'Read the current target and create a fresh preview.',
+      );
+    }
+    return undefined;
+  }
+
   async function listGuideNames(): Promise<string[]> {
     const guideData = await apiRequest('GET', '/guides');
     if (isApiError(guideData)) return [];
@@ -756,6 +780,8 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
     },
     safeToolHandler('preview_edit', async ({ target, operations, max_bytes }) => {
       cleanupFacadePreviews();
+      const activeDocument = target.kind === 'active' ? await readActiveDocumentBinding() : undefined;
+      if (isApiError(activeDocument)) return textResult(activeDocument);
       const previews: unknown[] = [];
       const routes: FacadeRoute[] = [];
       const touchedTargets: string[] = [];
@@ -769,10 +795,15 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
         touchedTargets.push(...preview.touched);
         requiredGuards.push(...preview.requiredGuards);
       }
+      if (activeDocument) {
+        const conflict = await checkActiveDocumentBinding(activeDocument);
+        if (conflict) return textResult(conflict);
+      }
       const digest = operationDigest(target, operations);
       const token = makePreviewToken();
       const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
       facadePreviewStore.set(token, {
+        activeDocument,
         token,
         operationDigest: digest,
         target,
@@ -856,6 +887,10 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
         );
       }
       facadePreviewStore.delete(preview_token);
+      if (entry.activeDocument) {
+        const conflict = await checkActiveDocumentBinding(entry.activeDocument);
+        if (conflict) return textResult(conflict);
+      }
       const results: unknown[] = [];
       const routes: FacadeRoute[] = [];
       const touchedTargets: string[] = [];
@@ -984,12 +1019,19 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
               facadeApiError(400, 'manage_items preview mode requires operation', 'Provide a mutating operation.'),
             );
           }
+          const activeDocument = target.kind === 'active' ? await readActiveDocumentBinding() : undefined;
+          if (isApiError(activeDocument)) return textResult(activeDocument);
           const preview = await previewManageItemsOperation(target, family, operation);
           if (isApiError(preview)) return textResult(preview);
+          if (activeDocument) {
+            const conflict = await checkActiveDocumentBinding(activeDocument);
+            if (conflict) return textResult(conflict);
+          }
           const digest = manageItemsOperationDigest(target, family, operation);
           const token = makePreviewToken();
           const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
           manageItemsPreviewStore.set(token, {
+            activeDocument,
             token,
             operationDigest: digest,
             target,
@@ -1085,6 +1127,10 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
           );
         }
         manageItemsPreviewStore.delete(preview_token);
+        if (entry.activeDocument) {
+          const conflict = await checkActiveDocumentBinding(entry.activeDocument);
+          if (conflict) return textResult(conflict);
+        }
         const applied = await applyManageItemsOperation(target, entry.family, entry.operation, guard_values);
         if (isApiError(applied)) return textResult(applied);
         return textResult(
@@ -1184,12 +1230,19 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
         }
 
         if (body.mode === 'preview') {
+          const activeDocument = body.target.kind === 'active' ? await readActiveDocumentBinding() : undefined;
+          if (isApiError(activeDocument)) return textResult(activeDocument);
           const preview = await previewManageAssetsOperation(body.target, requestedFamily, body.operation!);
           if (isApiError(preview)) return textResult(preview);
+          if (activeDocument) {
+            const conflict = await checkActiveDocumentBinding(activeDocument);
+            if (conflict) return textResult(conflict);
+          }
           const digest = manageAssetsOperationDigest(body.target, requestedFamily, body.operation!);
           const token = makePreviewToken();
           const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
           manageAssetsPreviewStore.set(token, {
+            activeDocument,
             token,
             operationDigest: digest,
             target: body.target,
@@ -1267,6 +1320,10 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
           );
         }
         manageAssetsPreviewStore.delete(body.preview_token!);
+        if (entry.activeDocument) {
+          const conflict = await checkActiveDocumentBinding(entry.activeDocument);
+          if (conflict) return textResult(conflict);
+        }
         const applied = await applyManageAssetsOperation(
           body.target,
           entry.assetFamily ?? 'auto',
@@ -1368,12 +1425,22 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
         }
 
         if (body.mode === 'preview') {
+          const activeDocument =
+            (body.target.kind === 'active' || body.target.kind === 'session') && body.operation!.action !== 'open_file'
+              ? await readActiveDocumentBinding()
+              : undefined;
+          if (isApiError(activeDocument)) return textResult(activeDocument);
           const preview = await previewManageFileOperation(body.target, body.operation!);
           if (isApiError(preview)) return textResult(preview);
+          if (activeDocument) {
+            const conflict = await checkActiveDocumentBinding(activeDocument);
+            if (conflict) return textResult(conflict);
+          }
           const digest = manageFileOperationDigest(body.target, body.operation!);
           const token = makePreviewToken();
           const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
           manageFilePreviewStore.set(token, {
+            activeDocument,
             token,
             operationDigest: digest,
             target: body.target,
@@ -1444,6 +1511,10 @@ export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrat
           );
         }
         manageFilePreviewStore.delete(body.preview_token!);
+        if (entry.activeDocument) {
+          const conflict = await checkActiveDocumentBinding(entry.activeDocument);
+          if (conflict) return textResult(conflict);
+        }
         const applied = await applyManageFileOperation(body.target, entry.operation, body.guard_values);
         if (isApiError(applied)) return textResult(applied);
         return textResult(

@@ -37,6 +37,7 @@ function makeRendererDocument(overrides: Partial<RendererDocumentData> = {}): Re
 }
 
 function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDeps {
+  const fileData = makeRendererDocument();
   const tabMgr = new TabManager('editor-tabs', {
     onActivateTab: vi.fn(),
     onDisposeFormEditors: vi.fn(),
@@ -47,7 +48,7 @@ function makeDeps(overrides: Partial<FileActionTestDeps> = {}): FileActionTestDe
     useAppStore().setStatus(message);
   });
   return {
-    getFileData: vi.fn(() => makeRendererDocument()),
+    getFileData: vi.fn(() => fileData),
     setFileData: vi.fn(),
     getEditorInstance: vi.fn(() => null),
     setEditorInstance: vi.fn(),
@@ -76,6 +77,24 @@ describe('file-actions', () => {
       <div id="editor-container"></div>
       <div id="editor-tabs"></div>
     `;
+  });
+
+  it.each([handleSave, handleSaveAs])('retains edits made while a save response is pending', async (save) => {
+    const data = makeRendererDocument({ description: 'submitted' });
+    let resolveSave!: (value: { success: boolean; path: string }) => void;
+    const pending = new Promise<{ success: boolean; path: string }>((resolve) => {
+      resolveSave = resolve;
+    });
+    const cleanupAutosave = vi.fn();
+    installTokiAPI({ saveFile: () => pending, saveFileAs: () => pending, cleanupAutosave });
+    const deps = makeDeps({ getFileData: () => data });
+    deps.tabMgr.dirtyFields.add('description');
+    const saving = save(deps);
+    data.description = 'edited while saving';
+    resolveSave({ success: true, path: 'synthetic.charx' });
+    await saving;
+    expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
+    expect(cleanupAutosave).not.toHaveBeenCalled();
   });
 
   describe('handleNew', () => {

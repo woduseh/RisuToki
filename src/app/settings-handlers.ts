@@ -74,14 +74,19 @@ export function startAutosave(deps: AutosaveDeps): void {
   stopAutosave();
   if (!deps.getAutosaveEnabled()) return;
   autosaveTimer = setInterval(async () => {
-    if (deps.getDirtyFieldCount() === 0 || !deps.getFileData()) return;
+    const document = deps.getFileData();
+    if (deps.getDirtyFieldCount() === 0 || !document) return;
     const filePath = await window.tokiAPI.getFilePath();
+    if (deps.getFileData() !== document) return;
     if (!filePath && !deps.getAutosaveDir()) return;
     const updatedFields = deps.collectDirtyFields();
+    if (typeof document._documentId === 'string') updatedFields._documentId = document._documentId;
     if (deps.getAutosaveDir()) (updatedFields as Record<string, unknown>)._autosaveDir = deps.getAutosaveDir();
     const result = await window.tokiAPI.autosaveFile(updatedFields);
     if (result && result.success) {
       setStatus(`자동 저장됨: ${result.path?.split(/[/\\]/).pop()}`);
+    } else if (result?.error) {
+      setStatus(`자동 저장 실패: ${result.error}`);
     }
   }, deps.getAutosaveInterval());
 }

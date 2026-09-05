@@ -280,6 +280,68 @@ function showInlineError(host: HTMLElement, message: string): void {
   host.appendChild(error);
 }
 
+function beginInlineRename(
+  label: HTMLElement,
+  value: string,
+  save: (value: string) => string | null | Promise<string | null>,
+  displayName?: (value: string) => string,
+): void {
+  if (label.querySelector('input')) return;
+  const original = label.textContent || '';
+  const input = el('input', 'manager-inline-rename');
+  input.type = 'text';
+  input.value = value;
+  label.replaceChildren(input);
+  input.focus();
+  input.select();
+  let settled = false;
+  let committing = false;
+
+  const commit = (): void => {
+    if (settled || committing) return;
+    committing = true;
+    const name = input.value;
+    const finish = (error: string | null): void => {
+      committing = false;
+      if (error) {
+        showInlineError(label, error);
+        input.focus();
+        return;
+      }
+      settled = true;
+      label.textContent = displayName ? displayName(name) : name.trim() || original;
+    };
+    const fail = (error: unknown): void => {
+      finish(
+        error instanceof Error
+          ? error.message || '이름 변경에 실패했어요.'
+          : String(error) || '이름 변경에 실패했어요.',
+      );
+    };
+    try {
+      const result = save(name);
+      if (result instanceof Promise) void result.then(finish, fail);
+      else finish(result);
+    } catch (error) {
+      fail(error);
+    }
+  };
+  input.addEventListener('click', (event) => event.stopPropagation());
+  input.addEventListener('keydown', (event) => {
+    event.stopPropagation();
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commit();
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      if (settled || committing) return;
+      settled = true;
+      label.textContent = original;
+    }
+  });
+  input.addEventListener('blur', commit);
+}
+
 function makeDragHandle(title: string): HTMLElement {
   const handle = el('span', 'manager-drag-handle disabled', '⋮⋮');
   handle.title = title;
@@ -409,48 +471,11 @@ function renderLorebookPanel(deps: RightManagerPanelDeps, body: HTMLElement): vo
     const badge = el('span', 'manager-badge', '폴더');
     folderRow.append(arrow, label, badge);
 
-    function beginFolderRename(): void {
-      if (label.querySelector('input')) return;
-      const original = entryLabel(folder.entry, folder.index);
-      const input = el('input', 'manager-inline-rename') as HTMLInputElement;
-      input.type = 'text';
-      input.value = String(folder.entry.comment ?? '');
-      label.replaceChildren(input);
-      input.focus();
-      input.select();
-      let settled = false;
-      const cancel = (): void => {
-        if (settled) return;
-        settled = true;
-        label.textContent = original;
-      };
-      const commit = (): void => {
-        if (settled) return;
-        const error = deps.commitLorebookName(folder.index, input.value);
-        if (error) {
-          showInlineError(label, error);
-          input.focus();
-          return;
-        }
-        settled = true;
-        label.textContent = input.value.trim() || original;
-      };
-      input.addEventListener('click', (event) => event.stopPropagation());
-      input.addEventListener('keydown', (event) => {
-        event.stopPropagation();
-        if (event.key === 'Enter') {
-          event.preventDefault();
-          commit();
-        } else if (event.key === 'Escape') {
-          event.preventDefault();
-          cancel();
-        }
-      });
-      input.addEventListener('blur', commit);
-    }
     folderRow.addEventListener('dblclick', (event) => {
       event.stopPropagation();
-      beginFolderRename();
+      beginInlineRename(label, String(folder.entry.comment ?? ''), (name) =>
+        deps.commitLorebookName(folder.index, name),
+      );
     });
     list.appendChild(folderRow);
     if (state.loreExpanded.has(folderKey)) {
@@ -523,53 +548,17 @@ function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, in
   const titleEl = el('div', 'manager-row-title', entryLabel(entry, index));
   main.appendChild(titleEl);
 
-  // Inline rename: swap the title text for an input instead of a blocking modal.
-  function beginInlineRename(): void {
-    if (titleEl.querySelector('input')) return; // already editing
-    const input = el('input', 'manager-inline-rename') as HTMLInputElement;
-    input.type = 'text';
-    input.value = String(entry.comment ?? '');
-    titleEl.replaceChildren(input);
-    input.focus();
-    input.select();
-
-    let settled = false;
-    const commit = (): void => {
-      if (settled) return;
-      const error = deps.commitLorebookName(index, input.value);
-      if (error) {
-        showInlineError(titleEl, error);
-        input.focus();
-        return;
-      }
-      settled = true;
-      // If the commit did not trigger a rebuild (e.g. unchanged name), make sure
-      // the label text is restored rather than leaving a stray input.
-      titleEl.textContent = entryLabel({ ...entry, comment: input.value.trim() || entry.comment }, index);
-    };
-    const cancel = (): void => {
-      if (settled) return;
-      settled = true;
-      titleEl.textContent = entryLabel(entry, index);
-    };
-
-    input.addEventListener('click', (event) => event.stopPropagation());
-    input.addEventListener('keydown', (event) => {
-      event.stopPropagation();
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        commit();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        cancel();
-      }
-    });
-    input.addEventListener('blur', commit);
-  }
+  const rename = (): void =>
+    beginInlineRename(
+      titleEl,
+      String(entry.comment ?? ''),
+      (name) => deps.commitLorebookName(index, name),
+      (name) => entryLabel({ ...entry, comment: name.trim() || entry.comment }, index),
+    );
 
   titleEl.addEventListener('dblclick', (event) => {
     event.stopPropagation();
-    beginInlineRename();
+    rename();
   });
 
   const contentPreview = String(entry.content || '')
@@ -605,7 +594,7 @@ function createLoreRow(deps: RightManagerPanelDeps, entry: LorebookEntryLike, in
   moveUp.disabled = siblingPosition <= 0;
   moveDown.disabled = siblingPosition < 0 || siblingPosition >= siblings.length - 1;
   actions.append(moveUp, moveDown);
-  actions.appendChild(makeToolbarButton('✎', '이름 변경', () => beginInlineRename()));
+  actions.appendChild(makeToolbarButton('✎', '이름 변경', rename));
   actions.appendChild(makeToolbarButton('✕', '삭제', () => void deps.deleteLorebook(index)));
 
   row.append(makeDragHandle('로어북 순서 드래그'), checkbox, main, tags, actions);
@@ -916,51 +905,13 @@ async function createAssetCard(deps: RightManagerPanelDeps, asset: AssetListEntr
   card.appendChild(el('div', 'manager-asset-size', `${Math.round(asset.size / 1024)} KB`));
 
   const actions = el('div', 'manager-asset-actions');
-  actions.appendChild(makeToolbarButton('✎', '이름 변경', () => beginInlineRename()));
+  actions.appendChild(
+    makeToolbarButton('✎', '이름 변경', () =>
+      beginInlineRename(label, fileName, (name) => deps.renameAsset(asset.path, name)),
+    ),
+  );
   actions.appendChild(makeToolbarButton('✕', '삭제', () => void deps.deleteAssets([asset.path])));
   card.appendChild(actions);
-
-  function beginInlineRename(): void {
-    if (label.querySelector('input')) return;
-    const input = el('input', 'manager-inline-rename') as HTMLInputElement;
-    input.type = 'text';
-    input.value = fileName;
-    label.replaceChildren(input);
-    input.focus();
-    input.select();
-    let settled = false;
-    let committing = false;
-    const cancel = (): void => {
-      if (settled || committing) return;
-      settled = true;
-      label.textContent = fileName;
-    };
-    const commit = async (): Promise<void> => {
-      if (settled || committing) return;
-      committing = true;
-      const error = await deps.renameAsset(asset.path, input.value);
-      committing = false;
-      if (error) {
-        showInlineError(label, error);
-        input.focus();
-        return;
-      }
-      settled = true;
-      label.textContent = input.value.trim() || fileName;
-    };
-    input.addEventListener('click', (event) => event.stopPropagation());
-    input.addEventListener('keydown', (event) => {
-      event.stopPropagation();
-      if (event.key === 'Enter') {
-        event.preventDefault();
-        void commit();
-      } else if (event.key === 'Escape') {
-        event.preventDefault();
-        cancel();
-      }
-    });
-    input.addEventListener('blur', () => void commit());
-  }
 
   card.addEventListener('click', (event) => {
     if ((event as MouseEvent).ctrlKey || (event as MouseEvent).metaKey) {

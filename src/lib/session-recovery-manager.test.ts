@@ -42,7 +42,6 @@ function makeDeps(overrides: Partial<SessionRecoveryManagerDeps> = {}): SessionR
     writeFileSync: vi.fn(),
     existsSync: vi.fn(() => true),
     statSync: vi.fn(() => ({ mtimeMs: 1000 })),
-    unlinkSync: vi.fn(),
     userDataPath: USER_DATA_PATH,
     openDocument: vi.fn(() => ({ name: 'Hero' })),
     setCurrentDocument: vi.fn(),
@@ -58,6 +57,28 @@ describe('SessionRecoveryManager', () => {
   beforeEach(() => {
     deps = makeDeps();
   });
+
+  it.each(['restoreFromRecovery', 'openOriginal'] as const)(
+    'does not replace the active document when %s cannot persist its recovery record',
+    async (operation) => {
+      deps = makeDeps({
+        writeFileAtomicSync: () => {
+          throw new Error('record denied');
+        },
+      });
+      const manager = createSessionRecoveryManager(deps);
+      const candidate = {
+        sourceFilePath: SOURCE_PATH,
+        autosavePath: AUTOSAVE_PATH,
+        provenance: makeProvenance(),
+        staleWarning: null,
+        originalMtimeMs: 2000,
+        autosaveMtimeMs: 1000,
+      };
+      await expect(manager[operation](candidate)).rejects.toThrow('record denied');
+      expect(deps.setCurrentDocument).not.toHaveBeenCalled();
+    },
+  );
 
   // ── markDocumentActive ────────────────────────────────────────────
 
@@ -244,7 +265,6 @@ describe('SessionRecoveryManager', () => {
     it('returns null when the original source file no longer exists', async () => {
       const record = makeRecord();
       const provenance = makeProvenance();
-      const unlinkSync = vi.fn();
 
       deps = makeDeps({
         readFileSync: vi.fn((p: string) => {
@@ -253,7 +273,6 @@ describe('SessionRecoveryManager', () => {
           return '{}';
         }),
         existsSync: vi.fn((p: string) => p !== SOURCE_PATH),
-        unlinkSync,
       });
 
       const manager = createSessionRecoveryManager(deps);
@@ -261,7 +280,6 @@ describe('SessionRecoveryManager', () => {
 
       expect(candidate).toBeNull();
       expect(deps.writeFileSync).not.toHaveBeenCalled();
-      expect(unlinkSync).not.toHaveBeenCalled();
     });
 
     it('returns null when the autosave artifact no longer exists', async () => {
@@ -742,13 +760,6 @@ describe('SessionRecoveryManager', () => {
 
       const afterCandidate = await manager.getPendingRecovery();
       expect(afterCandidate).toBeNull();
-    });
-
-    it('does not delete autosave files from disk', () => {
-      const manager = createSessionRecoveryManager(deps);
-      manager.ignoreRecovery();
-
-      expect(deps.unlinkSync).not.toHaveBeenCalled();
     });
 
     it('does not preserve recovery provenance', () => {

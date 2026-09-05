@@ -129,6 +129,7 @@ risu/plugins/**
 
 /docs/analysis/*
 !/docs/analysis/ARCHITECTURE.md
+!/docs/analysis/DATA_INTEGRITY_AUDIT.md
 work/
 
 # Local UI and avatar research artifacts

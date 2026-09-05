@@ -1,7 +1,7 @@
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import * as crypto from 'crypto';
+import { assertFileUnchanged, captureFileBaseline, FileConflictError } from './file-baseline';
 
 import type { LoadedDocumentData } from '../charx-io';
 import {
@@ -96,22 +96,6 @@ function saveDocument(filePath: string, fileType: SupportedFileType, data: Loade
   saveCharx(filePath, data);
 }
 
-function captureFileBaseline(filePath: string): McpSessionStatus['activeFileBaseline'] {
-  try {
-    const stat = fs.statSync(filePath);
-    if (!stat.isFile()) return null;
-    return {
-      path: filePath,
-      mtimeMs: stat.mtimeMs,
-      size: stat.size,
-      sha256: crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'),
-      capturedAt: new Date().toISOString(),
-    };
-  } catch {
-    return null;
-  }
-}
-
 function ensureAbsoluteExistingFile(filePath: string, label: string): string {
   const normalized = path.normalize(path.resolve(filePath));
   if (!fs.existsSync(normalized) || !fs.statSync(normalized).isFile()) {
@@ -187,6 +171,23 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
     : null;
   const referenceFiles = loadReferences(options.referencePaths);
 
+  async function saveCurrentDocument() {
+    if (!options.allowWrites) return { success: false, status: 403, error: 'Standalone writes require --allow-writes' };
+    if (!currentFilePath || !currentData) return { success: false, error: 'No file open' };
+    try {
+      assertFileUnchanged(currentFilePath, currentFileBaseline);
+      saveDocument(currentFilePath, getFileType(currentFilePath), currentData);
+      currentFileBaseline = captureFileBaseline(currentFilePath);
+      return { success: true, path: currentFilePath };
+    } catch (error) {
+      return {
+        success: false,
+        status: error instanceof FileConflictError ? 409 : 500,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
   let api: McpApiServer;
   const portPromise = new Promise<number>((resolve) => {
     api = startApiServer({
@@ -201,8 +202,14 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
         try {
           const alreadyOpen =
             currentFilePath !== null && path.normalize(request.filePath) === path.normalize(currentFilePath);
-          currentFilePath = path.normalize(request.filePath);
-          currentData = openDocument(currentFilePath);
+          if (request.saveCurrent && currentFilePath && currentData) {
+            const saved = await saveCurrentDocument();
+            if (!saved.success) return { success: false, error: saved.error };
+          }
+          const nextFilePath = path.normalize(request.filePath);
+          const nextData = openDocument(nextFilePath);
+          currentFilePath = nextFilePath;
+          currentData = nextData;
           currentFileBaseline = captureFileBaseline(currentFilePath);
           api.invalidateSectionCaches();
           return {
@@ -220,16 +227,7 @@ export function startHeadlessMcpApiServer(options: HeadlessMcpOptions = {}): Pro
           };
         }
       },
-      saveCurrentDocument: async () => {
-        if (!currentFilePath || !currentData) return { success: false, error: 'No file open' };
-        try {
-          saveDocument(currentFilePath, getFileType(currentFilePath), currentData);
-          currentFileBaseline = captureFileBaseline(currentFilePath);
-          return { success: true, path: currentFilePath };
-        } catch (error) {
-          return { success: false, error: error instanceof Error ? error.message : String(error) };
-        }
-      },
+      saveCurrentDocument,
       broadcastToAll: () => {},
       broadcastMcpStatus: (payload) => {
         const level = typeof payload.level === 'string' ? payload.level : 'info';

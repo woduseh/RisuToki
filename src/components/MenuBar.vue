@@ -35,7 +35,6 @@ const emit = defineEmits<{
 }>();
 
 const openMenu = ref<string | null>(null);
-const hoveringMenu = ref(false);
 // True when hover-switching just changed `openMenu` to the menu under the
 // pointer. The click that completes such a switch must keep the menu open
 // instead of toggling it shut (otherwise switching menus closes them).
@@ -223,7 +222,6 @@ function onMenuEnter(menuId: string) {
     switchedByHover.value = openMenu.value !== menuId;
     openMenu.value = menuId;
   }
-  hoveringMenu.value = true;
 }
 
 function isItemDisabled(item: MenuItem): boolean {
@@ -233,7 +231,7 @@ function isItemDisabled(item: MenuItem): boolean {
 
 function handleAction(action: string, item?: MenuItem) {
   if (item && isItemDisabled(item)) return;
-  openMenu.value = null;
+  closeMenus();
   emit('action', action, item?.payload);
 }
 
@@ -243,7 +241,7 @@ function closeMenus() {
 }
 
 function closeMenusAndFocus(menuId: string) {
-  openMenu.value = null;
+  closeMenus();
   nextTick(() => focusMenuButton(menuId));
 }
 
@@ -300,29 +298,21 @@ function onMenuEntryKeydown(event: KeyboardEvent, menuId: string) {
   }
 }
 
-function onClickOutside() {
-  openMenu.value = null;
-}
-
-function onCloseMenusEvent() {
-  openMenu.value = null;
-}
-
 onMounted(() => {
-  document.addEventListener('click', onClickOutside);
-  document.addEventListener('toki:close-menus', onCloseMenusEvent);
+  document.addEventListener('click', closeMenus);
+  document.addEventListener('toki:close-menus', closeMenus);
 });
 
 onBeforeUnmount(() => {
-  document.removeEventListener('click', onClickOutside);
-  document.removeEventListener('toki:close-menus', onCloseMenusEvent);
+  document.removeEventListener('click', closeMenus);
+  document.removeEventListener('toki:close-menus', closeMenus);
 });
 
 defineExpose({ closeMenus });
 </script>
 
 <template>
-  <div id="menubar" role="menubar" aria-label="주 메뉴" @mouseleave="hoveringMenu = false">
+  <div id="menubar" role="menubar" aria-label="주 메뉴">
     <div class="app-brand" aria-label="RisuToki"><img :src="TOKI_APP_ICON" alt="" /><strong>RISUTOKI</strong></div>
     <div
       v-for="menu in menus"

@@ -20,7 +20,7 @@ const TOOL_PROFILES = ['facade-first', 'authoring', 'advanced-full', 'readonly']
 const PRINT_CASE = process.argv.find((arg) => arg.startsWith('--print-case='))?.slice('--print-case='.length);
 const UPDATE_GUIDANCE =
   'If this contract change is intentional, regenerate the baseline with ' +
-  '`node test/mcp-contract-baseline.js --update` and record the change summary in CHANGELOG.md.';
+  '`npm run test:mcp:contracts:update` and record the change summary in CHANGELOG.md.';
 
 interface ContractFingerprint {
   rawBytes: number;

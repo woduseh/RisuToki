@@ -28,7 +28,13 @@ export interface FacadeRoute {
   route: string;
 }
 
+export interface ActiveDocumentBinding {
+  path: string | null;
+  hash: string;
+}
+
 export interface FacadePreviewEntry {
+  activeDocument?: ActiveDocumentBinding;
   token: string;
   operationDigest: string;
   target: FacadeV1Target;
@@ -40,6 +46,7 @@ export interface FacadePreviewEntry {
 }
 
 export interface ManageItemsPreviewEntry {
+  activeDocument?: ActiveDocumentBinding;
   token: string;
   operationDigest: string;
   target: FacadeV1Target;
@@ -52,6 +59,7 @@ export interface ManageItemsPreviewEntry {
 }
 
 export interface ManageAssetsPreviewEntry {
+  activeDocument?: ActiveDocumentBinding;
   token: string;
   operationDigest: string;
   target: FacadeV1Target;
@@ -64,6 +72,7 @@ export interface ManageAssetsPreviewEntry {
 }
 
 export interface ManageFilePreviewEntry {
+  activeDocument?: ActiveDocumentBinding;
   token: string;
   operationDigest: string;
   target: FacadeV1Target;

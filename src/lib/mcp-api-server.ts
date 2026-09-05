@@ -2,6 +2,8 @@ import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { serialize } from 'v8';
+import { FileConflictError } from './file-baseline';
 import type { LoadedDocumentData, TriggerScript } from '../charx-io';
 import * as lorebookIo from './lorebook-io';
 import { handleAssetRoute } from './mcp-asset-routes';
@@ -63,6 +65,8 @@ import { collectHiddenFieldWarnings, redactHiddenFields, type SupportedFileType 
 // ---------------------------------------------------------------------------
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+class ActiveDocumentConflictError extends Error {}
 
 export interface Section {
   name: string;
@@ -136,6 +140,7 @@ export interface McpSessionStatus {
 }
 
 export interface McpApiDeps {
+  hasRendererDraftChanges?: () => Promise<boolean>;
   /** Return the current in-memory document data (mutated directly by routes). */
   getCurrentData: () => LoadedDocumentData | null;
   /** Return the loaded reference files array. */
@@ -145,7 +150,7 @@ export interface McpApiDeps {
   /** Ask the renderer to switch the active document to a specific external file path. */
   requestRendererOpenFile: (request: RendererOpenFileRequest) => Promise<RendererOpenFileResponse>;
   /** Ask the app to save the current document. */
-  saveCurrentDocument?: () => Promise<{ success: boolean; path?: string; error?: string }>;
+  saveCurrentDocument?: () => Promise<{ success: boolean; path?: string; error?: string; status?: number }>;
   /** Broadcast an IPC message to the main renderer. */
   broadcastToAll: (channel: string, ...args: unknown[]) => void;
   /** Broadcast an MCP status event to the renderer. */
@@ -303,7 +308,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
   // Shorthand to emit an MCP error response
   function mcpError(res: http.ServerResponse, status: number, info: McpErrorInfo, error?: unknown): void {
-    jsonMcpError(res, status, info, broadcastStatus, error);
+    jsonMcpError(res, error instanceof FileConflictError ? 409 : status, info, broadcastStatus, error);
   }
 
   function mcpNoOp(res: http.ServerResponse, info: McpNoOpInfo, extra: Record<string, unknown> = {}): void {
@@ -506,10 +511,42 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // Routes that support an empty editor session return before reading the
       // document. The remaining route handlers operate on a loaded document.
       const activeData = currentData as LoadedDocumentData;
+      // Bind confirmation to the state the route reads, including array order.
+      // V8 serialization preserves binary assets without expanding each byte into JSON.
+      const documentDigest = () => crypto.createHash('sha256').update(serialize(currentData)).digest('hex');
+      const initialDocumentDigest = req.method === 'POST' && currentData ? documentDigest() : null;
+      const documentPath = deps.getCurrentFilePath?.();
+      async function confirmActiveMutation(title: string, message: string): Promise<boolean> {
+        const assertCurrent = async () => {
+          const renderer = deps.hasRendererDraftChanges ? null : (await deps.getSessionStatus?.())?.renderer;
+          const hasDraftChanges = deps.hasRendererDraftChanges
+            ? await deps.hasRendererDraftChanges()
+            : !!(renderer?.documentSwitchInProgress || renderer?.dirtyFields.length);
+          if (hasDraftChanges) {
+            throw new ActiveDocumentConflictError(
+              'The editor has unsaved changes. Save or resolve them before retrying.',
+            );
+          }
+          if (
+            deps.getCurrentData() !== currentData ||
+            deps.getCurrentFilePath?.() !== documentPath ||
+            (initialDocumentDigest && initialDocumentDigest !== documentDigest())
+          ) {
+            throw new ActiveDocumentConflictError(
+              'The active document changed while the request was pending. Read the current state and preview again.',
+            );
+          }
+        };
+        await assertCurrent();
+        const allowed = await deps.askRendererConfirm(title, message);
+        if (allowed) await assertCurrent();
+        return allowed;
+      }
+      const activeDeps = { ...deps, askRendererConfirm: confirmActiveMutation };
 
       if (
         await handleSurfaceRoute(req, res, parts, activeData, {
-          askRendererConfirm: deps.askRendererConfirm,
+          askRendererConfirm: confirmActiveMutation,
           broadcastToAll: deps.broadcastToAll,
           getSessionStatus: deps.getSessionStatus,
           invalidateAssetsMapCache: deps.invalidateAssetsMapCache,
@@ -554,7 +591,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         }
         const result = await deps.saveCurrentDocument();
         if (!result.success) {
-          return mcpError(res, 500, {
+          return mcpError(res, result.status ?? 500, {
             action: 'save current document',
             message: result.error || 'Failed to save current document',
             suggestion: '현재 파일 경로와 저장 권한을 확인하세요.',
@@ -573,7 +610,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       if (
         await handleFieldRoute(req, res, parts, url, activeData, {
-          api: deps,
+          api: activeDeps,
           fieldSnapshots,
           acquireFieldMutex,
           getCssSectionCount: (css) => cssCache.get(css).sections.length,
@@ -590,7 +627,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       if (
         await handleLorebookRoute(req, res, parts, url, activeData, {
-          api: deps,
+          api: activeDeps,
           broadcastStatus,
           jsonResSuccess,
           mcpError,
@@ -602,7 +639,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       if (
         await handleStructuredItemRoute(req, res, parts, url, activeData, {
-          api: deps,
+          api: activeDeps,
           broadcastStatus,
           jsonResSuccess,
           mcpError,
@@ -614,7 +651,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       if (
         await handleSectionRoute(req, res, parts, activeData, {
-          api: deps,
+          api: activeDeps,
           luaCache,
           cssCache,
           broadcastStatus,
@@ -628,7 +665,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       if (
         await handleReferenceRoute(req, res, parts, url, {
-          api: deps,
+          api: activeDeps,
           parseBody,
           broadcastStatus,
           jsonResSuccess,
@@ -640,7 +677,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       if (
         await handleAssetRoute(req, res, parts, activeData, {
-          askRendererConfirm: deps.askRendererConfirm,
+          askRendererConfirm: confirmActiveMutation,
           broadcastToAll: deps.broadcastToAll,
           invalidateAssetsMapCache: deps.invalidateAssetsMapCache,
           readJsonBody,
@@ -702,7 +739,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             `AI 어시스턴트가 로어북 ${plan.exportedCount}개 항목을 내보내려 합니다.\n\n` +
             `형식: ${format.toUpperCase()}\n` +
             `경로: ${targetDir}`;
-          const allowed = await deps.askRendererConfirm('MCP 내보내기 요청', confirmMsg);
+          const allowed = await confirmActiveMutation('MCP 내보내기 요청', confirmMsg);
           if (!allowed) {
             return mcpError(res, 403, {
               action: 'export-lorebook',
@@ -836,7 +873,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
             .filter(Boolean)
             .join('\n');
 
-          const allowed = await deps.askRendererConfirm('MCP 가져오기 요청', summary);
+          const allowed = await confirmActiveMutation('MCP 가져오기 요청', summary);
           if (!allowed) {
             return mcpError(res, 403, {
               action: 'import-lorebook',
@@ -998,7 +1035,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           `AI 어시스턴트가 "${field}" 필드를 파일로 내보내려 합니다.\n\n` +
           `경로: ${filePath}\n` +
           `크기: ${Buffer.byteLength(content, 'utf-8').toLocaleString()} bytes`;
-        const allowed = await deps.askRendererConfirm('MCP 필드 내보내기', confirmMsg);
+        const allowed = await confirmActiveMutation('MCP 필드 내보내기', confirmMsg);
         if (!allowed) {
           return mcpError(res, 403, {
             action: 'export-field',
@@ -1053,7 +1090,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
 
       if (
         await handleRisupPromptRoute(req, res, parts, activeData, {
-          api: deps,
+          api: activeDeps,
           broadcastStatus,
           jsonResSuccess,
           mcpError,
@@ -1334,6 +1371,14 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         target: url.pathname,
       });
     } catch (err) {
+      if (err instanceof ActiveDocumentConflictError) {
+        return mcpError(res, 409, {
+          action: `${req.method} ${url.pathname}`,
+          message: err.message,
+          suggestion: 'Save or resolve editor changes, read the current target, and create a fresh preview.',
+          target: url.pathname,
+        });
+      }
       mcpError(
         res,
         500,

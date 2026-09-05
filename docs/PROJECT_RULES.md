@@ -19,6 +19,8 @@ Choose local checks by the changed behavior:
 
 Static skill checks verify discovery and delivery, not model quality. Live model comparisons are optional experiments described in `test/behavior-evals/README.md`, not a requirement for every wording edit.
 
+Default tests and replay use synthetic artifacts; local ignored user artifacts are excluded. `npm run test:corpus` explicitly enables read-only local corpus evaluation (`RISUTOKI_TEST_LOCAL_CORPUS=1`); run it only when that data access is within the task scope. Deterministic replay must pass every scenario; aggregate coverage metrics do not excuse a failed regression.
+
 PR/push CI runs Ubuntu lint, typecheck, tests, workflow replay, MCP contracts, and renderer build, followed by Windows Electron and renderer builds. These are CI coverage, not an instruction to repeat successful local checks.
 
 Use `npm run test:mcp:contracts:update` only for an intentional public contract change; review its profile/case summary and describe the change in the changelog.

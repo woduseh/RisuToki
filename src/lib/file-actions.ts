@@ -234,8 +234,14 @@ export async function handleSave(deps: FileActionDeps): Promise<void> {
     return;
   }
   try {
+    const submitted = JSON.stringify(fileData);
     const result = await window.tokiAPI.saveFile(fileData);
     if (result.success) {
+      if (deps.getFileData() !== fileData) return;
+      if (JSON.stringify(fileData) !== submitted) {
+        deps.setStatus('저장 완료. 저장 중 추가된 변경사항은 아직 저장되지 않았어요.');
+        return;
+      }
       deps.tabMgr.dirtyFields.clear();
       deps.tabMgr.renderTabs();
       deps.buildSidebar();
@@ -261,8 +267,14 @@ export async function handleSaveAs(deps: FileActionDeps): Promise<void> {
     return;
   }
   try {
+    const submitted = JSON.stringify(fileData);
     const result = await window.tokiAPI.saveFileAs(fileData);
     if (result.success) {
+      if (deps.getFileData() !== fileData) return;
+      if (JSON.stringify(fileData) !== submitted) {
+        deps.setStatus('저장 완료. 저장 중 추가된 변경사항은 아직 저장되지 않았어요.');
+        return;
+      }
       deps.tabMgr.dirtyFields.clear();
       deps.tabMgr.renderTabs();
       deps.buildSidebar();

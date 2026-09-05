@@ -36,6 +36,8 @@ Create and inspect a matching preview, then apply it. The editor confirmation di
 
 Prefer focused replace/insert/range operations when they describe the change well. For large exact rewrites, guarded export/import or project-folder workflows avoid oversized responses. Verify the changed artifact with the relevant read, diff, or validator.
 
+Active previews bind the current document path and content hash. Confirmation also rejects document changes and renderer drafts not yet reflected in main state; already-synchronized dirty state is allowed. File and project saves reject externally changed baselines. Resolve the draft or reload/merge before creating a fresh preview. A project with an unresolved save checkpoint is blocked: inspect the separate backup path reported in the error instead of retrying writes to the partial project.
+
 Protected/deprecated `.charx` compatibility fields, legacy `.risup` prompt fields, reserved `.risum` `cjs`, and unsafe virtual script content are hidden and save-stripped. `hiddenFieldWarnings` reports existence only; it is not an alternate read route. `.risum` `mcpUrl` is preserved but read-only through normal mutation routes.
 
 JSON Patch array `add` inserts at `0..length` and `-` appends; `replace` and `remove` require an existing index. For imported `.risup` prompt text, use `analyze_content` action `verify_risup_prompt_import` with the same source. For `.charx` upload, run export-compatibility validation.
