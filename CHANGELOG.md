@@ -9,6 +9,15 @@
 
 ---
 
+## [3.6.5] - 2026-09-05
+
+### Fixed
+
+- Isolated xterm, FitAddon and Wasmoon browser bundles from Monaco's AMD bindings in development and production. Terminal loading no longer replaces global module loaders while the editor is loading.
+- Fixed isolated development port selection for Vite 7 and wait for the renderer controller's IPC readiness before declaring the app ready.
+- Corrected desktop smoke input targeting for Monaco EditContext and session-status assertions, and added a Vite development smoke mode plus real Electron image/terminal checks.
+- Added an opt-in bundled ConPTY backend for isolated Windows development sessions; the regular application launch keeps its existing backend selection.
+
 ## [3.6.4] - 2026-09-05
 
 ### Changed

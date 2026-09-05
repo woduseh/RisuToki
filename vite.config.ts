@@ -6,6 +6,7 @@ import vue from '@vitejs/plugin-vue';
 import { defineConfig, type Plugin } from 'vitest/config';
 import { normalizePath } from 'vite';
 import { viteStaticCopy } from 'vite-plugin-static-copy';
+import { wrapBrowserVendorScript } from './src/lib/vendor-script-wrapper';
 
 const rootDir = realpathSync(process.cwd());
 const require = createRequire(import.meta.url);
@@ -26,10 +27,22 @@ function resolveInstalledAssetPath(packageName: string, assetPath: string): stri
  * object: undefined" when the AMD factory finally executes.
  *
  * Wrapping each file in `(function(){ ... })()` isolates these declarations.
+ * Other classic vendor scripts also need lexical isolation from Monaco's
+ * global AMD bindings so UMD bundles publish their browser globals directly.
  */
-function monacoIifePlugin(): Plugin {
+function vendorScriptIsolationPlugin(): Plugin {
   const MONACO_PREFIX = '/vendor/monaco-editor/min/vs/';
   const monacoRoot = resolveInstalledAssetPath('monaco-editor', 'min/vs');
+  const browserGlobalScripts = new Map(
+    [
+      ['@xterm/xterm', 'lib/xterm.js'],
+      ['@xterm/addon-fit', 'lib/addon-fit.js'],
+      ['wasmoon', 'dist/index.js'],
+    ].map(([packageName, assetPath]) => [
+      `/vendor/${packageName}/${assetPath}`,
+      resolveInstalledAssetPath(packageName, assetPath),
+    ]),
+  );
 
   function wrapDir(dir: string): void {
     for (const entry of readdirSync(dir)) {
@@ -47,12 +60,18 @@ function monacoIifePlugin(): Plugin {
   }
 
   return {
-    name: 'monaco-iife-wrapper',
+    name: 'vendor-script-isolation',
     enforce: 'post',
 
-    // Dev: intercept Monaco JS requests and wrap in IIFE
+    // Dev and copied production scripts must use the same isolated UMD scope.
     configureServer(server) {
       server.middlewares.use((req, _res, next) => {
+        const browserGlobal = browserGlobalScripts.get(req.url?.split('?')[0] ?? '');
+        if (browserGlobal) {
+          _res.setHeader('Content-Type', 'application/javascript');
+          _res.end(wrapBrowserVendorScript(readFileSync(browserGlobal, 'utf8')));
+          return;
+        }
         if (req.url?.startsWith(MONACO_PREFIX) && req.url.endsWith('.js') && !req.url.endsWith('/loader.js')) {
           const relativePath = req.url.slice(MONACO_PREFIX.length);
           const filePath = resolve(monacoRoot, relativePath);
@@ -78,6 +97,9 @@ function monacoIifePlugin(): Plugin {
       } catch {
         // Monaco files may not exist if build target doesn't include them
       }
+      for (const [url, sourcePath] of browserGlobalScripts) {
+        writeFileSync(join(outDir, url.slice(1)), wrapBrowserVendorScript(readFileSync(sourcePath, 'utf8')));
+      }
     },
   };
 }
@@ -87,7 +109,7 @@ export default defineConfig(({ command }) => ({
   base: './',
   plugins: [
     vue(),
-    monacoIifePlugin(),
+    vendorScriptIsolationPlugin(),
     viteStaticCopy({
       targets: [
         {

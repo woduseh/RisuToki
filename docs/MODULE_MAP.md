@@ -159,6 +159,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/status-bar.ts` — status-bar rendering/state
 - `src/lib/image-viewer.ts` — image preview helpers
 - `src/lib/monaco-loader.ts` — Monaco bootstrap
+- `src/lib/vendor-script-wrapper.ts` — lexical isolation of browser vendor bundles from Monaco AMD globals
 - `src/lib/dark-mode.ts` — dark-mode state
 - `src/lib/theme-registry.ts` — app theme presets, custom palettes, and Monaco/terminal theme specs
 

@@ -299,7 +299,6 @@ export function createTerminalSessionsController(deps: TerminalSessionsControlle
           void deps.api.setTerminalCwd(session.context.cwd);
         }
       },
-      preserveAmdLoader: true,
       rightClickSelectsWord: true,
       setActive: deps.setActive,
       shouldActivateOnData: () => shouldTreatTerminalDataAsActivity(lastUserInputTime),

@@ -6,6 +6,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { stripVTControlCharacters } = require('node:util');
 const { app, BrowserWindow, dialog } = require('electron');
 
 const ROOT = path.resolve(__dirname, '..');
@@ -55,6 +56,21 @@ async function fail(error) {
   result.status = 'failed';
   result.stage = stage;
   result.error = error.stack || String(error);
+  if (currentWindow && !currentWindow.isDestroyed()) {
+    try {
+      result.inputDiagnostic = await evaluate(() => ({
+        activeTag: document.activeElement?.tagName,
+        activeClass: document.activeElement?.className,
+        editors: window.monaco?.editor.getEditors().map((editor) => ({
+          length: editor.getValue().length,
+          focused: editor.hasTextFocus(),
+          visible: editor.getDomNode()?.getBoundingClientRect().height,
+        })),
+      }));
+    } catch {
+      /* Keep the original failure. */
+    }
+  }
   try {
     await capture('failure');
   } catch {
@@ -73,7 +89,10 @@ process.on('unhandledRejection', (error) => {
 });
 app.on('browser-window-created', (_event, window) => {
   currentWindow = window;
-  if (!session.dev) window.hide();
+  if (!session.dev || session.devSmoke) {
+    window.webContents.setBackgroundThrottling(false);
+    window.hide();
+  }
   window.webContents.on('did-fail-load', (_e, code, description, _url, isMainFrame) => {
     if (isMainFrame) void fail(new Error(`Renderer load failed: ${code} ${description}`));
   });
@@ -108,26 +127,47 @@ async function check(name, fn) {
   persist();
   console.log(`[desktop-check] PASS ${name}`);
 }
-async function menu(label) {
-  await evaluate(() => document.querySelector('#menu-button-file').click());
+async function rendererReady() {
   await until(
     () =>
-      evaluate(
-        (text) =>
-          [...document.querySelectorAll('#menu-dropdown-file .menu-action')].some((button) =>
-            button.textContent.trim().startsWith(text),
-          ),
-        label,
-      ),
+      evaluate(() => !!document.querySelector('#menu-button-file') && typeof window.tokiAPI?.getMcpInfo === 'function'),
+    'Vue menu and real preload IPC',
+  );
+  // Vite mounts the Vue shell before its controller import finishes.
+  await until(
+    async () => {
+      const info = await evaluate(() => window.tokiAPI.getMcpInfo());
+      if (!info?.port) return false;
+      const response = await fetch(`http://127.0.0.1:${info.port}/session/status`, {
+        headers: { Authorization: `Bearer ${info.token}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      assert.equal(response.status, 200);
+      return typeof (await response.json()).renderer?.hasUnsavedChanges === 'boolean';
+    },
+    'renderer controller IPC',
+    30000,
+  );
+}
+async function menu(label) {
+  await until(
+    () =>
+      evaluate((text) => {
+        const dropdown = document.querySelector('#menu-dropdown-file');
+        if (!dropdown) {
+          document.querySelector('#menu-button-file').click();
+          return false;
+        }
+        const button = [...dropdown.querySelectorAll('.menu-action')].find((item) =>
+          item.textContent.trim().startsWith(text),
+        );
+        if (!button || button.disabled) throw new Error(`Missing/enabled menu action: ${text}`);
+        button.click();
+        return true;
+      }, label),
     `file menu ${label}`,
   );
-  await evaluate((text) => {
-    const button = [...document.querySelectorAll('#menu-dropdown-file .menu-action')].find((item) =>
-      item.textContent.trim().startsWith(text),
-    );
-    if (!button || button.disabled) throw new Error(`Missing/enabled menu action: ${text}`);
-    button.click();
-  }, label);
+  await until(() => evaluate(() => !document.querySelector('#menu-dropdown-file')), 'file menu close');
 }
 async function openDescription() {
   await until(
@@ -140,7 +180,13 @@ async function openDescription() {
     item.click();
   });
   await until(
-    () => evaluate(() => !!document.querySelector('#editor-container .monaco-editor textarea')),
+    () =>
+      evaluate(
+        () =>
+          !!document.querySelector(
+            '#editor-container .native-edit-context, #editor-container textarea.inputarea:not([readonly])',
+          ),
+      ),
     'Monaco input',
   );
 }
@@ -177,13 +223,7 @@ async function smoke() {
   };
 
   await check('renderer-ready', async () => {
-    await until(
-      () =>
-        evaluate(
-          () => !!document.querySelector('#menu-button-file') && typeof window.tokiAPI?.getMcpInfo === 'function',
-        ),
-      'Vue menu and real preload IPC',
-    );
+    await rendererReady();
     if (session.injectRendererError) {
       await evaluate(() => console.error('RISUTOKI_SMOKE_INJECTED_RENDERER_ERROR'));
       await sleep(100);
@@ -194,7 +234,20 @@ async function smoke() {
   await check('create-edit-save', async () => {
     await menu('새로 만들기');
     await openDescription();
-    await evaluate(() => document.querySelector('#editor-container .monaco-editor textarea').focus());
+    // Monaco's EditContext mode also contains a readonly IME textarea; use its live input.
+    currentWindow.webContents.focus();
+    await until(
+      () =>
+        evaluate(() => {
+          document
+            .querySelector(
+              '#editor-container .native-edit-context, #editor-container textarea.inputarea:not([readonly])',
+            )
+            .focus();
+          return window.monaco.editor.getEditors().some((editor) => editor.hasTextFocus());
+        }),
+      'Monaco input focus',
+    );
     await currentWindow.webContents.insertText(text);
     // Observe the editor value; do not replace the editor model or invoke a save handler directly.
     await until(() => evaluate(visibleEditorValue).then((value) => value === text), 'typed description');
@@ -255,11 +308,58 @@ async function smoke() {
     });
     assert.equal(response.status, 200);
     const status = await response.json();
-    assert.equal(status.success, true);
+    assert.equal(status.loaded, true);
     assert.equal(status.document.filePath, saved, 'HTTP API must observe the file opened by the UI');
     assert.equal(status.renderer?.hasUnsavedChanges, false, 'Renderer IPC must confirm a clean saved document');
     // Credentials stay in process memory and the disposable home, never the report.
     result.apiPort = info.port;
+  });
+  await check('native-image', async () => {
+    const sharp = require('sharp');
+    const png = await sharp({ create: { width: 3, height: 2, channels: 4, background: '#ff4000' } })
+      .png()
+      .toBuffer();
+    const webp = await sharp(png).webp({ lossless: true }).toBuffer();
+    const metadata = await sharp(webp).metadata();
+    assert.equal(metadata.format, 'webp');
+    assert.equal(metadata.width, 3);
+    assert.equal(metadata.height, 2);
+    assert.deepEqual(await sharp(webp).ensureAlpha().raw().toBuffer(), await sharp(png).ensureAlpha().raw().toBuffer());
+  });
+  await check('native-terminal', async () => {
+    const marker = `RISUTOKI_NATIVE_${Date.now()}`;
+    const output = await evaluate(async (marker) => {
+      const api = window.tokiAPI;
+      const terminal = await api.terminalNewSession('Desktop native check');
+      let output = '';
+      let timer;
+      const removeData = api.onTerminalDataSession((id, data) => {
+        if (id === terminal.id) output += data;
+      });
+      let removeExit;
+      const exited = new Promise((resolve) => {
+        timer = setTimeout(() => resolve(false), 10000);
+        removeExit = api.onTerminalExitSession((id) => {
+          if (id === terminal.id) resolve(true);
+        });
+      });
+      try {
+        if (!(await api.terminalStartSession(terminal.id, 240, 30))) throw new Error('Native terminal failed to start');
+        api.terminalResizeSession(terminal.id, 320, 32);
+        api.terminalInputSession(terminal.id, `echo ${marker}\rexit\r`);
+        if (!(await exited)) throw new Error('Native terminal did not exit');
+        if (await api.terminalIsSessionRunning(terminal.id)) throw new Error('Native terminal is still running');
+        return output;
+      } finally {
+        clearTimeout(timer);
+        removeData();
+        removeExit();
+        await api.terminalStopSession(terminal.id);
+      }
+    }, marker);
+    // Match the output line, not the echoed input command.
+    const lines = stripVTControlCharacters(output).split(/[\r\n]+/);
+    assert.ok(lines.some((line) => line.trim() === marker), 'Native terminal output was not received');
   });
   await check('clean-close', async () => {
     result.status = 'passed';
@@ -280,13 +380,8 @@ app
   .whenReady()
   .then(async () => {
     await until(() => !!currentWindow && !currentWindow.webContents.isLoading(), 'main window load');
-    if (session.dev) {
-      await check('renderer-ready', () =>
-        until(
-          () => evaluate(() => !!document.querySelector('#menu-button-file') && !!window.tokiAPI),
-          'dev renderer and preload',
-        ),
-      );
+    if (session.dev && !session.devSmoke) {
+      await check('renderer-ready', rendererReady);
       currentWindow.show();
       result.status = 'passed';
       persist();

@@ -108,8 +108,6 @@ interface FitAddonConstructor {
 interface RuntimeWindow extends Window {
   FitAddon?: FitAddonConstructor | { FitAddon?: FitAddonConstructor };
   Terminal?: TerminalConstructor | { Terminal?: TerminalConstructor };
-  define?: unknown;
-  require?: unknown;
 }
 
 export interface TerminalUiApi {
@@ -129,7 +127,6 @@ export interface TerminalUiOptions {
   onActivity?: () => void;
   onTerminalData?: (data: string) => void;
   onUserInput?: (data: string) => void | Promise<void>;
-  preserveAmdLoader?: boolean;
   rightClickSelectsWord?: boolean;
   setActive?: (active: boolean) => void;
   shouldActivateOnData?: (data: string) => boolean;
@@ -276,30 +273,15 @@ export function fitTerminalSafely(fitAddon: FitAddonLike, onError?: (error: unkn
   }
 }
 
-async function ensureTerminalRuntime(preserveAmdLoader: boolean): Promise<{
+async function ensureTerminalRuntime(): Promise<{
   FitAddon: FitAddonConstructor;
   Terminal: TerminalConstructor;
 }> {
   ensureXtermAssets();
 
   const runtimeWindow = window as RuntimeWindow;
-  const savedDefine = runtimeWindow.define;
-  const savedRequire = runtimeWindow.require;
-
-  if (preserveAmdLoader) {
-    runtimeWindow.define = undefined;
-    runtimeWindow.require = undefined;
-  }
-
-  try {
-    await loadScript(getXtermRuntimeUrl());
-    await loadScript(getXtermFitAddonUrl());
-  } finally {
-    if (preserveAmdLoader) {
-      runtimeWindow.define = savedDefine;
-      runtimeWindow.require = savedRequire;
-    }
-  }
+  await loadScript(getXtermRuntimeUrl());
+  await loadScript(getXtermFitAddonUrl());
 
   return {
     FitAddon: getFitAddonConstructor(runtimeWindow),
@@ -308,7 +290,7 @@ async function ensureTerminalRuntime(preserveAmdLoader: boolean): Promise<{
 }
 
 export async function initializeTerminalUi(options: TerminalUiOptions): Promise<TerminalUiHandle> {
-  const { Terminal, FitAddon } = await ensureTerminalRuntime(!!options.preserveAmdLoader);
+  const { Terminal, FitAddon } = await ensureTerminalRuntime();
 
   options.container.innerHTML = '';
 

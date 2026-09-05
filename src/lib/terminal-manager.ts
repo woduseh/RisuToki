@@ -211,6 +211,9 @@ export function initTerminalManager(deps: TerminalManagerDeps): void {
       try {
         const processHandle: PtyProcess = spawnPty(attempt.shell, attempt.args, {
           name: 'xterm-256color',
+          ...(process.platform === 'win32' && process.env.RISUTOKI_USE_BUNDLED_CONPTY === '1'
+            ? { useConptyDll: true }
+            : {}),
           cols: cols || 120,
           rows: rows || 24,
           cwd: attempt.cwd,

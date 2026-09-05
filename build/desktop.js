@@ -5,11 +5,12 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { randomUUID } = require('node:crypto');
 const { spawn } = require('node:child_process');
+const net = require('node:net');
 const { stopProcess, CLEANUP_FAILURE_EXIT_CODE } = require('./validate');
 
 const ROOT = path.resolve(__dirname, '..');
 
-function createSession(root = ROOT, { dev = false, injectRendererError = false } = {}) {
+function createSession(root = ROOT, { dev = false, devSmoke = false, injectRendererError = false } = {}) {
   root = fs.realpathSync(root);
   for (const relative of ['.build', '.build/desktop']) {
     const parent = path.join(root, relative);
@@ -21,7 +22,7 @@ function createSession(root = ROOT, { dev = false, injectRendererError = false }
   for (const name of ['home', 'app-data', 'local-data', 'user-data', 'temp', 'work']) {
     fs.mkdirSync(path.join(data, name), { recursive: true });
   }
-  const session = { schemaVersion: 1, directory, data, dev, injectRendererError };
+  const session = { schemaVersion: 1, directory, data, dev, devSmoke, injectRendererError };
   fs.writeFileSync(path.join(directory, 'session.json'), JSON.stringify(session));
   // Electron reads this package before loading the bootstrap, including the real app version.
   fs.writeFileSync(
@@ -59,6 +60,7 @@ function sessionEnv(session, inherited = process.env) {
     TEMP: path.join(session.data, 'temp'),
     TMPDIR: path.join(session.data, 'temp'),
     RISUTOKI_DESKTOP_RUN_DIR: session.directory,
+    RISUTOKI_USE_BUNDLED_CONPTY: '1',
   });
   if (process.platform === 'win32') {
     env.HOMEDRIVE = path.parse(home).root.replace(/[\\/]$/, '');
@@ -79,17 +81,34 @@ function cleanSession(session, root = ROOT) {
   fs.rmSync(session.data, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
 }
 
-async function runDesktop({ dev = false, injectRendererError = false } = {}, { root = ROOT, executable } = {}) {
+async function chooseLoopbackPort() {
+  // Vite 7 treats port: 0 as its default port. Select an OS-assigned candidate,
+  // then strictPort makes Vite fail if another process acquires it before us.
+  const probe = net.createServer();
+  await new Promise((resolve, reject) => {
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', resolve);
+  });
+  const port = probe.address().port;
+  await new Promise((resolve, reject) => probe.close((error) => (error ? reject(error) : resolve())));
+  return port;
+}
+
+async function runDesktop(
+  { dev = false, devSmoke = false, injectRendererError = false } = {},
+  { root = ROOT, executable } = {},
+) {
+  dev ||= devSmoke;
   // Builds are dependencies in validation-plan.js. Direct use checks prebuilt output only.
   for (const file of ['.build/electron/main.js', '.build/electron/preload.js', ...(dev ? [] : ['dist/index.html'])]) {
     if (!fs.existsSync(path.join(root, file))) throw new Error(`Missing ${file}; run npm run test:desktop first.`);
   }
-  const session = createSession(root, { dev, injectRendererError });
+  const session = createSession(root, { dev, devSmoke, injectRendererError });
   const reportPath = path.join(session.directory, 'report.json');
   const logPath = path.join(session.directory, 'process.log');
   const report = {
     schemaVersion: 1,
-    mode: dev ? 'dev' : 'smoke',
+    mode: devSmoke ? 'dev-smoke' : dev ? 'dev' : 'smoke',
     status: 'running',
     startedAt: new Date().toISOString(),
     pid: process.pid,
@@ -128,7 +147,8 @@ async function runDesktop({ dev = false, injectRendererError = false } = {}, { r
     const env = sessionEnv(session);
     if (dev) {
       const { createServer } = await import('vite');
-      server = await createServer({ root, server: { host: '127.0.0.1', port: 0, strictPort: true } });
+      const port = await chooseLoopbackPort();
+      server = await createServer({ root, server: { host: '127.0.0.1', port, strictPort: true } });
       await server.listen();
       const address = server.httpServer.address();
       if (!address || typeof address === 'string') throw new Error('Vite did not bind a TCP port');
@@ -139,7 +159,7 @@ async function runDesktop({ dev = false, injectRendererError = false } = {}, { r
     if (interrupted) throw new Error('Interrupted before Electron startup');
     executable ??= require('electron');
     logFd = fs.openSync(logPath, 'w');
-    console.log(`Desktop ${dev ? 'dev' : 'smoke'}: ${session.directory}`);
+    console.log(`Desktop ${report.mode}: ${session.directory}`);
     child = spawn(executable, [session.directory], {
       cwd: path.join(session.data, 'work'),
       env,
@@ -151,12 +171,13 @@ async function runDesktop({ dev = false, injectRendererError = false } = {}, { r
       complete = resolve;
       let error;
       // Dev lifetime is bounded by the enclosing validator; smoke always has its own watchdog.
-      watchdog = dev
-        ? null
-        : setTimeout(() => {
-            report.timedOut = true;
-            void terminate();
-          }, 90000);
+      watchdog =
+        dev && !devSmoke
+          ? null
+          : setTimeout(() => {
+              report.timedOut = true;
+              void terminate();
+            }, 90000);
       child.on('error', (cause) => {
         error = cause.message;
       });
@@ -188,9 +209,19 @@ async function runDesktop({ dev = false, injectRendererError = false } = {}, { r
           `Electron check incomplete (exit=${outcome.exitCode}, timeout=${!!report.timedOut})`,
       );
     }
-    const required = dev
-      ? ['renderer-ready']
-      : ['renderer-ready', 'create-edit-save', 'reopen-saved-file', 'invalid-file', 'authenticated-api', 'clean-close'];
+    const required =
+      dev && !devSmoke
+        ? ['renderer-ready']
+        : [
+            'renderer-ready',
+            'create-edit-save',
+            'reopen-saved-file',
+            'invalid-file',
+            'authenticated-api',
+            'native-image',
+            'native-terminal',
+            'clean-close',
+          ];
     if (!required.every((name) => result.checks?.some((check) => check.name === name)))
       throw new Error('Application report is missing required checks');
     report.status = 'passed';
@@ -250,15 +281,19 @@ async function runDesktop({ dev = false, injectRendererError = false } = {}, { r
 if (require.main === module) {
   const args = process.argv.slice(2);
   if (
-    args.some((arg) => !['--dev', '--inject-renderer-error'].includes(arg)) ||
-    (args.includes('--dev') && args.includes('--inject-renderer-error'))
+    args.some((arg) => !['--dev', '--dev-smoke', '--inject-renderer-error'].includes(arg)) ||
+    new Set(args).size > 1
   ) {
     console.error(
-      'Usage: node build/desktop.js [--dev | --inject-renderer-error]. Normally use npm run test:desktop or npm run dev:isolated.',
+      'Usage: node build/desktop.js [--dev | --dev-smoke | --inject-renderer-error]. Normally use npm run test:desktop or npm run dev:isolated.',
     );
     process.exitCode = 1;
   } else {
-    runDesktop({ dev: args.includes('--dev'), injectRendererError: args.includes('--inject-renderer-error') })
+    runDesktop({
+      dev: args.includes('--dev'),
+      devSmoke: args.includes('--dev-smoke'),
+      injectRendererError: args.includes('--inject-renderer-error'),
+    })
       .then((report) => {
         process.exitCode = report.cleanupError ? CLEANUP_FAILURE_EXIT_CODE : report.status === 'passed' ? 0 : 1;
       })
