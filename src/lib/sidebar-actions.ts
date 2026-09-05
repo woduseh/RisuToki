@@ -1,6 +1,5 @@
 import type { Section } from './section-parser';
 import type { Tab } from './tab-manager';
-import type { ContextMenuItem } from './context-menu';
 import {
   canonicalizeLorebookFolderRefs,
   getFolderRef,
@@ -21,7 +20,6 @@ export interface SidebarActionDeps {
 
   showConfirm: (msg: string) => Promise<boolean>;
   showPrompt: (msg: string, defaultValue?: string) => Promise<string | null>;
-  showContextMenu: (x: number, y: number, items: ContextMenuItem[]) => void;
   setStatus: (msg: string) => void;
   buildSidebar: () => void;
 
@@ -193,8 +191,7 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.setStatus(`로어북 항목 삭제됨: ${name}`);
   }
 
-  // Commit a new lorebook name directly (no prompt). Used by inline editing in
-  // the lorebook manager; the prompt-based renameLorebook below reuses it.
+  // Returns null on success or an error message for inline manager renaming.
   function renameLorebookTo(idx: number, rawName: string): string | null {
     const fileData = fd();
     if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return '항목을 찾을 수 없습니다.';
@@ -219,15 +216,6 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.refreshIndexedTabs('lore_', deps.buildLorebookTabState);
     deps.setStatus(`로어북 항목 이름 변경: ${newName}`);
     return null;
-  }
-
-  async function renameLorebook(idx: number): Promise<void> {
-    const fileData = fd();
-    if (!fileData || idx < 0 || idx >= fileData.lorebook.length) return;
-    const oldName = fileData.lorebook[idx].comment || `entry_${idx}`;
-    const newName = await deps.showPrompt('새 이름:', oldName);
-    if (newName === null) return;
-    renameLorebookTo(idx, newName);
   }
 
   // ==================== Regex ====================
@@ -322,40 +310,6 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.buildSidebar();
     const count = Array.isArray(added) ? added.length : 1;
     deps.setStatus(`에셋 ${count}개 추가됨`);
-  }
-
-  function attachAssetContextMenu(el: HTMLElement, assetPath: string, fileName: string): void {
-    el.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      deps.showContextMenu(e.clientX, e.clientY, [
-        {
-          label: '이름 변경',
-          action: async () => {
-            const newName = await deps.showPrompt('새 파일명:', fileName);
-            if (!newName || newName === fileName) return;
-            const newPath = await window.tokiAPI.renameAsset(assetPath, newName);
-            if (newPath) {
-              deps.buildSidebar();
-              deps.setStatus(`에셋 이름 변경: ${newName}`);
-            }
-          },
-        },
-        '---',
-        {
-          label: '삭제',
-          action: async () => {
-            if (!(await deps.showConfirm(`"${fileName}" 에셋을 삭제하시겠습니까?`))) return;
-            const ok = await window.tokiAPI.deleteAsset(assetPath);
-            if (ok) {
-              deps.closeTab(`img_${assetPath}`);
-              deps.buildSidebar();
-              deps.setStatus(`에셋 삭제됨: ${fileName}`);
-            }
-          },
-        },
-      ]);
-    });
   }
 
   // ==================== Lua Sections ====================
@@ -583,14 +537,6 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     deps.setStatus('CSS 섹션 이동됨');
   }
 
-  async function reorderAsset(fromPath: string, toIdx: number): Promise<void> {
-    const ok = await window.tokiAPI.reorderAsset(fromPath, toIdx);
-    if (ok) {
-      deps.buildSidebar();
-      deps.setStatus('에셋 위치 변경됨');
-    }
-  }
-
   // ==================== Alternate Greetings ====================
 
   function addAlternateGreeting(): void {
@@ -645,7 +591,6 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     addNewLorebookFolder,
     importLorebook,
     deleteLorebook,
-    renameLorebook,
     renameLorebookTo,
     reorderLorebook,
     addNewRegex,
@@ -654,8 +599,6 @@ export function createSidebarActions(deps: SidebarActionDeps) {
     renameRegex,
     reorderRegex,
     addAssetFromDialog,
-    attachAssetContextMenu,
-    reorderAsset,
     addLuaSection,
     renameLuaSection,
     deleteLuaSection,

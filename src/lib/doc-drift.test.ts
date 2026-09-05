@@ -390,6 +390,7 @@ describe('canonical architecture and contributor workflow stay current', () => {
   const architecturePath = path.join(DOCS_DIR, 'analysis', 'ARCHITECTURE.md');
   const contributingPath = path.join(ROOT, 'CONTRIBUTING.md');
   const ciPath = path.join(ROOT, '.github', 'workflows', 'ci.yml');
+  const releasePath = path.join(ROOT, '.github', 'workflows', 'release.yml');
 
   it('documents the current single-renderer runtime and existing entrypoints', () => {
     const architecture = fs.readFileSync(architecturePath, 'utf-8');
@@ -429,9 +430,10 @@ describe('canonical architecture and contributor workflow stay current', () => {
     expect(architecture).not.toMatch(/~\d[\d,]* lines/i);
   });
 
-  it('keeps contributor validation and CI aligned on replay, contracts, and platform builds', () => {
+  it('keeps contributor validation, CI, and releases aligned on replay, contracts, and platform builds', () => {
     const contributing = fs.readFileSync(contributingPath, 'utf-8');
     const ci = fs.readFileSync(ciPath, 'utf-8');
+    const release = fs.readFileSync(releasePath, 'utf-8');
     const require = createRequire(path.join(ROOT, 'package.json'));
     const { createPlan } = require('./build/validation-plan.js') as {
       createPlan: (options: { profile: string }) => { steps: { id: string }[] };
@@ -464,5 +466,12 @@ describe('canonical architecture and contributor workflow stay current', () => {
     expect(ci.match(/include-hidden-files: true/g)).toHaveLength(2);
     expect(ci).toContain('.build/validation/**/report.json');
     expect(contributing).not.toContain('Popout terminal');
+
+    const releaseChecks = [...release.matchAll(/^\s+run: (npm .+)$/gmu)].map((match) => match[1]);
+    expect(releaseChecks).toEqual(['npm ci', 'npm run validate:full']);
+    expect(release.indexOf('run: npm run validate:full')).toBeLessThan(release.indexOf('run: npx electron-builder'));
+    expect(release).toContain('if: always()');
+    expect(release).toContain('include-hidden-files: true');
+    expect(release).toContain('.build/validation/**/report.json');
   });
 });

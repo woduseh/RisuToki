@@ -1,6 +1,6 @@
 import { createHash } from 'crypto';
 import { z } from 'zod';
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import type { McpToolServer } from './mcp-tool-registration';
 import type { FacadeContentEngine } from './mcp-facade-content';
 import { asRecord, facadeApiError, isApiError } from './mcp-facade-runtime';
 import { mcpSuccess } from './mcp-response-envelope';
@@ -233,7 +233,7 @@ export async function evaluateBot(
   return result;
 }
 
-export function registerEvaluationTools(server: McpServer, content: FacadeContentEngine) {
+export function registerEvaluationTools(server: McpToolServer, content: FacadeContentEngine) {
   server.tool('evaluate_bot', MCP_TOOL_DESCRIPTIONS.evaluate_bot, evaluateBotSchema.shape, async (args) => {
     const parsed = evaluateBotSchema.safeParse(args);
     const result = parsed.success

@@ -86,6 +86,18 @@ export interface FieldRouteDeps {
   mcpNoOp: (res: http.ServerResponse, info: McpNoOpInfo, extra?: Record<string, unknown>) => void;
 }
 
+/** Shared with the server's mutation snapshot policy; unknown routes stay guarded. */
+export function getFieldReadRoute(
+  method: string | undefined,
+  parts: string[],
+): 'batch' | 'search' | 'search-all' | null {
+  if (method !== 'POST') return null;
+  if (parts[0] === 'field' && parts[1] === 'batch' && !parts[2]) return 'batch';
+  if (parts[0] === 'field' && parts[1] && parts[2] === 'search' && !parts[3]) return 'search';
+  if (parts[0] === 'search-all' && !parts[1]) return 'search-all';
+  return null;
+}
+
 export async function handleFieldRoute(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -106,6 +118,7 @@ export async function handleFieldRoute(
     mcpNoOp,
     parseBody,
   } = routeDeps;
+  const readRoute = getFieldReadRoute(req.method, parts);
 
   async function dispatch(): Promise<void | false> {
     // ----------------------------------------------------------------
@@ -331,7 +344,7 @@ export async function handleFieldRoute(
     // ----------------------------------------------------------------
     // POST /field/batch — read multiple fields at once
     // ----------------------------------------------------------------
-    if (parts[0] === 'field' && parts[1] === 'batch' && !parts[2] && req.method === 'POST') {
+    if (readRoute === 'batch') {
       const body = await readJsonBody(req, res, 'field/batch', broadcastStatus);
       if (!body) return;
       const parsed = parseBody(res, body, fieldBatchReadSchema, {
@@ -1189,7 +1202,7 @@ export async function handleFieldRoute(
     // ----------------------------------------------------------------
     // POST /search-all — search across string fields, greetings, lorebook
     // ----------------------------------------------------------------
-    if (parts[0] === 'search-all' && !parts[1] && req.method === 'POST') {
+    if (readRoute === 'search-all') {
       const body = await readJsonBody(req, res, 'search-all', broadcastStatus);
       if (!body) return;
       const parsed = parseBody(res, body, searchAllBodySchema, {
@@ -1236,7 +1249,7 @@ export async function handleFieldRoute(
     // ----------------------------------------------------------------
     // POST /field/:name/search — search text in a string field (read-only)
     // ----------------------------------------------------------------
-    if (parts[0] === 'field' && parts[1] && parts[2] === 'search' && !parts[3] && req.method === 'POST') {
+    if (readRoute === 'search') {
       const fieldName = decodeURIComponent(parts[1]);
       const hiddenBlock = getHiddenFieldReadBlock(currentData, fieldName);
       if (hiddenBlock) {

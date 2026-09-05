@@ -1,38 +1,15 @@
-import type { LoadedDocumentData, TriggerScript } from '../charx-io';
+import {
+  extractPrimaryLuaFromTriggerScripts,
+  mergePrimaryLuaIntoTriggerScripts,
+  normalizeTriggerScripts,
+  stringifyTriggerScripts,
+  type LoadedDocumentData,
+} from '../charx-io';
 import { CHARX_DEPRECATED_FIELD_NAMES } from './deprecated-save-policy';
 import type { RendererDocumentData, RendererDocumentPatch } from './document-types';
 import { RISUP_JSON_TEXT_FIELD_NAMES, validateRisupJsonTextField } from './risup-json-fields';
 
-// ---------------------------------------------------------------------------
-// Public types
-// ---------------------------------------------------------------------------
-
-export interface DataSerializerDeps {
-  stringifyTriggerScripts: (scripts: unknown) => string;
-  normalizeTriggerScripts: (scripts: unknown) => TriggerScript[];
-  extractPrimaryLuaFromTriggerScripts: (scripts: unknown) => string;
-  mergePrimaryLuaIntoTriggerScripts: (scripts: unknown, lua: string) => TriggerScript[];
-}
-
-// ---------------------------------------------------------------------------
-// Internal state
-// ---------------------------------------------------------------------------
-
-let deps: DataSerializerDeps;
-
 const CHARX_DEPRECATED_FIELD_NAME_SET = new Set(CHARX_DEPRECATED_FIELD_NAMES);
-
-// ---------------------------------------------------------------------------
-// Initialization
-// ---------------------------------------------------------------------------
-
-export function initDataSerializer(d: DataSerializerDeps): void {
-  deps = d;
-}
-
-// ---------------------------------------------------------------------------
-// Public helpers
-// ---------------------------------------------------------------------------
 
 /** Filter data for safe transfer to renderer (strips binary assets / internal fields). */
 export function serializeForRenderer(data: LoadedDocumentData): RendererDocumentData {
@@ -41,7 +18,7 @@ export function serializeForRenderer(data: LoadedDocumentData): RendererDocument
     name: data.name,
     description: data.description,
     firstMessage: data.firstMessage,
-    triggerScripts: deps.stringifyTriggerScripts(data.triggerScripts),
+    triggerScripts: stringifyTriggerScripts(data.triggerScripts),
     alternateGreetings: data.alternateGreetings || [],
     globalNote: data.globalNote,
     css: data.css,
@@ -292,13 +269,13 @@ export function applyUpdates(data: LoadedDocumentData, fields: RendererDocumentP
   for (const key of allowed) {
     if (fields[key] !== undefined) {
       if (key === 'triggerScripts') {
-        data.triggerScripts = deps.normalizeTriggerScripts(fields.triggerScripts);
-        data.lua = deps.extractPrimaryLuaFromTriggerScripts(data.triggerScripts);
+        data.triggerScripts = normalizeTriggerScripts(fields.triggerScripts);
+        data.lua = extractPrimaryLuaFromTriggerScripts(data.triggerScripts);
         continue;
       }
       data[key] = fields[key];
       if (key === 'lua') {
-        data.triggerScripts = deps.mergePrimaryLuaIntoTriggerScripts(data.triggerScripts, data.lua);
+        data.triggerScripts = mergePrimaryLuaIntoTriggerScripts(data.triggerScripts, data.lua);
       }
     }
   }

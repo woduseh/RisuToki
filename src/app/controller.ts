@@ -9,8 +9,6 @@ import {
   createFolderItem,
   createSectionHeader,
   updateSidebarActive as _updateSidebarActive,
-  buildAssetsSidebar as _buildAssetsSidebar,
-  createLoreEntryItem as _createLoreEntryItem,
 } from '../lib/sidebar-builder';
 import {
   handleClaudeStart as _handleClaudeStart,
@@ -47,7 +45,6 @@ import { NON_MONACO_EDITOR_TAB_TYPES, requiresMonacoEditor, resolvePendingEditor
 import { createExternalTextTabState } from '../lib/external-text-tab';
 import { collectDirtyEditorFields } from '../lib/editor-dirty-fields';
 import { resolveCloseWindowAction } from '../lib/close-window-policy';
-import { getFolderRef, resolveLorebookFolderRef } from '../lib/lorebook-folders';
 import { TabManager } from '../lib/tab-manager';
 import { planMcpDataUpdate } from '../lib/mcp-data-update';
 import type { PreviewPanelDeps } from '../lib/preview-panel';
@@ -1203,8 +1200,6 @@ function tagSidebarSections(tree: HTMLElement): void {
     '모듈 정보': 'module',
     메시지: 'messages',
     스크립트: 'scripts',
-    데이터: 'lorebook',
-    에셋: 'assets',
   };
   let workspace = '';
   for (const child of Array.from(tree.children)) {
@@ -1654,263 +1649,10 @@ function buildSidebar(): void {
 
   buildRegexSidebar(tree);
 
-  // ==== Section: 데이터 ====
-  tree.appendChild(createSectionHeader('데이터'));
-
-  // Lorebook folder
-  const lbFolder = createFolderItem('로어북', '📚', 0);
-  tree.appendChild(lbFolder.header);
-  tree.appendChild(lbFolder.children);
-
-  // Lorebook folder right-click: add folder/entry / import / bulk delete
-  lbFolder.header.addEventListener('contextmenu', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const items: ContextMenuItem[] = [
-      { label: '새 항목 추가', action: () => addNewLorebook() },
-      { label: '새 폴더 추가', action: () => addNewLorebookFolder() },
-      '---',
-      { label: 'JSON 파일 가져오기', action: () => importLorebook() },
-    ];
-    if (fileData!.lorebook.length > 0) {
-      items.push('---');
-      items.push({
-        label: `전체 삭제 (${fileData!.lorebook.length}개)`,
-        action: async () => {
-          if (
-            !(await showConfirm(
-              `로어북 전체 ${fileData!.lorebook.length}개 항목을 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`,
-            ))
-          )
-            return;
-          // Close all lorebook tabs
-          for (let i = fileData!.lorebook.length - 1; i >= 0; i--) tabMgr.closeTab(`lore_${i}`);
-          fileData!.lorebook = [];
-          tabMgr.markFieldDirty('lorebook');
-          buildSidebar();
-          setStatus('로어북 전체 삭제됨');
-        },
-      });
-    }
-    showContextMenu(e.clientX, e.clientY, items);
-  });
-
-  // Group lorebook by folder using normalized folder refs.
-  type LoreChild = { entry: LorebookEntry; index: number };
-  type LoreFolder = { entry: LorebookEntry; index: number; children: LoreChild[] };
-  const folderDataList: LoreFolder[] = []; // { entry, index, children }
-  const folderLookup: Record<string, LoreFolder> = {}; // multiple keys → same folderData
-  const rootEntries: LoreChild[] = [];
-  for (let i = 0; i < fileData.lorebook.length; i++) {
-    const entry = fileData.lorebook[i];
-    if (entry.mode === 'folder') {
-      const fd: LoreFolder = {
-        entry,
-        index: i,
-        children: [],
-      };
-      folderDataList.push(fd);
-      const folderRef = getFolderRef(entry);
-      if (folderRef) {
-        folderLookup[folderRef] = fd;
-      }
-    }
-  }
-  for (let i = 0; i < fileData.lorebook.length; i++) {
-    const entry = fileData.lorebook[i];
-    if (entry.mode === 'folder') continue;
-    const folderId = resolveLorebookFolderRef(entry.folder, fileData.lorebook);
-    const matched = folderId ? folderLookup[folderId] : null;
-    if (matched) {
-      matched.children.push({ entry, index: i });
-    } else {
-      rootEntries.push({ entry, index: i });
-    }
-  }
-
-  for (const folder of folderDataList) {
-    const subFolder = createFolderItem(folder.entry.comment || `folder_${folder.index}`, '📁', 1);
-    lbFolder.children.appendChild(subFolder.header);
-    lbFolder.children.appendChild(subFolder.children);
-    // Tag for DnD
-    const fEntry = fileData.lorebook[folder.index];
-    const folderKey = getFolderRef(fEntry) || '';
-    subFolder.children.dataset.dndLoreContainer = '';
-    subFolder.children.dataset.dndLoreFolder = folderKey;
-
-    // Lorebook folder right-click: rename / add entry / delete contents / delete folder
-    const folderIdx = folder.index;
-    const folderChildren = folder.children;
-    subFolder.header.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const fEntry = fileData!.lorebook[folderIdx];
-      const normalizedFolderId = getFolderRef(fEntry) || '';
-      showContextMenu(e.clientX, e.clientY, [
-        {
-          label: '이름 변경',
-          action: async () => {
-            const newName = await showPrompt('폴더 이름', fEntry.comment || '');
-            if (!newName) return;
-            fEntry.comment = newName;
-            tabMgr.markFieldDirty('lorebook');
-            buildSidebar();
-            setStatus(`폴더 이름 변경: ${newName}`);
-          },
-        },
-        {
-          label: '새 항목 추가',
-          action: () => {
-            const newEntry: LorebookEntry = {
-              key: '',
-              content: '',
-              comment: `new_entry_${fileData!.lorebook.length}`,
-              mode: 'normal',
-              insertorder: 100,
-              alwaysActive: false,
-              forceActivation: false,
-              selective: false,
-              secondkey: '',
-              constant: false,
-              order: fileData!.lorebook.length,
-              priority: 0,
-              useRegex: false,
-              extentions: {},
-              folder: normalizedFolderId,
-            };
-            fileData!.lorebook.push(newEntry);
-            tabMgr.markFieldDirty('lorebook');
-            buildSidebar();
-            const idx = fileData!.lorebook.length - 1;
-            tabMgr.openTab(
-              `lore_${idx}`,
-              newEntry.comment,
-              '_loreform',
-              () => fileData!.lorebook[idx],
-              (v) => {
-                Object.assign(fileData!.lorebook[idx], v);
-              },
-            );
-            setStatus('폴더에 새 항목 추가됨');
-          },
-        },
-        '---',
-        ...(folderChildren.length > 0
-          ? [
-              {
-                label: `내용 일괄 삭제 (${folderChildren.length}개)`,
-                action: async () => {
-                  if (
-                    !(await showConfirm(
-                      `"${fEntry.comment}" 폴더 내 ${folderChildren.length}개 항목을 모두 삭제하시겠습니까?`,
-                    ))
-                  )
-                    return;
-                  const indices = folderChildren.map((c) => c.index).sort((a, b) => b - a);
-                  for (const i of indices) {
-                    tabMgr.closeTab(`lore_${i}`);
-                    fileData!.lorebook.splice(i, 1);
-                  }
-                  tabMgr.markFieldDirty('lorebook');
-                  buildSidebar();
-                  tabMgr.shiftIndexedTabsAfterRemoval('lore_', indices, buildLorebookTabState);
-                  setStatus(`${indices.length}개 항목 삭제됨`);
-                },
-              },
-            ]
-          : []),
-        {
-          label: '폴더 삭제 (폴더만)',
-          action: async () => {
-            if (!(await showConfirm(`"${fEntry.comment}" 폴더를 삭제하시겠습니까?\n내부 항목은 루트로 이동됩니다.`)))
-              return;
-            // Move children to root
-            for (const child of folderChildren) {
-              fileData!.lorebook[child.index].folder = '';
-            }
-            tabMgr.closeTab(`lore_${folderIdx}`);
-            fileData!.lorebook.splice(folderIdx, 1);
-            tabMgr.markFieldDirty('lorebook');
-            buildSidebar();
-            tabMgr.shiftIndexedTabsAfterRemoval('lore_', [folderIdx], buildLorebookTabState);
-            setStatus(`폴더 삭제됨: ${fEntry.comment}`);
-          },
-        },
-        {
-          label: '폴더+내용 전체 삭제',
-          action: async () => {
-            const total = folderChildren.length + 1;
-            if (
-              !(await showConfirm(
-                `"${fEntry.comment}" 폴더와 내부 ${folderChildren.length}개 항목을 모두 삭제하시겠습니까?`,
-              ))
-            )
-              return;
-            const indices = [folderIdx, ...folderChildren.map((c) => c.index)].sort((a, b) => b - a);
-            for (const i of indices) {
-              tabMgr.closeTab(`lore_${i}`);
-              fileData!.lorebook.splice(i, 1);
-            }
-            tabMgr.markFieldDirty('lorebook');
-            buildSidebar();
-            tabMgr.shiftIndexedTabsAfterRemoval('lore_', indices, buildLorebookTabState);
-            setStatus(`폴더+내용 삭제됨 (${total}개)`);
-          },
-        },
-      ]);
-    });
-
-    for (const child of folder.children) {
-      const entryEl = createLoreEntryItem(child, 2);
-      entryEl.dataset.dndIdx = String(child.index);
-      subFolder.children.appendChild(entryEl);
-    }
-  }
-
-  // Root lorebook entries container (for DnD)
-  const loreRootContainer = document.createElement('div');
-  loreRootContainer.dataset.dndLoreContainer = '';
-  loreRootContainer.dataset.dndLoreFolder = '';
-  lbFolder.children.appendChild(loreRootContainer);
-
-  for (const child of rootEntries) {
-    const entryEl = createLoreEntryItem(child, 1);
-    entryEl.dataset.dndIdx = String(child.index);
-    loreRootContainer.appendChild(entryEl);
-  }
-
-  // ==== Section: 에셋 ====
-  tree.appendChild(createSectionHeader('에셋'));
   tagSidebarSections(tree);
-
-  // Assets (images) folder — then initialize drag-and-drop
-  buildAssetsSidebar(tree).then(() => {
-    initSidebarDnD(getDndDeps());
-    renderRightManagerPanel();
-    void projectWorkspace.appendFilesSidebar(tree).then(() => appendHiddenFieldWarnings(tree));
-  });
-}
-
-function buildAssetsSidebar(tree: HTMLElement): Promise<void> {
-  return _buildAssetsSidebar(tree, {
-    showContextMenu,
-    addAssetFromDialog,
-    openImageTab,
-    attachAssetContextMenu,
-  });
-}
-
-function createLoreEntryItem(child: { entry: LorebookEntry; index: number }, indent: number): HTMLElement {
-  return _createLoreEntryItem(child, indent, {
-    getFileData: () => fileData,
-    openTab: (id, label, language, getValue, setValue) => tabMgr.openTab(id, label, language, getValue, setValue),
-    showContextMenu,
-    renameLorebook,
-    deleteLorebook,
-    setStatus,
-    getBackups,
-    showBackupMenu: (tabId, x, y) => showBackupMenu(tabId, x, y, backupMenuCallbacks),
-  });
+  initSidebarDnD(getDndDeps());
+  renderRightManagerPanel();
+  void projectWorkspace.appendFilesSidebar(tree).then(() => appendHiddenFieldWarnings(tree));
 }
 
 function updateSidebarActive(): void {
@@ -1939,7 +1681,6 @@ const sidebarActions = createSidebarActions({
   getCssStyleSuffix: () => _cssStyleSuffix,
   showConfirm,
   showPrompt,
-  showContextMenu,
   setStatus,
   buildSidebar,
   combineLuaSections,
@@ -1959,9 +1700,7 @@ const sidebarActions = createSidebarActions({
 const {
   addNewLorebook,
   addNewLorebookFolder,
-  importLorebook,
   deleteLorebook,
-  renameLorebook,
   renameLorebookTo,
   reorderLorebook,
   addNewRegex,
@@ -1970,8 +1709,6 @@ const {
   renameRegex,
   reorderRegex,
   addAssetFromDialog,
-  attachAssetContextMenu,
-  reorderAsset,
   addLuaSection,
   renameLuaSection,
   deleteLuaSection,
@@ -2055,17 +1792,6 @@ async function renameAssetFromManager(assetPath: string, fileName: string): Prom
   return null;
 }
 
-async function renameAssetsBatchFromManager(operations: Array<{ oldPath: string; newName: string }>): Promise<{
-  ok: boolean;
-  renamed?: Array<{ oldPath: string; newPath: string }>;
-  error?: string;
-  conflicts?: string[];
-}> {
-  const result = await window.tokiAPI.renameAssetsBatch(operations);
-  if (result.ok) buildSidebar();
-  return result;
-}
-
 async function deleteAssetsFromManager(paths: string[]): Promise<void> {
   const unique = [...new Set(paths)];
   if (unique.length === 0) return;
@@ -2086,15 +1812,9 @@ async function deleteAssetsFromManager(paths: string[]): Promise<void> {
 function getDndDeps() {
   return {
     getFileData: () => fileData,
-    getLuaSections: () => luaSections,
-    getCssSections: () => cssSections,
-    getCssStylePrefix: () => _cssStylePrefix,
-    getCssStyleSuffix: () => _cssStyleSuffix,
-    reorderLorebook,
     reorderRegex,
     reorderLuaSections,
     reorderCssSections,
-    reorderAsset,
     reorderAlternateGreetings,
   };
 }
@@ -2892,7 +2612,6 @@ export async function initMainRenderer(): Promise<void> {
         tabMgr.refreshIndexedTabs('risup_', (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
       }
       buildSidebar();
-      renderRightManagerPanel();
       renderPromptManagerPanel();
       setStatus('변경사항이 문서에 반영되었습니다');
     },
@@ -2904,13 +2623,11 @@ export async function initMainRenderer(): Promise<void> {
       if (nextName === null) return;
       const error = await renameAssetFromManager(path, nextName);
       if (error) setStatus(error);
-      else renderRightManagerPanel();
     },
     'asset-delete-selected': async (payload) => {
       const path = typeof payload === 'string' ? payload : '';
       if (!path) return;
       await deleteAssetsFromManager([path]);
-      renderRightManagerPanel();
     },
     'zoom-in': () => {
       if (editorInstance) {
@@ -3071,11 +2788,9 @@ export async function initMainRenderer(): Promise<void> {
   });
   initRightManagerPanel({
     getFileData: () => fileData,
-    getProjectPath: () => currentProjectPath,
     openLorebookEntry,
     addLorebookEntry: addNewLorebook,
     addLorebookFolder: addNewLorebookFolder,
-    renameLorebook,
     commitLorebookName: renameLorebookTo,
     reorderLorebook,
     deleteLorebook,
@@ -3085,7 +2800,7 @@ export async function initMainRenderer(): Promise<void> {
     addAssetFromDialog,
     addAssetBuffer: (name, data, folder) => window.tokiAPI.addAssetBuffer(name, data, folder),
     renameAsset: renameAssetFromManager,
-    renameAssetsBatch: renameAssetsBatchFromManager,
+    renameAssetsBatch: (operations) => window.tokiAPI.renameAssetsBatch(operations),
     deleteAssets: deleteAssetsFromManager,
     getAssetList: () => window.tokiAPI.getAssetList(),
     getAssetData: (path) => window.tokiAPI.getAssetData(path),

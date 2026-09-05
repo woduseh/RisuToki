@@ -1,4 +1,3 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
 import type { FacadeAssetsEngine } from './mcp-facade-assets';
@@ -55,18 +54,10 @@ import { buildToolSurfaceProfileCatalog } from './mcp-tool-taxonomy';
 import { MCP_TOOL_DESCRIPTIONS } from './mcp-tool-descriptions';
 import { parsePromptTemplate } from './risup-prompt-model';
 import { hasFieldRange } from './mcp-facade-read-range';
+import type { McpToolResult, McpToolServer, SafeToolHandler } from './mcp-tool-registration';
 
 const DEFAULT_FACADE_READ_MAX_BYTES = 24 * 1024;
 
-type ToolResult = {
-  content: Array<{ type: 'text'; text: string }>;
-  isError?: true;
-};
-type ToolHandler<TArgs extends Record<string, unknown>> = (args: TArgs) => ToolResult | Promise<ToolResult>;
-type SafeToolHandler = <TArgs extends Record<string, unknown>>(
-  name: string,
-  handler: ToolHandler<TArgs>,
-) => ToolHandler<TArgs>;
 type ToolProfileCatalogOptions = NonNullable<Parameters<typeof buildToolSurfaceProfileCatalog>[1]>;
 
 export interface FacadeToolRegistrationDeps {
@@ -81,12 +72,12 @@ export interface FacadeToolRegistrationDeps {
   getRuntimeMetadataForCatalog: () => Promise<RuntimeMetadata>;
   getToolCatalogHealthSummary: () => unknown;
   safeToolHandler: SafeToolHandler;
-  textResult: (data: unknown) => ToolResult;
+  textResult: (data: unknown) => McpToolResult;
   toolProfileCatalogOptions: () => ToolProfileCatalogOptions;
   withMergedRuntimeMetadata: (session: unknown) => unknown;
 }
 
-export function registerFacadeTools(server: McpServer, deps: FacadeToolRegistrationDeps): void {
+export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegistrationDeps): void {
   const {
     apiRequest,
     assets,

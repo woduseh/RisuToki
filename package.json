@@ -1,10 +1,11 @@
 {
   "name": "risutoki",
-  "version": "3.6.1",
+  "version": "3.6.4",
   "description": "Desktop editor and MCP workspace for RisuAI .charx, .risum, and .risup artifacts",
   "main": ".build/electron/main.js",
   "scripts": {
     "dev": "concurrently -k \"npm:dev:renderer\" \"npm:dev:electron\"",
+    "dev:isolated": "node build/validate.js --profile dev --timeout-ms 3600000",
     "dev:renderer": "vite",
     "dev:electron": "wait-on http://127.0.0.1:5173 && cross-env VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron .",
     "dev:build": "npm run build:electron && npm run dev",
@@ -39,7 +40,9 @@
     "validate": "node build/validate.js",
     "validate:ci": "node build/validate.js --profile ci",
     "validate:full": "node build/validate.js --profile full",
-    "test:tooling": "node --test build/validation-plan.test.js build/validate.test.js"
+    "doctor": "node build/doctor.js",
+    "test:desktop": "node build/validate.js --profile desktop",
+    "test:tooling": "node --test build/validation-plan.test.js build/validate.test.js build/doctor.test.js build/desktop.test.js"
   },
   "lint-staged": {
     "*.{ts,vue}": [
@@ -79,7 +82,6 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@msgpack/msgpack": "^3.1.3",
     "@types/markdown-it": "^14.1.2",
     "@types/sortablejs": "^1.15.9",
     "@vitejs/plugin-vue": "^6.0.4",
@@ -88,6 +90,7 @@
     "cross-env": "^10.1.0",
     "electron": "^40.10.6",
     "electron-builder": "^26.15.3",
+    "esbuild": "^0.28.1",
     "eslint": "^10.0.3",
     "eslint-plugin-vue": "^10.8.0",
     "globals": "^17.4.0",

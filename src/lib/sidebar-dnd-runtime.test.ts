@@ -8,15 +8,9 @@ import { destroyAllSortables, initSidebarDnD, type DndDeps } from './sidebar-dnd
 function makeDeps(overrides: Partial<DndDeps> = {}): DndDeps {
   return {
     getFileData: () => ({}),
-    getLuaSections: () => [],
-    getCssSections: () => [],
-    getCssStylePrefix: () => '',
-    getCssStyleSuffix: () => '',
-    reorderLorebook: vi.fn(),
     reorderRegex: vi.fn(),
     reorderLuaSections: vi.fn(),
     reorderCssSections: vi.fn(),
-    reorderAsset: vi.fn(),
     reorderAlternateGreetings: vi.fn(),
     ...overrides,
   };
@@ -54,27 +48,5 @@ describe('semantic sidebar drag and drop', () => {
 
     expect(reorderRegex).toHaveBeenCalledWith(0, 2);
     expect([...list.children].map((item) => (item as HTMLElement).dataset.dndIdx)).toEqual(['0', '1', '2']);
-  });
-
-  it('routes cross-folder lorebook drops with the target folder and target position', () => {
-    document.body.innerHTML = `
-      <div data-dnd-lore-container data-dnd-lore-folder="">
-        <div data-dnd-idx="2"></div>
-      </div>
-      <div data-dnd-lore-container data-dnd-lore-folder="folder:world">
-        <div data-dnd-idx="1"></div>
-      </div>
-    `;
-    const reorderLorebook = vi.fn();
-    initSidebarDnD(makeDeps({ reorderLorebook }));
-
-    const [source, target] = [...document.querySelectorAll<HTMLElement>('[data-dnd-lore-container]')];
-    const moved = source.querySelector<HTMLElement>('[data-dnd-idx="2"]')!;
-    target.appendChild(moved);
-    sortableOptionsFor(source).onEnd({ oldIndex: 0, newIndex: 1, item: moved, from: source, to: target });
-
-    expect(reorderLorebook).toHaveBeenCalledWith(2, 1, 'folder:world');
-    expect(source.firstElementChild).toBe(moved);
-    expect([...target.children].map((item) => (item as HTMLElement).dataset.dndIdx)).toEqual(['1']);
   });
 });

@@ -1,8 +1,7 @@
 // @vitest-environment node
 
-import { beforeEach, describe, expect, it } from 'vitest';
-import type { LoadedDocumentData, TriggerScript } from '../charx-io';
-import { initDataSerializer } from './data-serializer';
+import { describe, expect, it } from 'vitest';
+import type { LoadedDocumentData } from '../charx-io';
 import { applyRendererUpdates, hasRendererDocumentChanges, serializeActiveDocument } from './renderer-document-state';
 
 function document(): LoadedDocumentData {
@@ -30,16 +29,6 @@ function document(): LoadedDocumentData {
     _presetData: null,
   } as LoadedDocumentData;
 }
-
-beforeEach(() => {
-  initDataSerializer({
-    stringifyTriggerScripts: (scripts) => JSON.stringify(scripts),
-    normalizeTriggerScripts: (scripts) =>
-      typeof scripts === 'string' ? (JSON.parse(scripts) as TriggerScript[]) : (scripts as TriggerScript[]),
-    extractPrimaryLuaFromTriggerScripts: () => '',
-    mergePrimaryLuaIntoTriggerScripts: (scripts) => scripts as TriggerScript[],
-  });
-});
 
 describe('renderer document identity', () => {
   it('rejects a stale renderer save after main reloads a new document object', () => {

@@ -14,7 +14,7 @@ import { handleSectionRoute } from './mcp-section-routes';
 import { handleRisupPromptRoute } from './mcp-risup-prompt-routes';
 import { handleReferenceRoute } from './mcp-reference-routes';
 import { createExternalDocumentReaders, handleExternalRoute } from './mcp-external-routes';
-import { handleFieldRoute, type FieldSnapshot } from './mcp-field-routes';
+import { getFieldReadRoute, handleFieldRoute, type FieldSnapshot } from './mcp-field-routes';
 import { handleLorebookRoute } from './mcp-lorebook-routes';
 import {
   parseYamlFrontmatter,
@@ -514,9 +514,15 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // Bind confirmation to the state the route reads, including array order.
       // V8 serialization preserves binary assets without expanding each byte into JSON.
       const documentDigest = () => crypto.createHash('sha256').update(serialize(currentData)).digest('hex');
-      const initialDocumentDigest = req.method === 'POST' && currentData ? documentDigest() : null;
+      // These POST reads use the field dispatcher's matcher and never need a mutation
+      // snapshot. Keep the eager snapshot for every other POST, before any awaits.
+      const fieldReadRoute = getFieldReadRoute(req.method, parts);
+      const initialDocumentDigest = req.method === 'POST' && currentData && !fieldReadRoute ? documentDigest() : null;
       const documentPath = deps.getCurrentFilePath?.();
       async function confirmActiveMutation(title: string, message: string): Promise<boolean> {
+        if (fieldReadRoute) {
+          throw new ActiveDocumentConflictError('A read-only field request cannot confirm a document mutation.');
+        }
         const assertCurrent = async () => {
           const renderer = deps.hasRendererDraftChanges ? null : (await deps.getSessionStatus?.())?.renderer;
           const hasDraftChanges = deps.hasRendererDraftChanges

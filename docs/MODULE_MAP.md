@@ -46,7 +46,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-field-access.ts` — MCP field name sets, document-type access rules, and field-read payload builders
 - `src/lib/mcp-tool-taxonomy.ts` — tool-family single source of truth
 - `src/lib/mcp-tool-descriptions.ts` — byte-stable MCP tool description catalog used by `tools/list`
-- `src/lib/mcp-compact-input.ts` — complete public input schemas, detailed handler validation, and static `tools/list` byte budgets for the 14 default tools
+- `src/lib/mcp-compact-input.ts` — complete public input schemas and static `tools/list` byte budgets for the 14 default tools
 - `src/lib/mcp-facade-runtime.ts` — shared facade preview stores, digests, target labels, and API-error helpers
 - `src/lib/mcp-document-create.ts` — empty artifact initialization and exclusive file creation
 - `src/lib/mcp-facade-read-range.ts` — bounded field pages and source-bound continuation cursors
@@ -67,7 +67,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-tool-register-reference.ts` — ordered reference, asset, project-folder, and skill tool registration
 - `src/lib/mcp-tool-register-validation.ts` — ordered Danbooru and CBS validation tool registration
 - `src/lib/mcp-tool-register-risup.ts` — ordered `.risup` prompt and snippet tool registration
-- `src/lib/mcp-tool-registration.ts` — shared registration dependency and handler result types
+- `src/lib/mcp-tool-registration.ts` — typed SDK registration, profile filtering, taxonomy metadata, and structured-content wrapping
 - `src/lib/mcp-proxy-client.ts` — injected localhost HTTP proxy client with structured errors and runtime diagnostics
 - `src/lib/toki-standalone-bootstrap.ts` — standalone argv/env parsing, tool-profile resolution, and headless API startup
 - `src/lib/mcp-response-envelope.ts` — additive success envelope, deterministic `next_actions`, and success-response size metadata
@@ -144,7 +144,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/charx-sidebar-fields.ts` — charx sidebar field model
 - `src/lib/sidebar-builder.ts` — sidebar tree construction
 - `src/lib/sidebar-actions.ts` — sidebar mutations/actions
-- `src/lib/sidebar-dnd.ts` — document-item drag-and-drop behavior for lorebook, regex, Lua/CSS, greetings, and assets; independent from workspace panel placement
+- `src/lib/sidebar-dnd.ts` — regex, Lua/CSS section, and greeting drag-and-drop behavior plus shared options used by lorebook and prompt managers
 - `src/lib/right-manager-panel.ts` — contextual lorebook, asset-tree, and thumbnail navigator rendering inside the unified shell
 - `src/lib/sidebar-refs.ts` — sidebar reference integration
 - `src/lib/editor-activation.ts` — editor focus/activation state

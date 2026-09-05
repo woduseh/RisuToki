@@ -10,17 +10,22 @@ Pure artifact authoring, documentation-only corrections that do not change behav
 
 Choose local checks by the changed behavior:
 
-`npm run validate` runs lint, typechecks, unit tests, and tooling tests. Use `npm run validate -- --test src/lib/mcp-search.test.ts` for a focused unit-test loop (repeat `--test` for multiple files). `--plan` lists the selected checks without running them; `--plan --json` provides the same plan for tools. For JSON-only stdout, use `npm run --silent validate -- --plan --json`. Test selection is available in the quick profile only. Each command has a five-minute timeout; `--timeout-ms` can override it (up to one hour).
+`npm run validate` runs environment preflight, lint, typechecks, unit tests, and tooling tests. A failed preflight blocks the profile and exits nonzero; `npm run doctor` diagnoses it independently. Use `npm run validate -- --test src/lib/mcp-search.test.ts` for a focused unit-test loop (repeat `--test` for multiple files). `--plan` lists the selected checks without running them; `--plan --json` provides the same plan for tools. For JSON-only stdout, use `npm run --silent validate -- --plan --json`. Test selection is available in the quick profile only. Each command has a five-minute timeout; `--timeout-ms` can override it (up to one hour).
 
-| Validation profile | Command                                 | Coverage                                                       |
-| ------------------ | --------------------------------------- | -------------------------------------------------------------- |
-| Quick              | `npm run validate`                      | Lint, typechecks, unit and tooling tests                       |
-| MCP                | `npm run validate -- --profile mcp`     | Shared build, MCP integration, workflow replay, contracts      |
-| CI                 | `npm run validate:ci`                   | All tests, lint, typechecks, replay, contracts, renderer build |
-| Full               | `npm run validate:full`                 | CI checks plus Electron build                                  |
-| Windows build      | `npm run validate -- --profile windows` | Tooling tests, Electron and renderer builds                    |
+| Validation profile | Command                                 | Coverage                                                           |
+| ------------------ | --------------------------------------- | ------------------------------------------------------------------ |
+| Quick              | `npm run validate`                      | Lint, typechecks, unit and tooling tests                           |
+| MCP                | `npm run validate -- --profile mcp`     | Shared build, MCP integration, workflow replay, contracts          |
+| CI                 | `npm run validate:ci`                   | All tests, lint, typechecks, replay, contracts, renderer build     |
+| Full               | `npm run validate:full`                 | CI checks plus Electron build                                      |
+| Windows build      | `npm run validate -- --profile windows` | Tooling tests, Electron and renderer builds                        |
+| Desktop (optional) | `npm run test:desktop`                  | Shared builds, real Electron editor/API smoke with synthetic files |
 
 `npm test` uses the test profile; `npm run build` uses the full profile. Each profile builds shared prerequisites once. The runner continues independent checks after a failure and skips checks whose prerequisites failed. Exit status determines success. Step logs and `report.json` are stored in `.build/validation/<runId>/`; `.build/validation/latest.json` identifies the latest report. Only one validation run may use a workspace at a time; the runner reports an existing lock instead of deleting it automatically.
+
+For disposable application startup, dynamic ports, desktop evidence and cleanup, use the [local application check](../CONTRIBUTING.md#local-application-check). `npm run dev:isolated` shares the workspace lock through shutdown. Desktop smoke requires Chromium IPC and is not implied by passing the full build profile.
+
+If process-tree termination fails or a child reports reserved cleanup exit code 70, the runner retains the lock with the child PID and cleanup error, and skips every remaining command. Confirm that the recorded processes and descendants have stopped before removing that lock.
 
 | Change                                | Relevant checks                                                                                |
 | ------------------------------------- | ---------------------------------------------------------------------------------------------- |
@@ -37,7 +42,7 @@ PR/push CI uses the CI profile on Ubuntu, followed by the Windows build profile.
 
 Use `npm run test:mcp:contracts:update` only for an intentional public contract change; review its profile/case summary and describe the change in the changelog.
 
-Packaging and publishing run only for an explicitly authorized tag release. The tag workflow checks that `latest.yml` refers to existing installer files without whitespace; NSIS artifacts use `${productName}-Setup-${version}.${ext}` to avoid GitHub asset-name rewriting.
+Packaging and publishing run only for an explicitly authorized tag release. The tag workflow runs the full validation profile once before packaging, sharing its generated outputs across checks and retaining validation reports even on failure. It checks that `latest.yml` refers to existing installer files without whitespace; NSIS artifacts use `${productName}-Setup-${version}.${ext}` to avoid GitHub asset-name rewriting.
 
 ## Source locations
 

@@ -138,6 +138,7 @@ The MCP implementation is split into transport, registration, facade, HTTP routi
 
 Tool registration order and family-specific handlers are split across:
 
+- `mcp-tool-register-evaluation.ts`;
 - `mcp-tool-register-facade.ts`;
 - `mcp-tool-register-fields.ts`;
 - `mcp-tool-register-authoring.ts`;
@@ -145,7 +146,7 @@ Tool registration order and family-specific handlers are split across:
 - `mcp-tool-register-validation.ts`;
 - `mcp-tool-register-risup.ts`.
 
-`mcp-tool-registration.ts` supplies shared registration types and structured-content wrapping. `mcp-compact-input.ts` supplies compact public schemas and detailed handler validation.
+`mcp-tool-registration.ts` registers the modules' typed tool signature through the SDK public API, applying profile filters, taxonomy metadata, and structured-content wrapping once. `mcp-compact-input.ts` supplies complete public input schemas; the SDK validates those inputs before handlers execute.
 
 ### 3.3 Facade engines
 

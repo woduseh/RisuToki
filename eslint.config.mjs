@@ -3,8 +3,6 @@ import globals from 'globals';
 import pluginVue from 'eslint-plugin-vue';
 import tseslint from 'typescript-eslint';
 
-const browserJsFiles = ['src/app/**/*.js', 'src/lib/**/*.js'];
-
 const portedRendererFiles = ['src/app/controller.ts', 'src/lib/preview-engine.ts', 'src/lib/preview-format.ts'];
 
 const tsFiles = [
@@ -32,28 +30,6 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
-    },
-  },
-  {
-    ...js.configs.recommended,
-    files: browserJsFiles,
-    languageOptions: {
-      ...js.configs.recommended.languageOptions,
-      ecmaVersion: 'latest',
-      sourceType: 'module',
-      globals: {
-        ...globals.browser,
-        require: 'readonly',
-        monaco: 'readonly',
-        Terminal: 'readonly',
-        FitAddon: 'readonly',
-      },
-    },
-    rules: {
-      ...js.configs.recommended.rules,
-      'no-empty': ['error', { allowEmptyCatch: true }],
-      'no-unused-vars': ['error', { argsIgnorePattern: '^_', caughtErrors: 'none' }],
-      'no-console': 'off',
     },
   },
   {

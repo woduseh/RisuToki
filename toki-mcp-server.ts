@@ -9,14 +9,13 @@ import fs = require('fs');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import path = require('path');
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { McpServer, type RegisteredTool } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import {
   ALL_TOOL_NAMES,
   buildToolSurfaceProfileCatalog,
   getToolFamily,
-  getToolMeta,
   getToolWorkflowStages,
   listToolsForSurfaceProfile,
   TOOL_RECOMMENDATIONS,
@@ -55,12 +54,7 @@ import { registerRisupTools } from './src/lib/mcp-tool-register-risup';
 import { registerValidationTools } from './src/lib/mcp-tool-register-validation';
 import { createMcpProxyClient } from './src/lib/mcp-proxy-client';
 import { normalizeMcpErrorEnvelope } from './src/lib/mcp-response-envelope';
-import { getCompactInputSchema, withDetailedInputValidationHandler } from './src/lib/mcp-compact-input';
-import {
-  MCP_COMPACT_OUTPUT_SCHEMA,
-  withStructuredContentHandler,
-  type McpToolHandler,
-} from './src/lib/mcp-tool-registration';
+import { createMcpToolRegistrar, type McpToolHandler } from './src/lib/mcp-tool-registration';
 import { listProjectTree, type ProjectTreeNode } from './src/lib/folder-workspace';
 
 let TOKI_PORT = process.env.TOKI_PORT;
@@ -444,22 +438,14 @@ function getToolCatalogHealthSummary(): ToolCatalogHealthSummary {
 const configuredToolProfile = getConfiguredToolProfile();
 const configuredToolProfileNames = new Set(listToolsForSurfaceProfile(configuredToolProfile.resolved));
 
-function shouldRegisterMcpTool(name: string): boolean {
-  return configuredToolProfileNames.has(name);
-}
-
 function activeToolProfileName(): ToolSurfaceProfileName {
   return configuredToolProfile.resolved;
-}
-
-function registeredToolNames(): string[] {
-  return Array.from(_registeredToolHandles.keys()).sort();
 }
 
 function toolProfileCatalogOptions() {
   return {
     currentProfile: activeToolProfileName(),
-    registeredTools: registeredToolNames(),
+    registeredTools: toolRegistrar.registeredToolNames(),
     strictFiltering: configuredToolProfile.strictFiltering,
   };
 }
@@ -494,21 +480,14 @@ function resultByteSize(result: unknown): number | null {
   }
 }
 
-function instrumentToolHandler(name: string, handler: (...args: unknown[]) => unknown) {
-  return async (...handlerArgs: unknown[]) => {
+function instrumentToolHandler<TArgs extends Record<string, unknown>>(
+  name: string,
+  handler: McpToolHandler<TArgs>,
+): McpToolHandler<TArgs> {
+  return async (callArgs, extra) => {
     const startedAt = Date.now();
-    const callArgs = asRecord(handlerArgs[0]) ?? {};
-    const extra = asRecord(handlerArgs[1]);
-    const requestId =
-      typeof extra?.requestId === 'string' || typeof extra?.requestId === 'number' ? extra.requestId : undefined;
-    const signalCandidate = extra?.signal;
-    const signal =
-      signalCandidate &&
-      typeof signalCandidate === 'object' &&
-      'aborted' in signalCandidate &&
-      'addEventListener' in signalCandidate
-        ? (signalCandidate as AbortSignal)
-        : undefined;
+    const requestId = extra?.requestId;
+    const signal = extra?.signal;
     const run = async () => {
       logProcessDiagnostic('toolStart', {
         ...toolDiagnosticBase(name),
@@ -516,7 +495,7 @@ function instrumentToolHandler(name: string, handler: (...args: unknown[]) => un
         args: summarizeArgsForDiagnostic(callArgs),
       });
       try {
-        const result = await handler(...handlerArgs);
+        const result = await handler(callArgs, extra);
         const isError = asRecord(result)?.isError === true;
         logProcessDiagnostic('toolSuccess', {
           ...toolDiagnosticBase(name),
@@ -548,23 +527,10 @@ const server = new McpServer({
   version: APP_VERSION,
 });
 
-// Collect RegisteredTool handles for annotation patching via public API.
-// Each server.tool() return is stored so we avoid accessing _registeredTools.
-const _registeredToolHandles = new Map<string, RegisteredTool>();
-function skippedToolHandle(): RegisteredTool {
-  return {
-    handler: async () => ({ content: [] }),
-    enabled: false,
-    enable: () => undefined,
-    disable: () => undefined,
-    update: () => undefined,
-    remove: () => undefined,
-  };
-}
-const _origServerTool = server.tool.bind(server) as typeof server.tool;
-server.tool = ((...args: unknown[]) => {
-  const toolName = typeof args[0] === 'string' ? args[0] : undefined;
-  if (toolName && !shouldRegisterMcpTool(toolName)) {
+const toolRegistrar = createMcpToolRegistrar(server, {
+  shouldRegister: (name) => configuredToolProfileNames.has(name),
+  instrumentHandler: instrumentToolHandler,
+  onSkipped: (toolName) => {
     if (configuredToolProfile.source) {
       logProcessDiagnostic('toolSkippedByProfile', {
         ...toolDiagnosticBase(toolName),
@@ -572,75 +538,11 @@ server.tool = ((...args: unknown[]) => {
         resolvedProfile: configuredToolProfile.resolved,
       });
     }
-    return skippedToolHandle();
-  }
-  const wrappedArgs = [...args];
-  if (toolName) {
-    for (let i = wrappedArgs.length - 1; i >= 0; i--) {
-      if (typeof wrappedArgs[i] === 'function') {
-        wrappedArgs[i] = instrumentToolHandler(toolName, wrappedArgs[i] as (...handlerArgs: unknown[]) => unknown);
-        break;
-      }
-    }
-  }
-  const publicInputSchema = toolName ? getCompactInputSchema(toolName, wrappedArgs[2] as z.ZodRawShape) : undefined;
-  if (
-    toolName &&
-    publicInputSchema &&
-    typeof wrappedArgs[1] === 'string' &&
-    wrappedArgs[2] &&
-    typeof wrappedArgs[2] === 'object' &&
-    typeof args[3] === 'function'
-  ) {
-    const validatedHandler = withDetailedInputValidationHandler(
-      toolName,
-      wrappedArgs[2] as z.ZodRawShape,
-      args[3] as McpToolHandler<Record<string, unknown>>,
-    );
-    const structuredHandler = withStructuredContentHandler(validatedHandler);
-    const result = (_origServerRegisterTool as (...registrationArgs: unknown[]) => RegisteredTool)(
-      toolName,
-      {
-        description: wrappedArgs[1],
-        inputSchema: publicInputSchema,
-        outputSchema: MCP_COMPACT_OUTPUT_SCHEMA,
-      },
-      instrumentToolHandler(toolName, structuredHandler as (...handlerArgs: unknown[]) => unknown),
-    );
-    _registeredToolHandles.set(toolName, result);
-    return result;
-  }
-  const result = (_origServerTool as (...a: unknown[]) => ReturnType<typeof server.tool>)(...wrappedArgs);
-  if (toolName) {
-    _registeredToolHandles.set(toolName, result);
-  }
-  return result;
-}) as typeof server.tool;
+  },
+});
 
-const _origServerRegisterTool = server.registerTool.bind(server) as typeof server.registerTool;
-server.registerTool = ((...args: unknown[]) => {
-  const toolName = typeof args[0] === 'string' ? args[0] : undefined;
-  if (toolName && !shouldRegisterMcpTool(toolName)) {
-    if (configuredToolProfile.source) {
-      logProcessDiagnostic('toolSkippedByProfile', {
-        ...toolDiagnosticBase(toolName),
-        requestedProfile: configuredToolProfile.raw,
-        resolvedProfile: configuredToolProfile.resolved,
-      });
-    }
-    return skippedToolHandle();
-  }
-  const wrappedArgs = [...args];
-  if (toolName && typeof wrappedArgs[2] === 'function') {
-    wrappedArgs[2] = instrumentToolHandler(toolName, wrappedArgs[2] as (...handlerArgs: unknown[]) => unknown);
-  }
-  const result = (_origServerRegisterTool as (...registrationArgs: unknown[]) => RegisteredTool)(...wrappedArgs);
-  if (toolName) _registeredToolHandles.set(toolName, result);
-  return result;
-}) as typeof server.registerTool;
-
-registerEvaluationTools(server, facadeContentEngine);
-registerFacadeTools(server, {
+registerEvaluationTools(toolRegistrar, facadeContentEngine);
+registerFacadeTools(toolRegistrar, {
   apiRequest,
   assets: facadeAssetsEngine,
   content: facadeContentEngine,
@@ -657,11 +559,11 @@ registerFacadeTools(server, {
   withMergedRuntimeMetadata,
 });
 
-registerFieldTools(server, { apiRequest, safeToolHandler, textResult, withMergedRuntimeMetadata });
+registerFieldTools(toolRegistrar, { apiRequest, safeToolHandler, textResult, withMergedRuntimeMetadata });
 
-registerAuthoringTools(server, { apiRequest, safeToolHandler, textResult });
+registerAuthoringTools(toolRegistrar, { apiRequest, safeToolHandler, textResult });
 
-registerReferenceTools(server, {
+registerReferenceTools(toolRegistrar, {
   apiRequest,
   defaultProjectFolderForDocument,
   safeToolHandler,
@@ -669,9 +571,9 @@ registerReferenceTools(server, {
   textResult,
 });
 
-registerValidationTools(server, { apiRequest, danbooruEngine, textResult });
+registerValidationTools(toolRegistrar, { apiRequest, danbooruEngine, textResult });
 
-registerRisupTools(server, { apiRequest, textResult });
+registerRisupTools(toolRegistrar, { apiRequest, textResult });
 
 // ==================== Prompt ====================
 
@@ -690,19 +592,6 @@ server.prompt(
     ],
   }),
 );
-
-// ==================== Apply Taxonomy Annotations ====================
-
-// Patch MCP SDK ToolAnnotations onto every registered tool using the taxonomy.
-// Uses the collected RegisteredTool handles and the public update() API.
-{
-  for (const [name, entry] of Object.entries(TOOL_TAXONOMY)) {
-    const handle = _registeredToolHandles.get(name);
-    if (handle) {
-      handle.update({ annotations: entry.hints, _meta: getToolMeta(name) });
-    }
-  }
-}
 
 // ==================== Start ====================
 
@@ -816,7 +705,7 @@ async function main() {
     toolProfile: configuredToolProfile.raw ?? null,
     resolvedToolProfile: configuredToolProfile.resolved ?? null,
     strictToolFiltering: configuredToolProfile.strictFiltering,
-    registeredTools: registeredToolNames().length,
+    registeredTools: toolRegistrar.registeredToolNames().length,
     api: `127.0.0.1:${TOKI_PORT}`,
   });
   attachStdioDiagnostics();
@@ -837,7 +726,7 @@ async function main() {
     toolProfile: configuredToolProfile.raw ?? null,
     resolvedToolProfile: configuredToolProfile.resolved ?? null,
     strictToolFiltering: configuredToolProfile.strictFiltering,
-    registeredTools: registeredToolNames().length,
+    registeredTools: toolRegistrar.registeredToolNames().length,
     skew: runtime.skew,
     api: `127.0.0.1:${TOKI_PORT}`,
   });

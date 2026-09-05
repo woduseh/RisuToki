@@ -3,12 +3,15 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { spawn } = require('node:child_process');
+const childProcess = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const { createPlan } = require('./validation-plan');
 
 const ROOT = path.resolve(__dirname, '..');
 const TAIL_BYTES = 8192;
+const STOP_TIMEOUT_MS = 5000;
+// Reserved for child runners that cannot confirm cleanup of their own descendants.
+const CLEANUP_FAILURE_EXIT_CODE = 70;
 
 function parseArgs(args) {
   const options = { profile: 'quick', tests: [], plan: false, json: false, timeoutMs: 300000 };
@@ -40,24 +43,79 @@ function writeJson(filename, value) {
   fs.renameSync(temporary, filename);
 }
 
-function stopProcess(child) {
-  if (!child.pid) return;
-  if (process.platform === 'win32') {
-    const killer = spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
-      windowsHide: true,
-      stdio: 'ignore',
-    });
-    killer.on('error', () => child.kill());
-    killer.on('exit', (code) => {
-      if (code) child.kill();
-    });
-  } else {
+// Resolves after bounded cleanup: undefined confirms termination; a string means
+// descendants may still be alive and the caller must retain its files and lock.
+function stopProcess(child, logFd) {
+  if (!child.pid) return Promise.resolve();
+  return new Promise((resolve) => {
+    let settled = false;
+    let childStopped = child.exitCode !== null || child.signalCode !== null;
+    let treeStopped = false;
+    let killer;
+    let cleanupError;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.removeListener('close', onClose);
+      resolve(error);
+    };
+    const check = () => {
+      if (childStopped && (treeStopped || cleanupError)) finish(cleanupError);
+    };
+    const onClose = () => {
+      childStopped = true;
+      check();
+    };
+    const fail = (message) => {
+      if (settled) return;
+      cleanupError ??= message;
+      // This is only a fallback for the direct child, not proof of tree cleanup.
+      try {
+        child.kill('SIGKILL');
+      } catch (error) {
+        cleanupError += `; direct child termination failed: ${error.message}`;
+      }
+      check();
+    };
+    const timer = setTimeout(() => {
+      try {
+        killer?.kill('SIGKILL');
+      } catch {
+        // The retained lock also covers a termination helper that cannot be stopped.
+      }
+      killer?.unref();
+      fail(`Process tree cleanup timed out after ${STOP_TIMEOUT_MS}ms (PID ${child.pid})`);
+      finish(cleanupError);
+    }, STOP_TIMEOUT_MS);
+    child.once('close', onClose);
     try {
-      process.kill(-child.pid, 'SIGKILL');
-    } catch {
-      child.kill('SIGKILL');
+      if (process.platform === 'win32') {
+        killer = childProcess.spawn('taskkill', ['/pid', String(child.pid), '/t', '/f'], {
+          windowsHide: true,
+          stdio: ['ignore', logFd, logFd],
+        });
+        killer.once('error', (error) => fail(`taskkill failed: ${error.message}`));
+        killer.once('close', (code, signal) => {
+          if (code !== 0) fail(`taskkill exited with code ${code}${signal ? ` (${signal})` : ''}`);
+          else {
+            treeStopped = true;
+            check();
+          }
+        });
+      } else {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch (error) {
+          if (error.code !== 'ESRCH') throw error;
+        }
+        treeStopped = true;
+        check();
+      }
+    } catch (error) {
+      fail(`Process tree termination failed: ${error.message}`);
     }
-  }
+  });
 }
 
 // Direct Node invocation avoids npm.cmd / shell quoting and never downloads tools.
@@ -66,7 +124,7 @@ function runCommand(args, { root, logFd, timeoutMs, signal }) {
     const env = { ...process.env, FORCE_COLOR: '0' };
     delete env.RISUTOKI_TEST_LOCAL_CORPUS;
     delete env.NODE_V8_COVERAGE;
-    const child = spawn(process.execPath, args, {
+    const child = childProcess.spawn(process.execPath, args, {
       cwd: root,
       env,
       windowsHide: true,
@@ -75,21 +133,44 @@ function runCommand(args, { root, logFd, timeoutMs, signal }) {
     });
     let timedOut = false;
     let error;
-    const abort = () => stopProcess(child);
-    const timer = setTimeout(() => {
-      timedOut = true;
-      stopProcess(child);
-    }, timeoutMs);
-    signal?.addEventListener('abort', abort, { once: true });
-    if (signal?.aborted) abort();
+    let stopping;
+    let settled = false;
+    let outcome = { exitCode: null, signal: null };
+    const finish = (cleanupError) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
+      if (!cleanupError && outcome.exitCode === CLEANUP_FAILURE_EXIT_CODE) {
+        cleanupError = 'Child reported unconfirmed cleanup; inspect step log';
+      }
+      if (cleanupError) child.unref();
+      resolve({
+        ...outcome,
+        timedOut,
+        ...(error ? { error } : {}),
+        ...(cleanupError ? { cleanupError, pid: child.pid } : {}),
+      });
+    };
+    const abort = () => {
+      if (stopping) return;
+      clearTimeout(timer);
+      stopping = stopProcess(child, logFd);
+      stopping.then(finish);
+    };
     child.on('error', (cause) => {
       error = cause.message;
     });
     child.on('close', (code, exitSignal) => {
-      clearTimeout(timer);
-      signal?.removeEventListener('abort', abort);
-      resolve({ exitCode: code, signal: exitSignal, timedOut, ...(error ? { error } : {}) });
+      outcome = { exitCode: code, signal: exitSignal };
+      if (!stopping) finish();
     });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      abort();
+    }, timeoutMs);
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort();
   });
 }
 
@@ -137,8 +218,9 @@ async function executePlan(plan, { root = ROOT, timeoutMs = 300000, signal, outp
     writeJson(path.join(runDirectory, 'report.json'), report);
     writeJson(path.join(directory, 'latest.json'), report);
   };
+  const owner = { pid: process.pid, runId, startedAt: report.startedAt };
   try {
-    fs.writeFileSync(lockFd, JSON.stringify({ pid: process.pid, runId, startedAt: report.startedAt }));
+    fs.writeFileSync(lockFd, JSON.stringify(owner));
     fs.mkdirSync(runDirectory);
     persist();
     output(`Validation ${plan.profile}: ${plan.steps.length} steps (${runId})`);
@@ -148,9 +230,13 @@ async function executePlan(plan, { root = ROOT, timeoutMs = 300000, signal, outp
       const blocked = step.dependencies.filter(
         (id) => report.steps.find((item) => item.id === id)?.status !== 'passed',
       );
-      if (signal?.aborted || blocked.length) {
+      if (signal?.aborted || report.lockRetained || blocked.length) {
         result.status = 'skipped';
-        result.reason = signal?.aborted ? 'interrupted' : `Blocked by: ${blocked.join(', ')}`;
+        result.reason = report.lockRetained
+          ? 'Process cleanup failed; workspace remains locked'
+          : signal?.aborted
+            ? 'interrupted'
+            : `Blocked by: ${blocked.join(', ')}`;
         output(`SKIP ${step.id}: ${result.reason}`);
         persist();
         continue;
@@ -173,7 +259,25 @@ async function executePlan(plan, { root = ROOT, timeoutMs = 300000, signal, outp
         for (const command of step.commands) {
           fs.writeSync(logFd, `$ node ${command.map((arg) => JSON.stringify(arg)).join(' ')}\n`);
           result.outcome = await runCommand(command, { root, logFd, timeoutMs, signal });
-          if (result.outcome.exitCode !== 0 || result.outcome.timedOut || signal?.aborted) break;
+          if (result.outcome.cleanupError) {
+            report.lockRetained = true;
+            report.error = `${result.outcome.cleanupError}. Kept ${lockPath}; inspect child PID ${result.outcome.pid} and its descendants before removing the lock.`;
+            fs.ftruncateSync(lockFd, 0);
+            fs.writeSync(
+              lockFd,
+              JSON.stringify({ ...owner, childPid: result.outcome.pid, cleanupError: result.outcome.cleanupError }),
+              0,
+              'utf8',
+            );
+          }
+          if (
+            result.outcome.exitCode !== 0 ||
+            result.outcome.error ||
+            result.outcome.cleanupError ||
+            result.outcome.timedOut ||
+            signal?.aborted
+          )
+            break;
         }
       } finally {
         clearInterval(heartbeat);
@@ -181,7 +285,13 @@ async function executePlan(plan, { root = ROOT, timeoutMs = 300000, signal, outp
       }
       result.durationMs = Math.round(performance.now() - started);
       result.status =
-        result.outcome?.exitCode === 0 && !result.outcome.timedOut && !signal?.aborted ? 'passed' : 'failed';
+        result.outcome?.exitCode === 0 &&
+        !result.outcome.error &&
+        !result.outcome.cleanupError &&
+        !result.outcome.timedOut &&
+        !signal?.aborted
+          ? 'passed'
+          : 'failed';
       output(`${result.status === 'passed' ? 'PASS' : 'FAIL'} ${step.id}: ${result.durationMs}ms`);
       if (result.status === 'failed') {
         result.tail = readTail(logPath);
@@ -196,6 +306,7 @@ async function executePlan(plan, { root = ROOT, timeoutMs = 300000, signal, outp
         : 'failed';
     report.finishedAt = new Date().toISOString();
     persist();
+    if (report.lockRetained) output(report.error);
     output(`${report.status.toUpperCase()}: ${path.join(runDirectory, 'report.json')}`);
     return report;
   } catch (error) {
@@ -206,7 +317,7 @@ async function executePlan(plan, { root = ROOT, timeoutMs = 300000, signal, outp
     throw error;
   } finally {
     fs.closeSync(lockFd);
-    fs.unlinkSync(lockPath);
+    if (!report.lockRetained) fs.unlinkSync(lockPath);
   }
 }
 
@@ -214,7 +325,7 @@ async function main(args = process.argv.slice(2)) {
   const options = parseArgs(args);
   if (options.help) {
     console.log(
-      'Usage: npm run validate -- [--profile quick|test|mcp|ci|full|windows] [--test src/lib/example.test.ts] [--plan [--json]] [--timeout-ms 300000]\nFocused --test runs are quick-profile feedback, not full validation. Logs and reports: .build/validation/. Defaults to synthetic data.',
+      'Usage: npm run validate -- [--profile quick|test|mcp|ci|full|windows|desktop|dev] [--test src/lib/example.test.ts] [--plan [--json]] [--timeout-ms 300000]\nFocused --test runs are quick-profile feedback, not full validation. Logs and reports: .build/validation/. Defaults to synthetic data.',
     );
     return;
   }
@@ -245,4 +356,4 @@ if (require.main === module)
     console.error(error.message);
     process.exitCode = 1;
   });
-module.exports = { parseArgs, executePlan, main };
+module.exports = { parseArgs, executePlan, main, stopProcess, CLEANUP_FAILURE_EXIT_CODE };

@@ -25,11 +25,9 @@ interface AssetListEntry {
 
 export interface RightManagerPanelDeps {
   getFileData: () => { lorebook?: LorebookEntryLike[]; _fileType?: string } | null;
-  getProjectPath: () => string | null;
   openLorebookEntry: (idx: number) => void;
   addLorebookEntry: () => void;
   addLorebookFolder: () => void;
-  renameLorebook: (idx: number) => void;
   commitLorebookName: (idx: number, name: string) => string | null;
   reorderLorebook: (fromIdx: number, toPositionInFolder: number, targetFolder: string) => void;
   deleteLorebook: (idx: number) => void;
@@ -881,7 +879,6 @@ async function beginAssetBatchRename(deps: RightManagerPanelDeps): Promise<void>
   }
 
   state.assetSelected.clear();
-  renderRightManagerPanel();
   deps.refresh();
   deps.setStatus(`에셋 ${result.renamed?.length ?? plan.operations.length}개 이름 변경됨`);
 }

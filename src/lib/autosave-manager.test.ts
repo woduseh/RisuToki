@@ -16,7 +16,7 @@ vi.mock('electron', () => ({
 }));
 
 import { initAutosaveManager, type AutosaveManagerDeps } from './autosave-manager';
-import { applyUpdates, initDataSerializer } from './data-serializer';
+import { applyUpdates } from './data-serializer';
 import type { LoadedDocumentData } from '../charx-io';
 
 function getRegisteredHandler(name: string) {
@@ -83,12 +83,6 @@ function makeTestPath(...parts: string[]): string {
 describe('autosave-manager', () => {
   beforeEach(() => {
     ipcHandle.mockClear();
-    initDataSerializer({
-      stringifyTriggerScripts: (scripts) => JSON.stringify(scripts ?? []),
-      normalizeTriggerScripts: (scripts) => (Array.isArray(scripts) ? scripts : []),
-      extractPrimaryLuaFromTriggerScripts: () => '',
-      mergePrimaryLuaIntoTriggerScripts: (scripts) => (Array.isArray(scripts) ? scripts : []),
-    });
   });
 
   // ── Writer routing ──────────────────────────────────────────────────

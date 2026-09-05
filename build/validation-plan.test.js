@@ -5,7 +5,7 @@ const test = require('node:test');
 const { createPlan } = require('./validation-plan');
 
 test('each profile emits each dependency once and before its consumers', () => {
-  for (const profile of ['quick', 'test', 'mcp', 'ci', 'full', 'windows']) {
+  for (const profile of ['quick', 'test', 'mcp', 'ci', 'full', 'windows', 'desktop', 'dev']) {
     const plan = createPlan({ profile });
     const seen = new Set();
     for (const step of plan.steps) {
@@ -24,12 +24,13 @@ test('each profile emits each dependency once and before its consumers', () => {
 test('quick is build-free; CI and full retain every validation surface', () => {
   assert.deepEqual(
     createPlan().steps.map((step) => step.id),
-    ['lint', 'typecheck-vue', 'typecheck-electron', 'typecheck-node', 'unit', 'tooling-tests'],
+    ['environment', 'lint', 'typecheck-vue', 'typecheck-electron', 'typecheck-node', 'unit', 'tooling-tests'],
   );
   const ci = createPlan({ profile: 'ci' }).steps.map((step) => step.id);
   assert.deepEqual(
     new Set(ci),
     new Set([
+      'environment',
       'lint',
       'typecheck-vue',
       'typecheck-electron',
@@ -56,12 +57,28 @@ test('quick is build-free; CI and full retain every validation surface', () => {
 test('MCP consumers and Electron depend on both generated outputs', () => {
   for (const step of createPlan({ profile: 'full' }).steps) {
     if (['mcp-tests', 'replay', 'contracts', 'electron'].includes(step.id))
-      assert.deepEqual(step.dependencies, ['node-build', 'mcp-build']);
+      assert.deepEqual(step.dependencies, ['environment', 'node-build', 'mcp-build']);
   }
 });
 
 test('Windows CI exercises platform-specific process termination', () => {
   assert.ok(createPlan({ profile: 'windows' }).steps.some((step) => step.id === 'tooling-tests'));
+});
+
+test('environment failure blocks checks; desktop smoke builds both processes once', () => {
+  for (const profile of ['quick', 'full', 'desktop', 'dev']) {
+    const plan = createPlan({ profile });
+    assert.equal(plan.steps[0].id, 'environment');
+    for (const step of plan.steps.slice(1)) assert.ok(step.dependencies.includes('environment'));
+  }
+  const plan = createPlan({ profile: 'desktop' });
+  assert.deepEqual(
+    plan.steps.map((step) => step.id),
+    ['environment', 'node-build', 'mcp-build', 'electron', 'renderer', 'desktop-smoke'],
+  );
+  assert.deepEqual(plan.steps[0].commands, [['build/doctor.js', '--desktop']]);
+  assert.deepEqual(plan.steps.at(-1).dependencies, ['environment', 'electron', 'renderer']);
+  assert.equal(createPlan({ profile: 'dev' }).steps.at(-1).id, 'desktop-dev');
 });
 
 test('focused tests are normalized, deduplicated and forwarded to Vitest only', () => {

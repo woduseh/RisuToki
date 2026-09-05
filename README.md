@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-3.1.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-3.6.4-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
@@ -25,7 +25,7 @@ RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/)
 | 🎭 **Preview Mode**         | `.charx` chat simulation in a reusable central editor tab plus sanitized rendered Markdown guide previews (F5), including tables, code, images, and safe external links                                                                                                                                                                                                                                        |
 | 📚 **References**           | Load other `.charx`/`.risum`/`.risup` files as read-only references and drill into individual entries                                                                                                                                                                                                                                                                                                          |
 | 🐰 **RP Mode**              | Adjust AI CLI response style with Toki / Aris / custom personas                                                                                                                                                                                                                                                                                                                                                |
-| 🔀 **Sidebar Drag & Drop**  | Reorder lorebook entries, regex scripts, Lua/CSS sections, greetings, and assets by dragging                                                                                                                                                                                                                                                                                                                   |
+| 🔀 **Sidebar Drag & Drop**  | Reorder lorebook entries, regex scripts, Lua/CSS sections, greetings, and RISUP prompts by dragging; drop files into the asset manager to import them                                                                                                                                                                                                                                                          |
 | 🧰 **Utility Tools**        | Switch the bottom terminal and tabbed right sidebar from adjacent Codex-style workspace buttons                                                                                                                                                                                                                                                                                                                |
 | 💾 **Autosave & Backup**    | Configurable-interval autosave per file type (`.charx`/`.risum`/`.risup`) with `.toki-recovery.json` provenance sidecar + up to 20 backup versions per item                                                                                                                                                                                                                                                    |
 | 🔄 **Session Recovery**     | After an abnormal exit, offers to **Restore autosave / Open original / Ignore** with an `[Auto-restored]` badge and provenance status                                                                                                                                                                                                                                                                          |
@@ -52,8 +52,9 @@ Node.js 22.13+ or 24+ is required. The repository's `.node-version` pins Node 22
 ```bash
 git clone https://github.com/woduseh/RisuToki.git
 cd RisuToki
-npm install
-npm run dev:build
+npm ci
+npm run doctor -- --desktop
+npm run dev:isolated
 ```
 
 ### Development Scripts
@@ -61,6 +62,9 @@ npm run dev:build
 ```bash
 npm run dev          # Vite + Electron dev mode
 npm run dev:build    # Rebuild Electron files, then start dev mode
+npm run dev:isolated # Rebuild, use an owned Vite port and disposable home/temp, clean on exit
+npm run doctor -- --desktop # Diagnose runtime/dependencies/process/localhost prerequisites
+npm run test:desktop # Rebuild and exercise the real Electron editor with synthetic files
 npm run start:build  # Rebuild Electron + renderer files, then start the built app
 npm run lint         # ESLint
 npm run typecheck    # Vue + TypeScript type checking
@@ -75,6 +79,8 @@ npm run mcp:standalone -- --file C:\path\to\card.charx --allow-writes
 ```
 
 Generated Node and Electron JavaScript is isolated under `.build/node` and `.build/electron`; source directories contain TypeScript only. The standalone `toki-mcp-server.js` bundle remains at the project root for its public command path.
+
+See [Contributing](CONTRIBUTING.md#local-application-check) for the application check, reports, cleanup and current environment limitations. Normal editor checks need no `.env` or external model account. The original `dev` command uses port 5173 and the regular user profile; use `dev:isolated` for concurrent checkouts and disposable verification.
 
 ### Developer Documentation
 

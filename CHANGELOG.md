@@ -9,6 +9,31 @@
 
 ---
 
+## [3.6.4] - 2026-09-05
+
+### Changed
+
+- Added an environment preflight to validation so missing dependencies, blocked child processes, and localhost failures are diagnosed before running checks that cannot start.
+- Added an isolated Electron smoke profile and development launcher with per-session home/temp storage, owned dynamic Vite ports, explicit readiness, failure reports and cleanup. The optional smoke exercises the real renderer, preload, IPC and card save/reopen path; only native file selection is supplied by the test.
+- Added validation interruption and filesystem-isolation regression coverage; desktop execution still requires an environment that permits Chromium IPC and child processes.
+
+## [3.6.3] - 2026-09-05
+
+### Changed
+
+- Avoided copying and hashing the entire active document, including binary assets, for field batch reads and text searches. Read dispatch and snapshot selection share the same route matcher; authentication, input validation, field visibility, and mutation confirmation/conflict checks remain intact.
+- Added a reproducible localhost HTTP read benchmark and binary-asset regression coverage; measurement conditions and results are recorded in `test/benchmark-mcp-reads.md`.
+
+## [3.6.2] - 2026-09-05
+
+### Changed
+
+- Removed hidden legacy lorebook and asset sidebar trees, duplicate asset-list requests, and unused drag/context-menu wiring; retained the visible managers and their folder-aware reorder behavior.
+- Replaced MCP server method monkeypatching with a typed registration adapter and removed the second validation pass over already validated tool arguments; preserved profile membership, tool schemas, annotations, diagnostics, and structured responses.
+- Removed serializer global dependency initialization and exercised real trigger/Lua synchronization in serializer, renderer-state, and autosave tests.
+- Reused the full validation profile in the release workflow so shared prerequisites build once and failure logs are retained; removed an unused TypeScript test config and inactive JavaScript-only lint config.
+- Removed the unused `@msgpack/msgpack` development dependency and declared the existing `esbuild` build-tool dependency directly.
+
 ## [3.6.1] - 2026-09-05
 
 ### Changed

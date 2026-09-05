@@ -1,7 +1,9 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 
+import { getCompactInputSchema } from './mcp-compact-input';
 import type { FacadeApiRequest } from './mcp-facade-script-style';
+import { getToolAnnotations, getToolMeta } from './mcp-tool-taxonomy';
 
 export type McpToolResult = {
   content: Array<{ type: 'text'; text: string }>;
@@ -29,7 +31,48 @@ export interface McpToolRegistrationDeps {
   textResult: (data: unknown) => McpToolResult;
 }
 
-export type McpToolServer = McpServer;
+export interface McpToolServer {
+  tool<TShape extends z.ZodRawShape>(
+    name: string,
+    description: string,
+    shape: TShape,
+    handler: McpToolHandler<z.output<z.ZodObject<TShape>>>,
+  ): void;
+}
+
+interface McpToolRegistrarOptions {
+  shouldRegister: (name: string) => boolean;
+  onSkipped: (name: string) => void;
+  instrumentHandler: SafeToolHandler;
+}
+
+/** Register the repository's single tool signature through the SDK public API. */
+export function createMcpToolRegistrar(server: Pick<McpServer, 'registerTool'>, options: McpToolRegistrarOptions) {
+  const names = new Set<string>();
+  const registrar: McpToolServer = {
+    tool(name, description, shape, handler) {
+      if (!options.shouldRegister(name)) {
+        options.onSkipped(name);
+        return;
+      }
+      const publicInputSchema = getCompactInputSchema(name, shape);
+      const resultHandler = publicInputSchema ? withStructuredContentHandler(handler) : handler;
+      server.registerTool<typeof MCP_COMPACT_OUTPUT_SCHEMA, z.ZodObject<typeof shape>>(
+        name,
+        {
+          description,
+          inputSchema: publicInputSchema ?? z.object(shape),
+          ...(publicInputSchema ? { outputSchema: MCP_COMPACT_OUTPUT_SCHEMA } : {}),
+          annotations: getToolAnnotations(name),
+          _meta: getToolMeta(name),
+        },
+        options.instrumentHandler(name, resultHandler),
+      );
+      names.add(name);
+    },
+  };
+  return { ...registrar, registeredToolNames: () => [...names].sort() };
+}
 
 /**
  * Deliberately compact output contract shared by the facade-first surface.

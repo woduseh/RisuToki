@@ -21,11 +21,9 @@ function makeDeps(overrides: Partial<RightManagerPanelDeps> = {}): RightManagerP
         { comment: 'All For One', key: 'villain', content: 'Symbol of fear' },
       ],
     }),
-    getProjectPath: () => null,
     openLorebookEntry: vi.fn(),
     addLorebookEntry: vi.fn(),
     addLorebookFolder: vi.fn(),
-    renameLorebook: vi.fn(),
     commitLorebookName: vi.fn(),
     reorderLorebook: vi.fn(),
     deleteLorebook: vi.fn(),
@@ -68,7 +66,10 @@ describe('right-manager-panel', () => {
     document.body.innerHTML = '<div id="lore-manager-panel"></div><div id="asset-manager-panel"></div>';
   });
 
-  it('connects flat lorebook drag completion to the document reorder callback', () => {
+  it.each([
+    [0, 2],
+    [2, 0],
+  ])('connects flat lorebook drag from %i to %i and restores the rendered order', (from, to) => {
     const reorderLorebook = vi.fn();
     const deps = makeDeps({
       getFileData: () => ({
@@ -84,14 +85,15 @@ describe('right-manager-panel', () => {
     clearLoreSearch();
 
     const list = document.querySelector<HTMLElement>('.manager-lore-list-sortable')!;
-    const first = list.querySelector<HTMLElement>('[data-dnd-idx="0"]')!;
-    list.appendChild(first);
+    const moved = list.querySelector<HTMLElement>(`[data-dnd-idx="${from}"]`)!;
+    if (from < to) list.appendChild(moved);
+    else list.insertBefore(moved, list.firstElementChild);
     const sortableCall = sortableCreate.mock.calls.find(([element]) => element === list)!;
     const options = sortableCall[1] as { onEnd: (event: unknown) => void };
 
-    options.onEnd({ oldIndex: 0, newIndex: 2, item: first, from: list, to: list });
+    options.onEnd({ oldIndex: from, newIndex: to, item: moved, from: list, to: list });
 
-    expect(reorderLorebook).toHaveBeenCalledWith(0, 2, '');
+    expect(reorderLorebook).toHaveBeenCalledWith(from, to, '');
     expect([...list.querySelectorAll<HTMLElement>('[data-dnd-idx]')].map((row) => row.dataset.dndIdx)).toEqual([
       '0',
       '1',
@@ -115,7 +117,37 @@ describe('right-manager-panel', () => {
     options.onEnd({ oldIndex: 0, newIndex: 1, item: moved, from: source, to: target });
 
     expect(reorderLorebook).toHaveBeenCalledWith(2, 1, 'folder:heroes');
-    expect(source.querySelector('[data-dnd-idx="2"]')).toBe(moved);
+    expect(source.firstElementChild).toBe(moved);
+    expect([...target.children].map((item) => (item as HTMLElement).dataset.dndIdx)).toEqual(['1']);
+  });
+
+  it('moves a folder entry to an empty root and restores both rendered containers', () => {
+    const reorderLorebook = vi.fn();
+    initRightManagerPanel(
+      makeDeps({
+        getFileData: () => ({
+          lorebook: [
+            { comment: 'Heroes', mode: 'folder', key: 'folder:heroes' },
+            { comment: 'Hero', folder: 'folder:heroes' },
+          ],
+        }),
+        reorderLorebook,
+      }),
+    );
+
+    document.querySelector<HTMLButtonElement>('.manager-folder-arrow')!.click();
+    const source = document.querySelector<HTMLElement>('.manager-folder-children')!;
+    const target = document.querySelector<HTMLElement>('.manager-root-entries')!;
+    const moved = source.querySelector<HTMLElement>('[data-dnd-idx="1"]')!;
+    target.appendChild(moved);
+    const sortableCall = sortableCreate.mock.calls.find(([element]) => element === source)!;
+    const options = sortableCall[1] as { onEnd: (event: unknown) => void };
+
+    options.onEnd({ oldIndex: 0, newIndex: 0, item: moved, from: source, to: target });
+
+    expect(reorderLorebook).toHaveBeenCalledWith(1, 0, '');
+    expect(source.firstElementChild).toBe(moved);
+    expect(target.children).toHaveLength(0);
   });
 
   it('renders lorebook folders and opens entries through the provided callback', () => {
@@ -511,6 +543,7 @@ describe('right-manager-panel', () => {
       renameAssetsBatch,
       showPrompt,
       showConfirm,
+      refresh: vi.fn(() => renderRightManagerPanel()),
     });
     initRightManagerPanel(deps);
     await flushTimers();
@@ -524,6 +557,7 @@ describe('right-manager-panel', () => {
     checks[1].dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
     await flushTimers();
 
+    const assetReadsBeforeRename = vi.mocked(deps.getAssetList).mock.calls.length;
     document.querySelector<HTMLButtonElement>('button[aria-label="선택 에셋 이름 일괄 변경"]')!.click();
     await flushTimers();
 
@@ -535,5 +569,8 @@ describe('right-manager-panel', () => {
       { oldPath: 'assets/other/image/scene.png', newName: 'hero_002.png' },
     ]);
     expect(deps.setStatus).toHaveBeenCalledWith('에셋 2개 이름 변경됨');
+    expect(deps.refresh).toHaveBeenCalledTimes(1);
+    expect(deps.getAssetList).toHaveBeenCalledTimes(assetReadsBeforeRename + 2);
+    expect(document.querySelector('#asset-manager-panel .manager-selected-bar')).toBeNull();
   });
 });

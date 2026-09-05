@@ -15,7 +15,6 @@ function createMockDeps(overrides: Partial<SidebarActionDeps> = {}): SidebarActi
     getCssStyleSuffix: () => '',
     showConfirm: vi.fn().mockResolvedValue(true),
     showPrompt: vi.fn().mockResolvedValue('test'),
-    showContextMenu: vi.fn(),
     setStatus: vi.fn(),
     buildSidebar: vi.fn(),
     combineLuaSections: (s: Section[]) => s.map((x) => `-- ===== ${x.name} =====\n${x.content}`).join('\n'),

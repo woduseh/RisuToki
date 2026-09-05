@@ -3,9 +3,12 @@
 ## Setup
 
 ```bash
-npm install
-npm run dev:build
+npm ci
+npm run doctor -- --desktop
+npm run dev:isolated
 ```
+
+Use Node matching `package.json#engines` (`.node-version` records the recommended baseline). Install each checkout's own dependencies with the lockfile; do not share `node_modules`, `.build` or `dist` between worktrees. A first installation needs registry/Electron/native-package downloads or a complete local cache. No `.env`, external model credentials, GPU or paid service is required for the synthetic checks.
 
 ## Validation
 
@@ -22,6 +25,25 @@ Choose the checks appropriate to the changed behavior in `docs/PROJECT_RULES.md`
 `npm test` includes the complete Vitest suite and deterministic agent-eval cases. `npm run test:evals` remains a focused static subset; `npm run test:evals:replay` and `npm run test:mcp:contracts` remain available independently. `--test` selection applies only to the quick profile; repeat it to select several unit-test files.
 
 Validation prints compact progress and failure details. Full step logs and a JSON report are saved in `.build/validation/<runId>/`, with `.build/validation/latest.json` containing the latest run status. Failed prerequisites skip their dependent checks while independent checks continue. The workspace lock prevents overlapping validation runs from replacing shared build output. Default validation uses synthetic artifacts; use `npm run test:corpus` only when access to local ignored user artifacts is within scope.
+
+Every profile first runs `doctor`: Node/lockfile/direct dependencies, an actual piped child process, localhost HTTP and temporary write/cleanup. A failed preflight blocks the remaining profile, records them as skipped and exits nonzero. `npm run --silent doctor -- --json` emits a machine-readable report; `.build/doctor/report.json` retains the last diagnostic. It reports environment variable names, not values. A preflight pass is not a test/build/UI pass. When process permissions block a profile, `npm run lint` and `npm run typecheck` can still provide explicitly partial feedback.
+
+## Local application check
+
+```bash
+npm run test:desktop
+npm run dev:isolated
+```
+
+`test:desktop` builds Electron, preload, MCP and renderer once, then launches the real Electron application. Its optional smoke checks create a synthetic card through the menu, type a description, save/reopen it, reject a corrupt file without changing the saved bytes, and check local API authentication. Native file pickers return fixture paths; the renderer, preload, IPC, archive parser and save code are real. It is separate from `validate:full` and CI because it requires a working desktop/Chromium environment.
+
+`dev:isolated` builds Electron before starting Vite on an OS-assigned localhost port and connects Electron to that exact instance. It holds the validation lock for its lifetime (up to one hour). Close the app for normal cleanup; Ctrl+C interrupts through the validator and may leave data for inspection. Each session uses its own home, app profile, working directory and temp directory, so generated MCP configuration and recovery state do not touch the normal user profile. Files explicitly opened/saved by a developer are still real files. Main/preload changes require restarting; renderer changes use Vite. Use separate worktrees for parallel runs. The original `dev`, `dev:electron` and `start` commands retain their regular-profile behavior.
+
+Inspect `.build/validation/latest.json` first. Application reports, process logs and screenshots are in `.build/desktop/<run>/`; confirmed process cleanup removes `<run>/data` while retaining evidence. Unconfirmed cleanup preserves data and returns reserved exit code 70, which keeps the validation lock and blocks subsequent commands. An abnormal OS kill can leave a running report or data behind: inspect the recorded PIDs and descendants before removing that run's directory or lock. Cleanup targets the spawned process tree, not unrelated Electron instances.
+
+After a successful desktop build, `node build/desktop.js --inject-renderer-error` is an intentional negative check: it must exit nonzero and retain the renderer failure, screenshot and cleanup result. Direct `build/desktop.js` invocations use existing build output; only the enclosing `test:desktop` profile proves a rebuild. A zero child exit without a complete application report also fails.
+
+Current local verification (Windows, Node 24.14): lint/typechecks and process-independent tooling tests run, but the managed environment denies piped child creation (`spawn EPERM`) and Chromium Mojo IPC (`Access denied`). Clean-copy `npm ci --offline`, Vite/MCP builds and Electron smoke therefore cannot complete here. The launcher's failed-process detection and isolated data cleanup were exercised; the UI assertions and injected renderer failure remain unverified. Keep these failures visible; do not disable Chromium sandboxing, suppress tests or change approval policy to get a green result. The minimum missing capability is an approved development environment that permits ordinary child-process pipes and Chromium IPC; first-time setup also needs the dependency downloads or cache above.
 
 Use `npm run test:mcp:contracts:update` only for an intentional public MCP contract change. Review the printed profile and HTTP-case summary, update the contract fixture, and record the change in `CHANGELOG.md`.
 

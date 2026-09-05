@@ -1,8 +1,5 @@
 import { z } from 'zod';
 
-import type { McpToolHandler } from './mcp-tool-registration';
-import { normalizeMcpErrorEnvelope } from './mcp-response-envelope';
-
 // Full action-specific inputs are intentionally larger than discriminator-only
 // schemas. Keep an explicit cap without sacrificing required argument discovery.
 export const MCP_DEFAULT_TOOLS_LIST_MAX_BYTES = 96 * 1024;
@@ -38,9 +35,11 @@ export function isStructuredDefaultToolName(name: string): name is StructuredDef
  * discriminators hides required arguments (for example external.file_path or
  * replace_text.find) and forces agents to guess. Reusing the registration also
  * keeps new selectors and operation fields discoverable without a second map.
- * The historical function name is retained for registration compatibility.
  */
-export function getCompactInputSchema(name: string, inputShape: z.ZodRawShape): z.ZodTypeAny | undefined {
+export function getCompactInputSchema<TShape extends z.ZodRawShape>(
+  name: string,
+  inputShape: TShape,
+): z.ZodObject<TShape> | undefined {
   if (!isStructuredDefaultToolName(name)) return undefined;
   const descriptions: Record<string, string> = {
     target:
@@ -66,31 +65,6 @@ export function getCompactInputSchema(name: string, inputShape: z.ZodRawShape): 
         key,
         descriptions[key] ? (schema as z.ZodTypeAny).describe(descriptions[key]) : schema,
       ]),
-    ),
+    ) as TShape,
   );
-}
-/** Keep the pre-1.14 detailed Zod shape as the final handler-side validator. */
-export function withDetailedInputValidationHandler<TArgs extends Record<string, unknown>>(
-  name: string,
-  inputShape: z.ZodRawShape,
-  handler: McpToolHandler<TArgs>,
-): McpToolHandler<Record<string, unknown>> {
-  const detailedSchema = z.object(inputShape);
-  return async (args, extra) => {
-    const parsed = await detailedSchema.safeParseAsync(args);
-    if (!parsed.success) {
-      const payload = normalizeMcpErrorEnvelope({
-        status: 400,
-        action: `validate ${name} input`,
-        target: `tool:${name}`,
-        error: `Invalid arguments for tool ${name}: ${parsed.error.message}`,
-        suggestion: 'Inspect the tool input schema and correct the invalid arguments before retrying.',
-      });
-      return {
-        content: [{ type: 'text', text: JSON.stringify(payload) }],
-        isError: true,
-      };
-    }
-    return handler(parsed.data as TArgs, extra);
-  };
 }

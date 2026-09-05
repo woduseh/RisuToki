@@ -7,6 +7,7 @@ const projectRoot = path.resolve(__dirname, '..');
 const tsc = 'node_modules/typescript/bin/tsc';
 const buildDependencies = ['node-build', 'mcp-build'];
 const definitions = {
+  environment: { commands: [['build/doctor.js']] },
   lint: {
     commands: [
       [
@@ -27,7 +28,17 @@ const definitions = {
   'typecheck-electron': { commands: [[tsc, '-p', 'tsconfig.electron.json', '--noEmit']] },
   'typecheck-node': { commands: [[tsc, '-p', 'tsconfig.node-libs.json', '--noEmit']] },
   unit: { commands: [['node_modules/vitest/vitest.mjs', 'run']] },
-  'tooling-tests': { commands: [['--test', 'build/validation-plan.test.js', 'build/validate.test.js']] },
+  'tooling-tests': {
+    commands: [
+      [
+        '--test',
+        'build/validation-plan.test.js',
+        'build/validate.test.js',
+        'build/doctor.test.js',
+        'build/desktop.test.js',
+      ],
+    ],
+  },
   'node-build': {
     commands: [
       ['build/clean-output.js', 'node'],
@@ -57,6 +68,8 @@ const definitions = {
       ['build/build-preload.js'],
     ],
   },
+  'desktop-smoke': { dependencies: ['electron', 'renderer'], commands: [['build/desktop.js']] },
+  'desktop-dev': { dependencies: ['electron'], commands: [['build/desktop.js', '--dev']] },
 };
 
 const quick = ['lint', 'typecheck-vue', 'typecheck-electron', 'typecheck-node', 'unit', 'tooling-tests'];
@@ -70,6 +83,8 @@ const profiles = {
   ci,
   full: [...ci, 'electron'],
   windows: ['tooling-tests', 'electron', 'renderer'],
+  desktop: ['desktop-smoke'],
+  dev: ['desktop-dev'],
 };
 
 function validateTests(tests) {
@@ -115,11 +130,13 @@ function createPlan({ profile = 'quick', tests = [] } = {}) {
   function visit(id) {
     if (visited.has(id)) return;
     const definition = definitions[id];
-    for (const dependency of definition.dependencies || []) visit(dependency);
+    const dependencies = id === 'environment' ? [] : ['environment', ...(definition.dependencies || [])];
+    for (const dependency of dependencies) visit(dependency);
     visited.add(id);
     const commands = definition.commands.map((command) => [...command]);
     if (id === 'unit') commands[0].push(...focusedTests);
-    steps.push({ id, dependencies: [...(definition.dependencies || [])], commands });
+    if (id === 'environment' && ['full', 'windows', 'desktop', 'dev'].includes(profile)) commands[0].push('--desktop');
+    steps.push({ id, dependencies, commands });
   }
   profiles[profile].forEach(visit);
   return { profile, steps, focusedTests };

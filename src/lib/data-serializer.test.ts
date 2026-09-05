@@ -1,23 +1,10 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import type { LoadedDocumentData } from '../charx-io';
 import {
   applyUpdates as applyLoadedDocumentUpdates,
-  initDataSerializer,
   serializeForRenderer as serializeLoadedDocumentForRenderer,
 } from './data-serializer';
 import type { RendererDocumentPatch } from './document-types';
-
-// Stub dependencies injected via initDataSerializer
-const stubDeps = {
-  stringifyTriggerScripts: vi.fn((ts: unknown) => JSON.stringify(ts)),
-  normalizeTriggerScripts: vi.fn((ts: unknown) => {
-    if (Array.isArray(ts)) return ts;
-    if (typeof ts === 'string') return JSON.parse(ts) as unknown[];
-    return [];
-  }),
-  extractPrimaryLuaFromTriggerScripts: vi.fn(() => 'extracted-lua'),
-  mergePrimaryLuaIntoTriggerScripts: vi.fn((_ts: unknown, lua: string) => [{ type: 'lua', code: lua }]),
-};
 
 function makeLoadedDocument(overrides: Record<string, unknown> = {}): LoadedDocumentData {
   return {
@@ -53,11 +40,6 @@ function serializeForRenderer(overrides: Record<string, unknown> = {}) {
 function applyUpdates(data: Record<string, unknown>, fields: RendererDocumentPatch | null | undefined): void {
   applyLoadedDocumentUpdates(data as LoadedDocumentData, fields);
 }
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  initDataSerializer(stubDeps);
-});
 
 // ── serializeForRenderer ────────────────────────────────────────────────────
 
@@ -100,11 +82,12 @@ describe('serializeForRenderer', () => {
     expect(result._fileType).toBe('charx');
   });
 
-  it('passes triggerScripts through stringifyTriggerScripts', () => {
-    const ts = [{ type: 'lua', code: 'x' }];
+  it('serializes trigger scripts as renderer JSON without changing the loaded scripts', () => {
+    const ts = [{ type: 'start', effect: [{ type: 'triggerlua', code: 'x' }] }];
     const result = serializeForRenderer({ triggerScripts: ts });
-    expect(stubDeps.stringifyTriggerScripts).toHaveBeenCalledWith(ts);
-    expect(result.triggerScripts).toBe('[{"type":"lua","code":"x"}]');
+    expect(typeof result.triggerScripts).toBe('string');
+    expect(JSON.parse(result.triggerScripts)).toEqual(ts);
+    expect(ts).toEqual([{ type: 'start', effect: [{ type: 'triggerlua', code: 'x' }] }]);
   });
 
   it('preserves structured lorebook and regex collections while serializing trigger scripts to text', () => {
@@ -117,7 +100,7 @@ describe('serializeForRenderer', () => {
       regex,
     });
 
-    expect(result.triggerScripts).toBe('[{"type":"start","effect":[]}]');
+    expect(JSON.parse(result.triggerScripts)).toEqual([{ type: 'start', effect: [] }]);
     expect(result.lorebook).toBe(lorebook);
     expect(result.regex).toBe(regex);
   });
@@ -214,17 +197,77 @@ describe('applyUpdates', () => {
     const data: Record<string, unknown> = { triggerScripts: [], lua: '' };
     const rendererText = '[{"type":"start","effect":[{"type":"triggerlua","code":"abc"}]}]';
     applyUpdates(data, { triggerScripts: rendererText });
-    expect(stubDeps.normalizeTriggerScripts).toHaveBeenCalledWith(rendererText);
-    expect(stubDeps.extractPrimaryLuaFromTriggerScripts).toHaveBeenCalled();
     expect(data.triggerScripts).toEqual([{ type: 'start', effect: [{ type: 'triggerlua', code: 'abc' }] }]);
-    expect(data.lua).toBe('extracted-lua');
+    expect(data.lua).toBe('abc');
   });
 
   it('syncs triggerScripts when lua is updated', () => {
     const data: Record<string, unknown> = { triggerScripts: [], lua: '' };
     applyUpdates(data, { lua: 'new-lua' });
     expect(data.lua).toBe('new-lua');
-    expect(stubDeps.mergePrimaryLuaIntoTriggerScripts).toHaveBeenCalled();
+    expect(data.triggerScripts).toEqual([
+      {
+        comment: '',
+        type: 'start',
+        conditions: [],
+        effect: [{ type: 'triggerlua', code: 'new-lua' }],
+        lowLevelAccess: false,
+      },
+    ]);
+  });
+
+  it('preserves secondary effects and the input scripts while replacing only primary Lua', () => {
+    const scripts = [
+      {
+        type: 'manual',
+        comment: 'Keep metadata',
+        effect: [
+          { type: 'systemprompt', value: 'keep' },
+          { type: 'triggerlua', code: 'primary' },
+        ],
+      },
+      { type: 'output', effect: [{ type: 'triggerlua', code: 'secondary' }] },
+    ];
+    const data: Record<string, unknown> = { triggerScripts: scripts, lua: 'primary' };
+    applyUpdates(data, { lua: 'updated' });
+
+    expect(data.triggerScripts).toEqual([
+      {
+        type: 'manual',
+        comment: 'Keep metadata',
+        effect: [
+          { type: 'systemprompt', value: 'keep' },
+          { type: 'triggerlua', code: 'updated' },
+        ],
+      },
+      { type: 'output', effect: [{ type: 'triggerlua', code: 'secondary' }] },
+    ]);
+    expect(scripts[0].effect[1].code).toBe('primary');
+  });
+
+  it('gives an explicit Lua patch precedence when both script representations are submitted', () => {
+    const data: Record<string, unknown> = { triggerScripts: [], lua: '' };
+    applyUpdates(data, {
+      triggerScripts: '[{"type":"start","effect":[{"type":"triggerlua","code":"old"}]}]',
+      lua: 'new',
+    });
+    expect(data.lua).toBe('new');
+    expect(data.triggerScripts).toEqual([{ type: 'start', effect: [{ type: 'triggerlua', code: 'new' }] }]);
+  });
+
+  it('clears extracted Lua when scripts no longer contain a Lua effect', () => {
+    const data: Record<string, unknown> = { triggerScripts: [], lua: 'old' };
+    applyUpdates(data, { triggerScripts: '[{"type":"start","effect":[{"type":"systemprompt","value":"keep"}]}]' });
+    expect(data.lua).toBe('');
+    expect(data.triggerScripts).toEqual([{ type: 'start', effect: [{ type: 'systemprompt', value: 'keep' }] }]);
+  });
+
+  it.each(['{broken', '{"effect":[]}'])('rejects invalid script input %s without replacing scripts', (input) => {
+    const scripts = [{ type: 'start', effect: [{ type: 'triggerlua', code: 'keep' }] }];
+    const data: Record<string, unknown> = { triggerScripts: scripts, lua: 'keep' };
+    expect(() => applyUpdates(data, { triggerScripts: input })).toThrow();
+    expect(data.triggerScripts).toBe(scripts);
+    expect(data.lua).toBe('keep');
   });
 
   it('wraps css with <style> tags if missing', () => {

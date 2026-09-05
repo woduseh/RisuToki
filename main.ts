@@ -36,7 +36,6 @@ import { writeFileAtomicSync } from './src/lib/atomic-write';
 import { initAutosaveManager } from './src/lib/autosave-manager';
 import { resolveCloseWindowAction, shouldPromptForUnsavedClose } from './src/lib/close-window-policy';
 import { resolveGuideRootDirs, resolveSkillRootDirs } from './src/lib/content-roots';
-import { initDataSerializer } from './src/lib/data-serializer';
 import {
   applyRendererUpdates as applyUpdates,
   serializeActiveDocument as serializeForRenderer,
@@ -923,14 +922,6 @@ function scheduleAppUpdateCheck(): void {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
-  // Initialize data serialization helpers
-  initDataSerializer({
-    stringifyTriggerScripts,
-    normalizeTriggerScripts,
-    extractPrimaryLuaFromTriggerScripts,
-    mergePrimaryLuaIntoTriggerScripts,
-  });
-
   loadPersistedReferenceFiles();
   createWindow();
 

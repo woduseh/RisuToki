@@ -1,13 +1,12 @@
 /**
  * sidebar-dnd.ts — Drag-and-drop reordering for sidebar items using SortableJS.
  *
- * Manages SortableJS instances for lorebook, regex, Lua sections, CSS sections,
- * and asset lists. Uses a dependency-injection pattern to stay decoupled from
- * the controller.
+ * Manages SortableJS instances for regex, Lua/CSS sections, and greetings.
+ * Lorebook and prompt managers reuse the shared drag options but own their
+ * sortable instances.
  */
 
 import Sortable from 'sortablejs';
-import type { Section } from './section-parser';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -16,17 +15,11 @@ import type { Section } from './section-parser';
 export interface DndDeps {
   // Data accessors
   getFileData: () => Record<string, unknown> | null;
-  getLuaSections: () => Section[];
-  getCssSections: () => Section[];
-  getCssStylePrefix: () => string;
-  getCssStyleSuffix: () => string;
 
   // Reorder callbacks
-  reorderLorebook: (fromIdx: number, toIdx: number, targetFolder: string) => void;
   reorderRegex: (fromIdx: number, toIdx: number) => void;
   reorderLuaSections: (fromIdx: number, toIdx: number) => void;
   reorderCssSections: (fromIdx: number, toIdx: number) => void;
-  reorderAsset: (fromPath: string, toIdx: number) => void;
   reorderAlternateGreetings: (fromIdx: number, toIdx: number) => void;
 }
 
@@ -71,15 +64,6 @@ function track(s: Sortable): Sortable {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Read data-dnd-idx from SortableJS event items to build old→new index map */
-function readIndicesFromContainer(container: HTMLElement): number[] {
-  const indices: number[] = [];
-  container.querySelectorAll(':scope > [data-dnd-idx]').forEach((el) => {
-    indices.push(parseInt((el as HTMLElement).dataset.dndIdx!, 10));
-  });
-  return indices;
-}
-
 /** Generic flat-list reorder: reads new order from DOM, calls reorder callback, reverts DOM */
 export function makeFlatOnEnd(reorder: (fromIdx: number, toIdx: number) => void): Sortable.Options['onEnd'] {
   return (evt) => {
@@ -106,9 +90,6 @@ export function initSidebarDnD(deps: DndDeps): void {
   const fileData = deps.getFileData();
   if (!fileData) return;
 
-  // --- Lorebook ---
-  initLorebookDnD(deps);
-
   // --- Regex ---
   initRegexDnD(deps);
 
@@ -118,74 +99,8 @@ export function initSidebarDnD(deps: DndDeps): void {
   // --- CSS sections ---
   initSectionDnD('css', deps);
 
-  // --- Assets ---
-  initAssetDnD(deps);
-
   // --- Alternate Greetings ---
   initGreetingDnD('altgreet', deps.reorderAlternateGreetings);
-}
-
-// ---------------------------------------------------------------------------
-// Lorebook DnD (supports cross-folder drag)
-// ---------------------------------------------------------------------------
-
-function initLorebookDnD(deps: DndDeps): void {
-  const containers = document.querySelectorAll<HTMLElement>('[data-dnd-lore-container]');
-  if (containers.length === 0) return;
-
-  containers.forEach((container) => {
-    track(
-      Sortable.create(container, {
-        ...SHARED_OPTIONS,
-        group: 'lorebook',
-        swapThreshold: 0.9,
-        onEnd: (evt) => {
-          if (evt.oldIndex == null || evt.newIndex == null) return;
-          // Same container, same position
-          if (evt.from === evt.to && evt.oldIndex === evt.newIndex) return;
-
-          const movedDataIdx = parseInt(evt.item.dataset.dndIdx!, 10);
-          const targetFolder = (evt.to as HTMLElement).dataset.dndLoreFolder || '';
-
-          // Compute target position within the folder
-          // Read all data-dnd-idx in the target container AFTER the move
-          const targetIndices = readIndicesFromContainer(evt.to as HTMLElement);
-          const posInFolder = targetIndices.indexOf(movedDataIdx);
-
-          // Revert DOM — let buildSidebar handle re-rendering
-          revertDom(evt);
-
-          deps.reorderLorebook(movedDataIdx, posInFolder, targetFolder);
-        },
-      }),
-    );
-  });
-}
-
-function revertDom(evt: Sortable.SortableEvent): void {
-  // If cross-container move, return item to original container
-  if (evt.from !== evt.to && evt.item.parentNode === evt.to) {
-    evt.to.removeChild(evt.item);
-    const ref = evt.from.children[evt.oldIndex!];
-    if (ref) {
-      evt.from.insertBefore(evt.item, ref);
-    } else {
-      evt.from.appendChild(evt.item);
-    }
-  } else if (evt.from === evt.to && evt.oldIndex !== evt.newIndex) {
-    // Same container, revert position
-    const container = evt.from;
-    if (evt.oldIndex! < evt.newIndex!) {
-      container.insertBefore(evt.item, container.children[evt.oldIndex!]);
-    } else {
-      const ref = container.children[evt.oldIndex! + 1];
-      if (ref) {
-        container.insertBefore(evt.item, ref);
-      } else {
-        container.appendChild(evt.item);
-      }
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -222,27 +137,7 @@ function initSectionDnD(type: 'lua' | 'css', deps: DndDeps): void {
 }
 
 // ---------------------------------------------------------------------------
-// Asset DnD (within each subfolder)
-// ---------------------------------------------------------------------------
-
-function initAssetDnD(deps: DndDeps): void {
-  const containers = document.querySelectorAll<HTMLElement>('[data-dnd-asset-container]');
-  containers.forEach((container) => {
-    track(
-      Sortable.create(container, {
-        ...SHARED_OPTIONS,
-        onEnd: (evt) => {
-          if (evt.oldIndex == null || evt.newIndex == null || evt.oldIndex === evt.newIndex) return;
-          const assetPath = evt.item.dataset.dndAssetPath || '';
-          deps.reorderAsset(assetPath, evt.newIndex);
-        },
-      }),
-    );
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Greeting DnD (flat list — alternateGreetings / groupOnlyGreetings)
+// Greeting DnD (flat list — alternateGreetings)
 // ---------------------------------------------------------------------------
 
 function initGreetingDnD(type: string, reorder: (fromIdx: number, toIdx: number) => void): void {
