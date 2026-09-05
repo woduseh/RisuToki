@@ -8,6 +8,71 @@ import { registerActions } from './lib/action-registry';
 import { useAppStore } from './stores/app-store';
 
 describe('App shell', () => {
+  it('offers asset rename and delete immediately and follows the selected asset', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    const rename = vi.fn();
+    const remove = vi.fn();
+    registerActions({ 'asset-rename-selected': rename, 'asset-delete-selected': remove });
+    store.setFileData({ _fileType: 'charx', name: 'Character' } as never);
+    store.setActiveTabId('img_assets/other/image/first.webp');
+    await nextTick();
+    expect(wrapper.find('#editor-properties').exists()).toBe(false);
+    const actions = wrapper.get('#editor-asset-actions');
+    expect(actions.find('dl').exists()).toBe(false);
+    expect(actions.findAll('button').map((button) => button.text())).toEqual(['이름 변경', '삭제']);
+    await actions.findAll('button')[0].trigger('click');
+    expect(rename).toHaveBeenCalledWith('assets/other/image/first.webp');
+    store.setActiveTabId('img_assets/other/image/second.webp');
+    await nextTick();
+    await actions.findAll('button')[1].trigger('click');
+    expect(remove).toHaveBeenCalledWith('assets/other/image/second.webp');
+    store.setActiveTabId('description');
+    await nextTick();
+    expect(wrapper.find('#editor-asset-actions').exists()).toBe(false);
+    wrapper.unmount();
+  });
+  it('keeps document navigation in the navigator and exposes save and preview beside the document', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    const preview = vi.fn();
+    registerActions({ 'preview-test': preview });
+    expect(wrapper.get('#btn-workspace-save').attributes('disabled')).toBeDefined();
+    store.setFileData({ _fileType: 'charx', name: 'Character' } as never);
+    await nextTick();
+    expect(wrapper.get('#workspace-bar').text()).toContain('Character');
+    expect(wrapper.get('#workspace-navigator #navigator-workspaces').text()).toContain('로어북');
+    const categories = wrapper.findAll('#navigator-workspaces button');
+    await categories[0].trigger('keydown', { key: 'End' });
+    expect(store.workspaceId).toBe('assets');
+    await wrapper.get('#btn-workspace-preview').trigger('click');
+    expect(preview).toHaveBeenCalledOnce();
+    store.setFileData({ _fileType: 'risup', name: 'Preset' } as never);
+    await nextTick();
+    expect(wrapper.get('#navigator-workspaces').text()).toBe('프롬프트토글·변수정규식');
+    expect(wrapper.get('#btn-workspace-preview').attributes('disabled')).toBeDefined();
+    wrapper.unmount();
+  });
+
+  it('starts compact windows with unobstructed content and lets users dismiss navigation', async () => {
+    vi.stubGlobal('innerWidth', 900);
+    const wrapper = mount(App, { attachTo: document.body, global: { plugins: [createPinia()] } });
+    const store = useAppStore();
+    await nextTick();
+    expect(store.navigatorVisible).toBe(false);
+    await wrapper.get('[aria-label="탐색기 전환"]').trigger('click');
+    expect(wrapper.find('.workspace-scrim').exists()).toBe(true);
+    await wrapper.get('.workspace-scrim').trigger('click');
+    expect(store.navigatorVisible).toBe(false);
+    await wrapper.get('[aria-label="탐색기 전환"]').trigger('click');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await nextTick();
+    expect(store.navigatorVisible).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get('[aria-label="탐색기 전환"]').element);
+    wrapper.unmount();
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
   });
@@ -305,6 +370,7 @@ describe('App shell', () => {
   });
 
   it('keeps the terminal anchored to the bottom for a reference-only editor while upward dragging increases its height', async () => {
+    vi.stubGlobal('innerHeight', 1000);
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
     const store = useAppStore();
@@ -332,6 +398,26 @@ describe('App shell', () => {
 
     document.dispatchEvent(new MouseEvent('pointerup'));
     expect(document.body.classList.contains('utility-resizing')).toBe(false);
+  });
+
+  it('resizes a height-capped terminal immediately from its visible height', async () => {
+    vi.stubGlobal('innerHeight', 600);
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } });
+    const store = useAppStore();
+    store.setUtilityHeight(400);
+    await nextTick();
+    const resizer = wrapper.get('#utility-resizer');
+    expect(resizer.attributes('aria-valuenow')).toBe('168');
+    expect(resizer.attributes('aria-valuemax')).toBe('168');
+    expect(store.utilityHeight).toBe(400); // A smaller window preserves the preferred size until resized.
+    await resizer.trigger('keydown', { key: 'ArrowDown' });
+    expect(store.utilityHeight).toBe(158);
+    resizer.element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, clientY: 400 }));
+    document.dispatchEvent(new MouseEvent('pointermove', { clientY: 410 }));
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+    expect(store.utilityHeight).toBe(148);
+    document.dispatchEvent(new MouseEvent('pointerup'));
+    wrapper.unmount();
   });
 
   it('coalesces rapid pane drag events into one animation-frame layout update', async () => {
@@ -381,7 +467,7 @@ describe('App shell', () => {
     await reset.trigger('click');
     await nextTick();
 
-    expect(store.navigatorWidth).toBe(280);
+    expect(store.navigatorWidth).toBe(340);
     expect(store.inspectorWidth).toBe(320);
     expect(store.utilityHeight).toBe(250);
     expect(store.navigatorVisible).toBe(true);
@@ -463,7 +549,7 @@ describe('App shell', () => {
     expect(wrapper.get('#btn-avatar-toggle').attributes('aria-pressed')).toBe('false');
   });
 
-  it('opens references in the unified right sidebar and switches back to contextual properties', async () => {
+  it('keeps reference material visible while editing contextual properties above the content', async () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
     const store = useAppStore();
@@ -495,10 +581,13 @@ describe('App shell', () => {
     store.setActiveTabId('lore_0');
     await nextTick();
 
-    expect(store.referencesVisible).toBe(false);
-    expect(store.inspectorVisible).toBe(true);
-    expect(wrapper.get('#right-sidebar-inspector-tab').text()).toBe('로어북 속성');
-    expect(wrapper.get('#right-sidebar-inspector-tab').classes()).toContain('active');
+    expect(store.guidesVisible).toBe(true);
+    expect(wrapper.get('#editor-properties summary').text()).toContain('로어북 속성');
+    expect(wrapper.find('#editor-surface #context-inspector').exists()).toBe(true);
+    expect(wrapper.find('#right-sidebar #context-inspector').exists()).toBe(false);
+    const rename = wrapper.get('#editor-properties input');
+    await rename.setValue('Updated entry');
+    expect(store.fileData?.lorebook[0].comment).toBe('Updated entry');
   });
 
   it('resizes the unified right sidebar from its left edge', async () => {
@@ -507,6 +596,7 @@ describe('App shell', () => {
     const store = useAppStore();
     store.setFileData({ lorebook: [{ comment: 'Entry' }] } as never);
     store.setActiveTabId('lore_0');
+    store.setRightSidebarView('references');
     store.setInspectorWidth(320);
     await nextTick();
 

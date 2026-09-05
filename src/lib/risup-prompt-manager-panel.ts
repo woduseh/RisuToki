@@ -300,7 +300,22 @@ function renderPromptPanel(body: HTMLElement): void {
   const model = parsePromptTemplate(typeof risupData.promptTemplate === 'string' ? risupData.promptTemplate : '');
   if (model.state === 'invalid') {
     const empty = el('div', 'right-manager-empty', `promptTemplate 오류: ${model.parseError ?? '알 수 없는 오류'}`);
-    body.appendChild(empty);
+    const raw = el('textarea', 'form-textarea');
+    raw.setAttribute('aria-label', '프롬프트 JSON 복구');
+    raw.rows = 12;
+    raw.value = risupData.promptTemplate || '';
+    const repair = el('button', 'manager-btn', '수정한 JSON 적용');
+    repair.type = 'button';
+    repair.addEventListener('click', () => {
+      if (parsePromptTemplate(raw.value).state === 'invalid') {
+        deps.setStatus('프롬프트 JSON 형식을 확인하세요.');
+        return;
+      }
+      deps.setPromptTemplate(raw.value);
+      deps.refresh();
+      renderPromptManagerPanel();
+    });
+    body.append(empty, raw, repair);
     return;
   }
 
@@ -535,5 +550,5 @@ export function initPromptManagerPanel(deps: PromptManagerPanelDeps): void {
 export function renderPromptManagerPanel(): void {
   const root = document.getElementById('prompt-manager-panel');
   if (!root) return;
-  renderPanelShell(root, '프롬프트 관리자', renderPromptPanel);
+  renderPanelShell(root, '프롬프트', renderPromptPanel);
 }

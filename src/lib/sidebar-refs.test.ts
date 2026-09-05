@@ -96,6 +96,7 @@ describe('buildRefsSidebar race-condition guard', () => {
         data: {
           _fileType: 'risup',
           description: 'preset description',
+          promptTemplate: '[{"type":"plain","text":"Reference prompt"}]',
         },
       },
     ];
@@ -223,6 +224,7 @@ describe('openRefTabById', () => {
         data: {
           _fileType: 'risup',
           description: 'preset description',
+          promptTemplate: '[{"type":"plain","text":"Reference prompt"}]',
         },
       },
     ];
@@ -255,5 +257,11 @@ describe('openRefTabById', () => {
     const risupTab = openTab.mock.results[2]?.value as { _risupGroupId?: string };
     expect(openTab.mock.calls[2][2]).toBe('_risupform');
     expect(risupTab._risupGroupId).toBe('templates');
+
+    openRefTabById('ref_1_promptTemplate', deps);
+    const promptCall = openTab.mock.calls[3];
+    expect(promptCall[2]).toBe('json');
+    expect(promptCall[4]).toBeNull();
+    expect(promptCall[3]()).toBe('[{"type":"plain","text":"Reference prompt"}]');
   });
 });

@@ -178,6 +178,11 @@ interface MonacoEditorInstance {
 
 let fileData: RendererDocumentData | null = null; // Current serialized renderer document data
 let currentProjectPath: string | null = null;
+
+function setCurrentProjectPath(path: string | null): void {
+  currentProjectPath = path;
+  useAppStore().setProjectPath(path);
+}
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
 let previewPanelHandle: { dispose: () => void } | null = null;
 let previewRenderVersion = 0;
@@ -320,7 +325,7 @@ const projectWorkspace = createProjectWorkspaceController({
   tabManager: tabMgr,
   applyReloadedProject: (data, projectPath) => {
     setCurrentFileData(data);
-    currentProjectPath = projectPath || currentProjectPath;
+    setCurrentProjectPath(projectPath || currentProjectPath);
     buildSidebar();
   },
   getEditorValue: () => editorInstance?.getValue() ?? null,
@@ -1050,10 +1055,27 @@ function appendBackupItems(items: ContextMenuItem[], backupKey: string, x: numbe
   }
 }
 
-function buildRegexSidebar(tree: HTMLElement): void {
+function buildRegexSidebar(tree: HTMLElement, flat = false): void {
   const rxFolder = createFolderItem('정규식', '⚡', 0);
-  tree.appendChild(rxFolder.header);
-  tree.appendChild(rxFolder.children);
+  if (!flat) {
+    tree.appendChild(rxFolder.header);
+    tree.appendChild(rxFolder.children);
+  } else {
+    const toolbar = document.createElement('div');
+    toolbar.className = 'risup-regex-toolbar';
+    toolbar.dataset.workspace = 'scripts';
+    for (const [label, action] of [
+      ['추가', () => addNewRegex()],
+      ['가져오기', () => importRegex()],
+    ] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = label;
+      button.addEventListener('click', action);
+      toolbar.appendChild(button);
+    }
+    tree.appendChild(toolbar);
+  }
 
   rxFolder.header.addEventListener('contextmenu', (e) => {
     e.preventDefault();
@@ -1087,12 +1109,22 @@ function buildRegexSidebar(tree: HTMLElement): void {
 
   const regexContainer = document.createElement('div');
   regexContainer.dataset.dndRegexContainer = '';
-  rxFolder.children.appendChild(regexContainer);
+  if (flat) {
+    regexContainer.dataset.workspace = 'scripts';
+    tree.appendChild(regexContainer);
+    if (!fileData!.regex.length) {
+      const empty = document.createElement('p');
+      empty.className = 'navigator-empty';
+      empty.dataset.workspace = 'scripts';
+      empty.textContent = '정규식을 추가하거나 JSON 파일을 가져오세요.';
+      tree.appendChild(empty);
+    }
+  } else rxFolder.children.appendChild(regexContainer);
 
   for (let i = 0; i < fileData!.regex.length; i++) {
     const rx = fileData!.regex[i];
     const label = rx.comment || `regex_${i}`;
-    const el = createTreeItem(label, '·', 1);
+    const el = createTreeItem(label, '·', flat ? 0 : 1);
     el.dataset.dndIdx = String(i);
     const idx = i;
     el.addEventListener('click', () => {
@@ -1123,18 +1155,9 @@ function buildRegexSidebar(tree: HTMLElement): void {
 }
 
 function buildRisupSidebar(tree: HTMLElement): void {
-  tree.appendChild(createSectionHeader('프리셋'));
-
-  for (const group of getVisibleRisupFieldGroups()) {
+  for (const group of getVisibleRisupFieldGroups().filter((group) => ['toggles', 'variables'].includes(group.id))) {
     const el = createTreeItem(group.label, group.icon, 0);
-    el.dataset.workspace =
-      group.id === 'basic'
-        ? 'basic'
-        : group.id === 'model-api'
-          ? 'model'
-          : ['parameters', 'sampling', 'thinking'].includes(group.id)
-            ? 'parameters'
-            : 'advanced';
+    el.dataset.workspace = 'toggles';
     el.addEventListener('click', () => openRisupGroupTab(group.id));
     el.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -1160,37 +1183,7 @@ function buildRisupSidebar(tree: HTMLElement): void {
     tree.appendChild(el);
   }
 
-  for (const item of getRisupSidebarExtraItems()) {
-    const el = createTreeItem(item.label, item.icon, 0);
-    el.dataset.workspace = item.id === 'risup_prompt' ? 'prompts' : 'advanced';
-    el.addEventListener('click', () => {
-      tabMgr.openTab(
-        item.id,
-        item.label,
-        item.language,
-        () => fileData![item.field],
-        (v: unknown) => {
-          fileData![item.field] = v as string;
-        },
-      );
-    });
-    el.addEventListener('contextmenu', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const items: ContextMenuItem[] = [createMcpCopyItem(`read_field("${item.field}")`)];
-      appendBackupItems(items, item.id, e.clientX, e.clientY);
-      showContextMenu(e.clientX, e.clientY, items);
-    });
-    tree.appendChild(el);
-  }
-
-  tree.appendChild(createSectionHeader('스크립트'));
-  buildRegexSidebar(tree);
-  for (const child of Array.from(tree.children)) {
-    if (!child.getAttribute('data-workspace') && child !== tree.firstElementChild) {
-      (child as HTMLElement).dataset.workspace = 'advanced';
-    }
-  }
+  buildRegexSidebar(tree, true);
   initSidebarDnD(getDndDeps());
 }
 
@@ -2102,13 +2095,12 @@ const fileActionDeps: FileActionDeps = {
 };
 
 async function handleNew(): Promise<void> {
-  await _handleNew(fileActionDeps);
-  currentProjectPath = null;
+  if (await _handleNew(fileActionDeps)) setCurrentProjectPath(null);
 }
 async function handleOpen(): Promise<void> {
   const result = await _handleOpen(fileActionDeps);
   if (!result) return;
-  currentProjectPath = null;
+  setCurrentProjectPath(null);
   rememberRecentFile(result.path, result.sourceFormat);
 }
 
@@ -2119,7 +2111,7 @@ async function handleExtractDocumentProject(): Promise<void> {
     return;
   }
   setCurrentFileData(result.data);
-  currentProjectPath = result.projectPath || null;
+  setCurrentProjectPath(result.projectPath || null);
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
   resetDocumentWorkspace();
@@ -2135,7 +2127,7 @@ async function handleOpenProjectFolder(): Promise<void> {
     return;
   }
   setCurrentFileData(result.data);
-  currentProjectPath = result.projectPath || null;
+  setCurrentProjectPath(result.projectPath || null);
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
   resetDocumentWorkspace();
@@ -2160,7 +2152,7 @@ async function handleCloneProjectFolder(): Promise<void> {
     return;
   }
   setCurrentFileData(result.data);
-  currentProjectPath = result.projectPath || null;
+  setCurrentProjectPath(result.projectPath || null);
   rememberRecentProject(result.projectPath);
   useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
   resetDocumentWorkspace();
@@ -2179,7 +2171,7 @@ async function handleOpenRecentItem(payload?: unknown): Promise<void> {
         throw new Error(result.error || '알 수 없는 오류');
       }
       setCurrentFileData(result.data);
-      currentProjectPath = result.projectPath || null;
+      setCurrentProjectPath(result.projectPath || null);
       useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
       resetDocumentWorkspace();
       buildSidebar();
@@ -2190,7 +2182,7 @@ async function handleOpenRecentItem(payload?: unknown): Promise<void> {
     }
 
     await _handleOpenPath(fileActionDeps, item.path, { targetLabel: item.path });
-    currentProjectPath = null;
+    setCurrentProjectPath(null);
     rememberRecentFile(item.path, item.sourceFormat);
     setStatus(`최근 파일 열림: ${item.path}`);
   } catch (error) {
@@ -2553,6 +2545,38 @@ export async function initMainRenderer(): Promise<void> {
   });
 
   registerActions({
+    ...Object.fromEntries(
+      getVisibleRisupFieldGroups().map((group) => [
+        `risup-settings:${group.id}`,
+        () => {
+          if (fileData?._fileType === 'risup') openRisupGroupTab(group.id);
+        },
+      ]),
+    ),
+    'rename-preset': async () => {
+      if (fileData?._fileType !== 'risup') return;
+      const target = fileData;
+      const name = await showPrompt('프리셋 이름', target.name || '');
+      if (name === null || fileData !== target || !name.trim() || name === target.name) return;
+      target.name = name.trim();
+      useAppStore().setFileLabel(target.name);
+      tabMgr.markFieldDirty('name');
+      tabMgr.refreshIndexedTabs('risup_', (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
+      setStatus('프리셋 이름을 변경했습니다.');
+    },
+    'risup-description': () => {
+      if (fileData?._fileType !== 'risup') return;
+      const item = getRisupSidebarExtraItems()[0];
+      tabMgr.openTab(
+        item.id,
+        item.label,
+        item.language,
+        () => fileData![item.field],
+        (value) => {
+          fileData![item.field] = value as string;
+        },
+      );
+    },
     // File
     new: () => handleNew(),
     open: () => handleOpen(),

@@ -13,6 +13,30 @@ describe('risup prompt manager drag reorder', () => {
     document.body.innerHTML = '<div id="prompt-manager-panel"></div>';
   });
 
+  it('repairs invalid JSON without replacing it until the edited value is valid', () => {
+    const data = { _fileType: 'risup', promptTemplate: '[broken' } as RendererDocumentData;
+    const setPromptTemplate = vi.fn((value: string) => {
+      data.promptTemplate = value;
+    });
+    initPromptManagerPanel({
+      getFileData: () => data,
+      openPromptItem: vi.fn(),
+      setPromptTemplate,
+      confirm: vi.fn(),
+      setStatus: vi.fn(),
+      refresh: vi.fn(),
+    });
+    renderPromptManagerPanel();
+    const raw = document.querySelector<HTMLTextAreaElement>('[aria-label="프롬프트 JSON 복구"]')!;
+    const apply = [...document.querySelectorAll('button')].find((button) => button.textContent === '수정한 JSON 적용')!;
+    apply.click();
+    expect(setPromptTemplate).not.toHaveBeenCalled();
+    raw.value = '[{"type":"plain","text":"Recovered","custom":"keep"}]';
+    apply.click();
+    expect(data.promptTemplate).toBe(raw.value);
+    expect(document.querySelector('[aria-label="프롬프트 JSON 복구"]')).toBeNull();
+  });
+
   it('writes the actual promptTemplate in the dropped order', () => {
     const data = {
       _fileType: 'risup',
@@ -34,6 +58,8 @@ describe('risup prompt manager drag reorder', () => {
       refresh: vi.fn(),
     });
     renderPromptManagerPanel();
+    expect([...document.querySelectorAll('button')].some((button) => button.textContent === '삽입 순서')).toBe(false);
+    expect(setPromptTemplate).not.toHaveBeenCalled();
 
     const list = document.querySelector<HTMLElement>('.prompt-manager-list-sortable')!;
     const first = list.querySelector<HTMLElement>('[data-dnd-idx="0"]')!;

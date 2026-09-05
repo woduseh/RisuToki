@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   IconArrowUpRight,
   IconClock,
@@ -19,6 +19,7 @@ import { executeAction } from './lib/action-registry';
 import MenuBar from './components/MenuBar.vue';
 import StatusBar from './components/StatusBar.vue';
 import WorkspaceBar from './components/WorkspaceBar.vue';
+import NavigatorWorkspaces from './components/NavigatorWorkspaces.vue';
 import ContextInspector from './components/ContextInspector.vue';
 import AssetOutputWizard from './components/AssetOutputWizard.vue';
 import { writeWorkspaceLayoutState } from './lib/workspace-layout-state';
@@ -27,14 +28,56 @@ import { TOKI_APP_ICON } from './lib/avatar';
 import { showHelpPopup } from './lib/help-popup';
 
 const store = useAppStore();
+const desktopAvailable = !!window.tokiAPI;
+const viewportHeight = ref(window.innerHeight);
+const utilityHeightLimit = computed(() =>
+  Math.min(520, Math.floor(viewportHeight.value * (viewportHeight.value <= 680 ? 0.28 : 0.34))),
+);
+const effectiveUtilityHeight = computed(() => Math.min(store.utilityHeight, utilityHeightLimit.value));
 const shellStyle = computed(() => ({
   '--navigator-width': `${store.navigatorWidth}px`,
   '--inspector-width': `${store.inspectorWidth}px`,
   '--utility-height': `${store.utilityHeight}px`,
+  '--utility-effective-height': `${effectiveUtilityHeight.value}px`,
 }));
 const hasEditorContent = computed(() => store.hasFile || store.activeTabId !== null);
 const rightSidebarVisible = computed(() => store.rightSidebarVisible);
 const referenceToolsVisible = computed(() => store.guidesVisible || store.referencesVisible);
+const compact = ref(window.innerWidth < 1020);
+const overlayReferences = ref(window.innerWidth < 1180);
+const drawerOpen = computed(
+  () => (compact.value && store.navigatorVisible) || (overlayReferences.value && rightSidebarVisible.value),
+);
+const propertiesOpen = ref(false);
+function updateViewport() {
+  viewportHeight.value = window.innerHeight;
+  const next = window.innerWidth < 1020;
+  if (next && !compact.value && store.navigatorVisible) store.toggleNavigator();
+  compact.value = next;
+  overlayReferences.value = window.innerWidth < 1180;
+}
+onMounted(() => {
+  if (compact.value && store.navigatorVisible) store.toggleNavigator();
+  window.addEventListener('resize', updateViewport);
+  window.addEventListener('keydown', dismissDrawer);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateViewport);
+  window.removeEventListener('keydown', dismissDrawer);
+});
+function dismissDrawer(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented || !drawerOpen.value) return;
+  const target = compact.value && store.navigatorVisible ? '[aria-label="탐색기 전환"]' : '#btn-right-sidebar-toggle';
+  closeDrawers();
+  document.querySelector<HTMLButtonElement>(target)?.focus();
+}
+function closeNavigator() {
+  if (store.navigatorVisible) store.toggleNavigator();
+}
+function closeDrawers() {
+  if (compact.value) closeNavigator();
+  store.setRightSidebarView(null);
+}
 const inspectorTabLabel = computed(() => {
   const labels = {
     lorebook: '로어북 속성',
@@ -102,13 +145,17 @@ function startPaneResize(kind: 'navigator' | 'inspector' | 'utility', event: Poi
   const startX = event.clientX;
   const startY = event.clientY;
   const startValue =
-    kind === 'navigator' ? store.navigatorWidth : kind === 'inspector' ? store.inspectorWidth : store.utilityHeight;
+    kind === 'navigator'
+      ? store.navigatorWidth
+      : kind === 'inspector'
+        ? store.inspectorWidth
+        : effectiveUtilityHeight.value;
   let pendingPosition: { x: number; y: number } | null = null;
   let resizeFrame: number | null = null;
   const applyPosition = ({ x, y }: { x: number; y: number }) => {
     if (kind === 'navigator') store.setNavigatorWidth(startValue + x - startX);
     else if (kind === 'inspector') store.setInspectorWidth(startValue - x + startX);
-    else store.setUtilityHeight(startValue + startY - y);
+    else store.setUtilityHeight(Math.min(utilityHeightLimit.value, startValue + startY - y));
   };
   const flushPosition = () => {
     resizeFrame = null;
@@ -145,7 +192,9 @@ function resizeWithKeyboard(kind: 'navigator' | 'inspector' | 'utility', event: 
   const step = event.shiftKey ? 50 : 10;
   if (kind === 'utility' && (event.key === 'ArrowUp' || event.key === 'ArrowDown')) {
     event.preventDefault();
-    store.setUtilityHeight(store.utilityHeight + (event.key === 'ArrowUp' ? step : -step));
+    store.setUtilityHeight(
+      Math.min(utilityHeightLimit.value, effectiveUtilityHeight.value + (event.key === 'ArrowUp' ? step : -step)),
+    );
   } else if (kind !== 'utility' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? step : -step;
@@ -168,8 +217,6 @@ function handleAction(action: string, payload?: unknown) {
   if (action === 'toggle-right-sidebar') {
     if (rightSidebarVisible.value) {
       store.setRightSidebarView(null);
-    } else if (store.hasInspectorContext) {
-      store.setRightSidebarView('inspector');
     } else {
       selectRightSidebarView('references');
     }
@@ -216,6 +263,11 @@ function recentName(path: string) {
 
 <template>
   <MenuBar
+    :can-save="store.hasFile"
+    :has-active-tab="store.activeTabId !== null"
+    :can-edit-text="store.monacoReady && !!store.activeTabLanguage && store.activeTabId !== null"
+    :has-project="!!store.projectPath"
+    :terminal-available="desktopAvailable"
     :can-preview-current-file="store.canPreviewCurrentFile"
     :recent-items="store.recentItems"
     :references-open="referenceToolsVisible"
@@ -241,11 +293,31 @@ function recentName(path: string) {
     <WorkspaceBar @action="handleAction" />
 
     <div id="workspace-shell">
+      <button
+        v-if="drawerOpen"
+        class="workspace-scrim"
+        type="button"
+        aria-label="열린 패널 닫기"
+        @click="closeDrawers"
+      />
       <aside v-show="store.navigatorVisible" id="workspace-navigator" aria-label="작업공간 탐색기">
+        <div class="navigator-heading">
+          <strong>문서 구성</strong
+          ><button
+            class="navigator-close"
+            type="button"
+            title="탐색기 닫기"
+            aria-label="탐색기 닫기"
+            @click="closeNavigator"
+          >
+            <IconX :size="17" />
+          </button>
+        </div>
+        <NavigatorWorkspaces />
+        <p v-if="!store.hasFile" class="navigator-empty">파일을 열면 문서의 구성 요소가 여기에 표시돼요.</p>
         <div id="slot-left" class="layout-slot slot-v active">
           <div id="sidebar">
             <div id="sidebar-items-section" class="sidebar-section">
-              <div class="sidebar-header"><span>탐색기</span></div>
               <div id="sidebar-tree"></div>
             </div>
           </div>
@@ -266,7 +338,7 @@ function recentName(path: string) {
         @keydown="resizeWithKeyboard('navigator', $event)"
       ></div>
 
-      <section id="workspace-editor" aria-label="편집기">
+      <section id="workspace-editor" aria-label="편집기" :class="{ 'showing-welcome': !hasEditorContent }">
         <div v-if="!hasEditorContent" id="welcome-screen">
           <img class="welcome-mark" :src="TOKI_APP_ICON" alt="" />
           <h1>무엇을 만들까요?</h1>
@@ -298,6 +370,21 @@ function recentName(path: string) {
             <div id="editor-tabs"></div>
             <button id="editor-mode-toggle" type="button" style="display: none">코드 보기</button>
           </div>
+          <div v-if="store.inspectorContext.kind === 'asset'" id="editor-asset-actions">
+            <ContextInspector />
+          </div>
+          <details
+            v-else-if="store.hasInspectorContext"
+            id="editor-properties"
+            :open="propertiesOpen"
+            @toggle="propertiesOpen = ($event.target as HTMLDetailsElement).open"
+          >
+            <summary>{{ inspectorTabLabel }} <span>이 항목의 동작 조건과 정보를 편집해요</span></summary>
+            <ContextInspector />
+          </details>
+          <p v-if="store.fileData?._fileType === 'risup' && !store.activeTabId" class="navigator-empty">
+            왼쪽에서 프롬프트를 선택하거나 토글·변수, 정규식을 열어 작업하세요.
+          </p>
           <div id="editor-container"></div>
         </div>
       </section>
@@ -316,19 +403,6 @@ function recentName(path: string) {
       <aside v-show="rightSidebarVisible" id="right-sidebar" aria-label="사이드 패널">
         <header class="right-sidebar-header">
           <div class="right-sidebar-tabs" role="tablist" aria-label="사이드 패널">
-            <button
-              v-if="store.hasInspectorContext"
-              id="right-sidebar-inspector-tab"
-              type="button"
-              role="tab"
-              :aria-selected="store.inspectorVisible"
-              aria-controls="context-inspector"
-              :class="{ active: store.inspectorVisible }"
-              @click="selectRightSidebarView('inspector')"
-              @keydown="handleRightSidebarTabKeydown"
-            >
-              {{ inspectorTabLabel }}
-            </button>
             <button
               id="right-sidebar-guides-tab"
               type="button"
@@ -369,7 +443,6 @@ function recentName(path: string) {
           </div>
         </header>
         <div class="right-sidebar-content">
-          <ContextInspector v-show="store.inspectorVisible && store.hasInspectorContext" />
           <div
             v-show="referenceToolsVisible"
             id="reference-drawer-body"
@@ -392,8 +465,8 @@ function recentName(path: string) {
         aria-label="터미널 선반 높이 조절"
         aria-orientation="horizontal"
         aria-valuemin="130"
-        aria-valuemax="520"
-        :aria-valuenow="store.utilityHeight"
+        :aria-valuemax="utilityHeightLimit"
+        :aria-valuenow="effectiveUtilityHeight"
         tabindex="0"
         @pointerdown="startPaneResize('utility', $event)"
         @keydown="resizeWithKeyboard('utility', $event)"

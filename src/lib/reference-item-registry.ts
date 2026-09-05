@@ -162,6 +162,14 @@ const RISUM_ITEMS: readonly ReferenceUiItemDescriptor[] = [
 ] as const;
 
 const RISUP_ITEMS: readonly ReferenceUiItemDescriptor[] = [
+  {
+    field: 'promptTemplate',
+    icon: '💬',
+    key: 'promptTemplate',
+    kind: 'field',
+    label: '프롬프트',
+    language: 'json',
+  },
   ...getVisibleRisupFieldGroups().map(
     (group): ReferenceRisupGroupItemDescriptor => ({
       groupId: group.id,

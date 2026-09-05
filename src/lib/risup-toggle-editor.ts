@@ -1,14 +1,20 @@
 import Sortable from 'sortablejs';
 import type { PromptEditorHandle } from './risup-prompt-editor';
 import type { ToggleTemplateItem, ToggleTemplateItemType } from './risup-toggle-model';
-import { moveListItem } from './list-reorder';
 import {
-  TOGGLE_TEMPLATE_ITEM_TYPES,
+  appendToggleRootItems,
+  buildToggleVisualNodes,
+  moveToggleVisualNode,
+  removeToggleVisualNode,
+  moveToggleNodeToGroup,
+  type ToggleVisualNode,
+} from './risup-toggle-layout';
+import {
   createToggleTemplateItem,
   parseCustomPromptTemplateToggle,
   serializeCustomPromptTemplateToggle,
 } from './risup-toggle-model';
-import { SHARED_OPTIONS, makeFlatOnEnd } from './sidebar-dnd';
+import { SHARED_OPTIONS } from './sidebar-dnd';
 
 function makeFieldLabel(text: string): HTMLDivElement {
   const label = document.createElement('div');
@@ -93,6 +99,7 @@ function getToggleItemLabel(item: ToggleTemplateItem): string {
 }
 
 function getToggleItemSummary(item: ToggleTemplateItem): string {
+  if (item.type === 'caption' || item.type === 'divider') return getToggleItemLabel(item);
   return item.type === 'groupEnd'
     ? 'group 종료'
     : `${getToggleItemKey(item) || item.type} ${getToggleItemLabel(item) ? `• ${getToggleItemLabel(item)}` : ''}`.trim();
@@ -149,17 +156,19 @@ export function createCustomPromptTemplateToggleEditor(
   let model = parseCustomPromptTemplateToggle(initialValue);
   let mode: 'visual' | 'raw' = model.state === 'invalid' ? 'raw' : 'visual';
   let newItemType: ToggleTemplateItemType = 'toggle';
-  let toggleSortable: Sortable | null = null;
+  const toggleSortables: Sortable[] = [];
+  const collapsedGroups = new Set<ToggleTemplateItem>();
 
   function destroyToggleSortable(): void {
-    if (!toggleSortable) return;
-    toggleSortable.destroy();
-    toggleSortable = null;
+    for (const sortable of toggleSortables) sortable.destroy();
+    toggleSortables.length = 0;
   }
 
   function updateRawValue(nextValue: string): void {
     model = parseCustomPromptTemplateToggle(nextValue);
     if (model.state === 'invalid') mode = 'raw';
+    const visualButton = container.querySelector<HTMLButtonElement>('[data-action="show-visual-mode"]');
+    if (visualButton) visualButton.disabled = model.state === 'invalid';
     if (onChange) onChange(nextValue);
   }
 
@@ -187,50 +196,19 @@ export function createCustomPromptTemplateToggleEditor(
     const item = next[index];
     if (!item) return;
     next[index] = updater(item);
+    if (collapsedGroups.delete(item)) collapsedGroups.add(next[index]);
     commitVisualItems(next);
     if (rerender) {
       render();
       return;
     }
-    const summary = container.querySelector<HTMLElement>(`[data-toggle-index="${index}"] .prompt-editor-summary`);
+    const summary = container.querySelector<HTMLElement>(
+      `[data-toggle-index="${index}"] > .toggle-template-item-header > .prompt-editor-summary`,
+    );
     if (summary && model.items[index]) summary.textContent = getToggleItemSummary(model.items[index]);
   }
 
-  function renderItemFields(item: ToggleTemplateItem, index: number, wrapper: HTMLElement, actions: HTMLElement): void {
-    if (!readonly) {
-      const upBtn = document.createElement('button');
-      upBtn.type = 'button';
-      upBtn.className = 'settings-btn prompt-editor-action';
-      upBtn.textContent = '↑';
-      upBtn.setAttribute('data-action', 'move-up');
-      upBtn.disabled = index === 0;
-      upBtn.addEventListener('click', () => {
-        structuralChange(moveListItem(model.items, index, index - 1));
-      });
-      actions.appendChild(upBtn);
-
-      const downBtn = document.createElement('button');
-      downBtn.type = 'button';
-      downBtn.className = 'settings-btn prompt-editor-action';
-      downBtn.textContent = '↓';
-      downBtn.setAttribute('data-action', 'move-down');
-      downBtn.disabled = index === model.items.length - 1;
-      downBtn.addEventListener('click', () => {
-        structuralChange(moveListItem(model.items, index, index + 1));
-      });
-      actions.appendChild(downBtn);
-
-      const removeBtn = document.createElement('button');
-      removeBtn.type = 'button';
-      removeBtn.className = 'settings-btn prompt-editor-action';
-      removeBtn.textContent = '✕';
-      removeBtn.setAttribute('data-action', 'remove-item');
-      removeBtn.addEventListener('click', () => {
-        structuralChange(model.items.filter((_, itemIndex) => itemIndex !== index));
-      });
-      actions.appendChild(removeBtn);
-    }
-
+  function renderItemFields(item: ToggleTemplateItem, index: number, wrapper: HTMLElement): void {
     const fields = document.createElement('div');
     fields.className = 'toggle-template-fields';
 
@@ -356,6 +334,263 @@ export function createCustomPromptTemplateToggleEditor(
     wrapper.appendChild(fields);
   }
 
+  const controlTypes: ToggleTemplateItemType[] = ['toggle', 'select', 'text', 'textarea'];
+  const typeLabels: Partial<Record<ToggleTemplateItemType, string>> = {
+    toggle: '토글',
+    select: '선택 목록',
+    text: '텍스트',
+    textarea: '여러 줄 텍스트',
+    divider: '구분선',
+  };
+
+  function makeAction(text: string, action: string, label: string, run: () => void): HTMLButtonElement {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'settings-btn prompt-editor-action';
+    button.dataset.action = action;
+    button.textContent = text;
+    button.title = label;
+    button.setAttribute('aria-label', label);
+    button.addEventListener('click', run);
+    return button;
+  }
+
+  function renderActions(node: ToggleVisualNode, siblings: ToggleVisualNode[], position: number): HTMLElement {
+    const actions = document.createElement('div');
+    actions.className = 'prompt-editor-actions';
+    if (readonly) return actions;
+    const visiblePositions = siblings.flatMap((entry, index) => (entry.kind === 'boundary' ? [] : [index]));
+    const visibleIndex = visiblePositions.indexOf(position);
+    const drag = makeAction(
+      '↕',
+      'drag-handle',
+      node.kind === 'group' ? '그룹과 내부 항목 이동' : '항목과 캡션 이동',
+      () => {},
+    );
+    drag.classList.add('toggle-template-drag-handle');
+    actions.appendChild(drag);
+    const up = makeAction('↑', 'move-up', '위로 이동', () => {
+      structuralChange(moveToggleVisualNode(model.items, siblings, position, visiblePositions[visibleIndex - 1]));
+    });
+    up.disabled = visibleIndex === 0;
+    const down = makeAction('↓', 'move-down', '아래로 이동', () => {
+      structuralChange(moveToggleVisualNode(model.items, siblings, position, visiblePositions[visibleIndex + 1]));
+    });
+    down.disabled = visibleIndex === visiblePositions.length - 1;
+    const remove = makeAction(
+      '삭제',
+      'remove-item',
+      node.kind === 'group' ? '그룹과 내부 항목 삭제' : '항목과 연결된 캡션 삭제',
+      () => {
+        structuralChange(removeToggleVisualNode(model.items, siblings, position));
+      },
+    );
+    actions.append(up, down, remove);
+    return actions;
+  }
+
+  function renderCaptions(node: ToggleVisualNode, card: HTMLElement): void {
+    const captions = document.createElement('div');
+    captions.className = 'toggle-visual-captions';
+    for (const index of node.captions) {
+      const caption = model.items[index];
+      const row = document.createElement('div');
+      row.className = 'toggle-visual-caption';
+      row.appendChild(makeFieldLabel('캡션'));
+      const input = makeInput(
+        getToggleItemLabel(caption),
+        readonly,
+        (value) => {
+          updateItem(index, () => ({ type: 'caption', value: value || undefined }));
+        },
+        'toggle-caption',
+      );
+      input.setAttribute('aria-label', '항목 설명 캡션');
+      input.dataset.captionIndex = String(index);
+      row.appendChild(input);
+      if (!readonly)
+        row.appendChild(
+          makeAction('✕', 'remove-caption', '캡션 삭제', () => {
+            structuralChange(model.items.filter((_, itemIndex) => itemIndex !== index));
+          }),
+        );
+      captions.appendChild(row);
+    }
+    if (!readonly) {
+      const roots = buildToggleVisualNodes(model.items);
+      const groups = roots.filter((entry) => entry.kind === 'group');
+      if (groups.length) {
+        const current = groups.find((entry) => entry.children.some((child) => child.start === node.start));
+        const move = makeSelect(
+          [
+            { value: '', label: '그룹 없음' },
+            ...groups.map((entry) => ({
+              value: String(entry.start),
+              label: getToggleItemLabel(model.items[entry.start]) || '이름 없는 그룹',
+            })),
+          ],
+          current ? String(current.start) : '',
+          false,
+          (value) => {
+            structuralChange(moveToggleNodeToGroup(model.items, node, value === '' ? null : Number(value)));
+          },
+          'toggle-parent-group',
+        );
+        move.setAttribute('aria-label', '항목을 다른 그룹으로 이동');
+        captions.appendChild(makeFieldLabel('소속 그룹'));
+        captions.appendChild(move);
+      }
+      captions.appendChild(
+        makeAction('+ 캡션', 'add-caption', '이 항목 아래 캡션 추가', () => {
+          const next = [...model.items];
+          next.splice(node.end, 0, { type: 'caption', value: undefined });
+          structuralChange(next);
+          container
+            .querySelector<HTMLInputElement>(`[data-caption-index="${node.end}"]`)
+            ?.focus({ preventScroll: true });
+        }),
+      );
+    }
+    if (captions.childElementCount) card.appendChild(captions);
+  }
+
+  function renderVisualList(nodes: ToggleVisualNode[]): HTMLDivElement {
+    const list = document.createElement('div');
+    list.className = 'toggle-template-list toggle-visual-list';
+    const visiblePositions = nodes.flatMap((node, index) => (node.kind === 'boundary' ? [] : [index]));
+    nodes.forEach((node, position) => {
+      if (node.kind === 'boundary') return;
+      const item = model.items[node.start];
+      const card = document.createElement('div');
+      card.className = `prompt-editor-card toggle-template-item toggle-visual-${node.kind}`;
+      card.dataset.toggleItem = '';
+      card.dataset.toggleIndex = String(node.start);
+      card.dataset.siblingIndex = String(position);
+      if (!readonly) card.dataset.dndIdx = String(position);
+      const header = document.createElement('div');
+      header.className = 'prompt-editor-card-header toggle-template-item-header';
+      const actions = renderActions(node, nodes, position);
+
+      if (node.kind === 'group') {
+        const body = document.createElement('div');
+        body.className = 'toggle-visual-group-body';
+        body.hidden = collapsedGroups.has(item);
+        const collapse = makeAction(body.hidden ? '▶' : '▼', 'toggle-group', '그룹 펼치기/접기', () => {
+          const current = model.items[node.start];
+          body.hidden = !body.hidden;
+          if (body.hidden) collapsedGroups.add(current);
+          else collapsedGroups.delete(current);
+          collapse.textContent = body.hidden ? '▶' : '▼';
+          collapse.setAttribute('aria-expanded', String(!body.hidden));
+        });
+        collapse.setAttribute('aria-expanded', String(!body.hidden));
+        const title = makeInput(
+          getToggleItemLabel(item),
+          readonly,
+          (value) => {
+            updateItem(node.start, () => ({ type: 'group', value: value || undefined }));
+          },
+          'toggle-group-name',
+        );
+        title.setAttribute('aria-label', '그룹 이름');
+        title.classList.add('toggle-visual-group-name');
+        const count = document.createElement('span');
+        count.className = 'toggle-visual-group-count';
+        count.textContent = `${node.children.length}개`;
+        header.append(collapse, title, count, actions);
+        body.appendChild(renderVisualList(node.children));
+        if (!readonly) body.appendChild(renderAddBar(node));
+        card.append(header, body);
+      } else {
+        if (node.kind === 'control') {
+          const select = makeSelect(
+            controlTypes.map((type) => ({ value: type, label: typeLabels[type]! })),
+            item.type,
+            readonly,
+            (value) => {
+              updateItem(
+                node.start,
+                (current) => convertToggleItemType(current, value as ToggleTemplateItemType),
+                true,
+              );
+            },
+            'toggle-type',
+          );
+          select.classList.add('toggle-template-item-type');
+          header.appendChild(select);
+        } else {
+          const label = document.createElement('span');
+          label.textContent = node.kind === 'divider' ? '구분선' : '독립 캡션';
+          header.appendChild(label);
+        }
+        const summary = document.createElement('div');
+        summary.className = 'prompt-editor-summary';
+        summary.textContent = getToggleItemSummary(item);
+        header.append(summary, actions);
+        card.appendChild(header);
+        if (node.kind === 'divider') card.appendChild(document.createElement('hr'));
+        renderItemFields(item, node.start, card);
+        if (node.kind === 'control') renderCaptions(node, card);
+      }
+      list.appendChild(card);
+    });
+    if (!readonly && visiblePositions.length > 1) {
+      toggleSortables.push(
+        Sortable.create(list, {
+          ...SHARED_OPTIONS,
+          draggable: '> [data-toggle-item]',
+          handle: '.toggle-template-drag-handle',
+          onEnd: (event) => {
+            if (event.newIndex == null || event.oldIndex === event.newIndex) return;
+            const from = Number(event.item.dataset.siblingIndex);
+            structuralChange(moveToggleVisualNode(model.items, nodes, from, visiblePositions[event.newIndex]));
+          },
+        }),
+      );
+    }
+    return list;
+  }
+
+  function renderAddBar(group?: ToggleVisualNode): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'toggle-template-addbar toggle-visual-addbar';
+    let selectedType = newItemType;
+    const select = makeSelect(
+      [...controlTypes, 'divider' as const].map((type) => ({ value: type, label: typeLabels[type]! })),
+      selectedType,
+      false,
+      (value) => {
+        selectedType = value as ToggleTemplateItemType;
+        newItemType = selectedType;
+      },
+      'new-toggle-item-type',
+    );
+    select.setAttribute('aria-label', '추가할 항목 종류');
+    const add = makeAction(
+      group ? '+ 그룹 안에 추가' : '+ 항목 추가',
+      'add-toggle-item',
+      group ? '그룹 안에 항목 추가' : '최상위 항목 추가',
+      () => {
+        const added = createToggleTemplateItem(selectedType);
+        if (group) {
+          const next = [...model.items];
+          next.splice(group.end - (group.closed ? 1 : 0), 0, added);
+          structuralChange(next);
+        } else structuralChange(appendToggleRootItems(model.items, [added]));
+      },
+    );
+    bar.append(select, add);
+    if (!group)
+      bar.appendChild(
+        makeAction('+ 그룹', 'add-toggle-group', '새 그룹 추가', () => {
+          structuralChange(
+            appendToggleRootItems(model.items, [createToggleTemplateItem('group'), { type: 'groupEnd' }]),
+          );
+        }),
+      );
+    return bar;
+  }
+
   function render(): void {
     renderWithPreservedScroll(container, renderContent);
   }
@@ -410,107 +645,17 @@ export function createCustomPromptTemplateToggleEditor(
       return;
     }
 
-    let list: HTMLDivElement | null = null;
-    if (model.items.length === 0) {
+    const nodes = buildToggleVisualNodes(model.items);
+    if (nodes.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'prompt-editor-message toggle-template-empty';
-      empty.textContent = '커스텀 템플릿 토글이 비어 있습니다.';
+      empty.textContent = '항목이나 그룹을 추가해 커스텀 토글을 구성하세요.';
       root.appendChild(empty);
-    } else {
-      const visualList = document.createElement('div');
-      visualList.className = 'toggle-template-list';
-      list = visualList;
-
-      model.items.forEach((item, index) => {
-        const card = document.createElement('div');
-        card.className = 'prompt-editor-card toggle-template-item';
-        card.setAttribute('data-toggle-item', '');
-        card.dataset.toggleIndex = String(index);
-        if (!readonly && model.items.length > 1) {
-          card.dataset.dndIdx = String(index);
-        }
-
-        const header = document.createElement('div');
-        header.className = 'prompt-editor-card-header toggle-template-item-header';
-        const typeSelect = makeSelect(
-          TOGGLE_TEMPLATE_ITEM_TYPES.map((type) => ({ value: type, label: type })),
-          item.type,
-          readonly,
-          (value) => {
-            updateItem(index, (current) => convertToggleItemType(current, value as ToggleTemplateItemType), true);
-          },
-          'toggle-type',
-        );
-        typeSelect.classList.add('toggle-template-item-type');
-        header.appendChild(typeSelect);
-
-        const summary = document.createElement('div');
-        summary.className = 'prompt-editor-summary';
-        summary.textContent = getToggleItemSummary(item);
-        header.appendChild(summary);
-
-        const actions = document.createElement('div');
-        actions.className = 'prompt-editor-actions';
-
-        if (!readonly) {
-          const dragHandle = document.createElement('button');
-          dragHandle.setAttribute('data-action', 'drag-handle');
-          dragHandle.type = 'button';
-          dragHandle.className = 'settings-btn prompt-editor-action toggle-template-drag-handle';
-          dragHandle.textContent = '↕';
-          dragHandle.title = '드래그해서 재정렬';
-          actions.appendChild(dragHandle);
-        }
-        header.appendChild(actions);
-
-        card.appendChild(header);
-        renderItemFields(item, index, card, actions);
-        visualList.appendChild(card);
-      });
-
-      root.appendChild(visualList);
     }
-
-    if (!readonly) {
-      const addBar = document.createElement('div');
-      addBar.className = 'toggle-template-addbar';
-
-      const addType = makeSelect(
-        TOGGLE_TEMPLATE_ITEM_TYPES.map((type) => ({ value: type, label: type })),
-        newItemType,
-        false,
-        (value) => {
-          newItemType = value as ToggleTemplateItemType;
-        },
-        'new-toggle-item-type',
-      );
-      addBar.appendChild(addType);
-
-      const addBtn = document.createElement('button');
-      addBtn.type = 'button';
-      addBtn.className = 'settings-btn prompt-editor-add';
-      addBtn.setAttribute('data-action', 'add-toggle-item');
-      addBtn.textContent = '+ 추가';
-      addBtn.addEventListener('click', () => {
-        structuralChange([...model.items, createToggleTemplateItem(newItemType)]);
-      });
-      addBar.appendChild(addBtn);
-      root.appendChild(addBar);
-    }
-
+    root.appendChild(renderVisualList(nodes));
+    if (!readonly) root.appendChild(renderAddBar());
     container.appendChild(root);
-
-    if (!readonly && mode === 'visual' && list && model.items.length > 1) {
-      toggleSortable = Sortable.create(list, {
-        ...SHARED_OPTIONS,
-        handle: '.toggle-template-drag-handle',
-        onEnd: makeFlatOnEnd((fromIdx, toIdx) => {
-          structuralChange(moveListItem(model.items, fromIdx, toIdx));
-        }),
-      });
-    }
   }
-
   render();
 
   return {

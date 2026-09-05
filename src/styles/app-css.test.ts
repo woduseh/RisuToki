@@ -24,6 +24,36 @@ describe('app.css – status bar affordances', () => {
 });
 
 describe('app.css – form editor controls', () => {
+  it('retains module switch card padding and borders against later shared settings styles', () => {
+    const style = document.createElement('style');
+    // jsdom does not resolve custom properties inside border shorthands.
+    style.textContent = css.replaceAll('var(--border-color)', '#888');
+    const container = document.createElement('div');
+    container.className = 'module-settings-form';
+    container.innerHTML = `
+      <div class="module-settings-switches">
+      <div class="settings-row module-settings-switch-row"><div>저수준 접근</div><button class="settings-toggle app-switch"></button></div>
+      <div class="settings-row module-settings-switch-row"><div>아이콘 숨김</div><button class="settings-toggle app-switch"></button></div>
+      </div>
+    `;
+    document.head.appendChild(style);
+    document.body.appendChild(container);
+    try {
+      for (const row of container.querySelectorAll('.module-settings-switch-row')) {
+        const computed = getComputedStyle(row);
+        expect(computed.paddingLeft).toBe('12px');
+        expect(computed.paddingRight).toBe('12px');
+        expect(computed.paddingTop).toBe('10px');
+        expect(computed.borderBottomStyle).toBe('solid');
+        expect(computed.alignItems).toBe('center');
+        expect(getComputedStyle(row.querySelector('button')!).flexShrink).toBe('0');
+      }
+    } finally {
+      style.remove();
+      container.remove();
+    }
+  });
+
   it('keeps RISUM module rows in natural flow and aligns switches with the input column', () => {
     expect(css).toMatch(/\.module-settings-form\s+\.form-editor-body\s*\{[^}]*gap:\s*8px;[^}]*\}/s);
     expect(css).toMatch(

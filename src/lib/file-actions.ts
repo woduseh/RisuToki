@@ -178,11 +178,11 @@ async function openDocumentWithLoader(
   }
 }
 
-export async function handleNew(deps: FileActionDeps): Promise<void> {
+export async function handleNew(deps: FileActionDeps): Promise<boolean> {
   const store = useAppStore();
-  if (!(await confirmDocumentReplacement(deps, '새 파일'))) return;
+  if (!(await confirmDocumentReplacement(deps, '새 파일'))) return false;
   const data = await window.tokiAPI.newFile();
-  if (!data) return;
+  if (!data) return false;
   deps.setFileData(data);
   resetEditorUI(deps);
 
@@ -191,6 +191,7 @@ export async function handleNew(deps: FileActionDeps): Promise<void> {
 
   deps.buildSidebar();
   deps.setStatus('새 파일 생성됨');
+  return true;
 }
 
 export async function handleOpen(deps: FileActionDeps): Promise<OpenedDocumentResult | null> {

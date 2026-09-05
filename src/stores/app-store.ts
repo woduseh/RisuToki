@@ -53,6 +53,7 @@ export const useAppStore = defineStore('app', () => {
   const statusSticky = ref(false);
   const documentStatsText = ref('');
   const fileLabel = ref('');
+  const projectPath = ref<string | null>(null);
   const recentItems = ref<RecentItem[]>([]);
   const restoredSessionLabel = ref('');
   const restoredSessionStatusText = ref('');
@@ -109,7 +110,7 @@ export const useAppStore = defineStore('app', () => {
   const guidesVisible = computed(() => rightSidebarView.value === 'guides');
   const referencesVisible = computed(() => rightSidebarView.value === 'references');
   const rightSidebarVisible = computed(
-    () => rightSidebarView.value !== null && (rightSidebarView.value !== 'inspector' || hasInspectorContext.value),
+    () => rightSidebarView.value === 'references' || rightSidebarView.value === 'guides',
   );
 
   // === Actions ===
@@ -142,6 +143,10 @@ export const useAppStore = defineStore('app', () => {
 
   function setFileLabel(label: string) {
     fileLabel.value = label;
+  }
+
+  function setProjectPath(path: string | null) {
+    projectPath.value = path;
   }
 
   function setRecentItems(items: RecentItem[]) {
@@ -189,10 +194,8 @@ export const useAppStore = defineStore('app', () => {
     activeTabId.value = id;
     const inferred = inferWorkspaceFromTab(id, fileData.value);
     if (inferred && isWorkspaceAvailable(fileData.value, inferred)) workspaceId.value = inferred;
-    if (getInspectorContext(id).kind !== 'empty') {
-      rightSidebarView.value = 'inspector';
-      if (typeof window !== 'undefined' && window.innerWidth < 1020) navigatorVisible.value = false;
-    }
+    // Selecting content must not replace the reference material being consulted.
+    if (id && typeof window !== 'undefined' && window.innerWidth < 1020) navigatorVisible.value = false;
   }
 
   function setWorkspaceId(id: WorkspaceId) {
@@ -392,6 +395,8 @@ export const useAppStore = defineStore('app', () => {
     clearStatus,
     setDocumentStatsText,
     setFileLabel,
+    projectPath,
+    setProjectPath,
     setRecentItems,
     setRestoredSessionLabel,
     showRestoredSessionStatus,

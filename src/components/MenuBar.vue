@@ -25,6 +25,11 @@ interface SubMenu {
 type MenuEntry = MenuItem | MenuSeparator | SubMenu;
 
 const props = defineProps<{
+  canSave?: boolean;
+  hasActiveTab?: boolean;
+  canEditText?: boolean;
+  hasProject?: boolean;
+  terminalAvailable?: boolean;
   canPreviewCurrentFile?: boolean;
   recentItems?: RecentItem[];
   referencesOpen?: boolean;
@@ -83,7 +88,7 @@ const menus = computed<{ id: string; label: string; items: MenuEntry[] }[]>(() =
       { label: '열기', shortcut: 'Ctrl+O', action: 'open' },
       { label: '최근 항목', children: buildRecentMenuItems() },
       { label: '프로젝트 폴더 열기', action: 'open-project-folder' },
-      { label: '프로젝트 폴더로 추출', action: 'extract-document-project' },
+      { label: '파일을 프로젝트 폴더로 추출…', action: 'extract-document-project' },
       { label: '프로젝트 폴더 복제', action: 'clone-project-folder' },
       { separator: true },
       { label: '저장', shortcut: 'Ctrl+S', action: 'save' },
@@ -225,8 +230,37 @@ function onMenuEnter(menuId: string) {
 }
 
 function isItemDisabled(item: MenuItem): boolean {
-  if (item.action === 'preview-test' && !props.canPreviewCurrentFile) return true;
-  return item.disabled === true;
+  if (item.disabled) return true;
+  switch (item.action) {
+    case 'save':
+    case 'save-as':
+      return !props.canSave;
+    case 'close-tab':
+      return !props.hasActiveTab;
+    case 'clone-project-folder':
+    case 'reassemble-project-document':
+      return !props.hasProject;
+    case 'undo':
+    case 'redo':
+    case 'select-all':
+    case 'find':
+    case 'replace':
+    case 'zoom-in':
+    case 'zoom-out':
+    case 'zoom-reset':
+      return !props.canEditText;
+    case 'claude-start':
+    case 'copilot-start':
+    case 'codex-start':
+    case 'antigravity-start':
+    case 'terminal-clear':
+    case 'terminal-restart':
+      return !props.terminalAvailable;
+    case 'preview-test':
+      return !props.canPreviewCurrentFile;
+    default:
+      return false;
+  }
 }
 
 function handleAction(action: string, item?: MenuItem) {
@@ -409,6 +443,8 @@ defineExpose({ closeMenus });
       class="menu-label menu-quick-action"
       :class="{ active: props.referencesOpen }"
       role="menuitem"
+      aria-label="참고자료 서랍 전환"
+      :title="props.referencesOpen ? '참고자료 닫기' : '참고자료 열기'"
       :aria-pressed="props.referencesOpen"
       @click.stop="emit('action', 'toggle-references')"
     >

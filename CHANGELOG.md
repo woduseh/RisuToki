@@ -9,6 +9,23 @@
 
 ---
 
+## [3.7.0] - 2026-09-06
+
+### Added
+
+- Reworked the toggle Visual editor with collapsible groups, in-group additions, attached captions, and visible separators while retaining Raw syntax. Group and control reordering keeps their contents together; insertion order now lives in the preset overflow settings.
+- Redesigned RISUP navigation around prompts, toggles/variables, and direct regex editing. Split toggle, variable, and insertion-order screens; moved preset renaming to the document title and secondary settings to the overflow menu while preserving stored fields.
+- Moved document sections into the navigator and added a document toolbar with direct Save and Preview actions.
+- Added collapsible properties above the active editor; selecting lorebook, regex, prompt, or asset content now preserves open guides and reference files.
+
+### Fixed
+
+- Restored collapsed sidebar folders across document formats and corrected padding and alignment for RISUM module switches.
+- Increased the default navigator width to fit the five CHARX sections on one row. Asset editing now exposes Rename and Delete directly, without a redundant metadata disclosure.
+- Made file, project, text-editing, and terminal menu actions reflect their available context, and clarified that project extraction starts with a file picker.
+- Fixed collapsed overlay widths and clipped welcome actions at the minimum window size. Compact navigation starts closed, overlays can be dismissed, and the terminal height adapts to short windows.
+- Improved light-theme contrast, reduced panel decoration, and retained accessible names when toolbar labels are hidden.
+
 ## [3.6.6] - 2026-09-05
 
 ### Fixed

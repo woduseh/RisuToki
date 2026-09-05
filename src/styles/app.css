@@ -44,6 +44,19 @@ body {
     radial-gradient(circle at 50% 50%, rgba(255, 202, 40, 0.015) 0%, transparent 60%);
 }
 
+.risup-regex-toolbar {
+  padding: 4px 0 12px;
+}
+.risup-regex-toolbar button {
+  padding: 6px 12px;
+  margin-right: 6px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
 /* ===== Menu Bar ===== */
 #menubar {
   display: flex;
@@ -1133,7 +1146,7 @@ body {
   gap: 8px;
 }
 
-.module-settings-switch-row,
+.module-settings-form .module-settings-switches .module-settings-switch-row,
 .lore-activation-switch {
   display: flex;
   align-items: center;
@@ -1143,6 +1156,12 @@ body {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
   background: var(--bg-primary);
+}
+
+.module-settings-switch-row > div {
+  min-width: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
 .app-switch:focus-visible {
@@ -3990,4 +4009,105 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
     scroll-behavior: auto !important;
     transition-duration: 0.001ms !important;
   }
+}
+
+/* Grouped toggle authoring: folders retain the flat RisuAI serialization. */
+.toggle-visual-list {
+  min-width: 0;
+}
+.toggle-visual-group {
+  border-color: var(--ui-selected-border, var(--accent));
+}
+.toggle-visual-group > .toggle-template-item-header {
+  flex-wrap: wrap;
+  gap: 8px;
+  background: var(--accent-dim);
+}
+.toggle-visual-group .toggle-visual-group-name {
+  flex: 1 1 160px;
+  width: auto;
+  min-width: 80px;
+  max-width: 100%;
+  font-weight: 700;
+}
+.toggle-visual-group-count {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.toggle-visual-group-body {
+  padding: 12px;
+  border-top: 1px solid var(--border-color);
+}
+.toggle-visual-group-body[hidden] {
+  display: none;
+}
+.toggle-visual-group-body > .toggle-visual-addbar {
+  margin-top: 12px;
+}
+.toggle-visual-addbar {
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+  padding: 8px 0;
+}
+.toggle-visual-addbar > .prompt-editor-select {
+  flex: 0 1 170px;
+  width: 170px;
+  min-width: 110px;
+  height: 32px;
+}
+.toggle-visual-list .prompt-editor-actions,
+.toggle-visual-addbar > button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.toggle-visual-list .toggle-template-item-header {
+  flex-wrap: wrap;
+}
+.toggle-visual-list .toggle-template-fields {
+  padding: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr));
+}
+.toggle-visual-list .toggle-template-item-type {
+  flex: 0 1 130px;
+  width: 130px;
+  min-width: 110px;
+}
+.toggle-visual-captions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 12px;
+}
+.toggle-visual-caption {
+  display: flex;
+  flex: 1 1 100%;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding-left: 12px;
+  border-left: 2px solid var(--border-color);
+}
+.toggle-visual-caption > .prompt-field-label {
+  flex: 0 0 auto;
+  margin: 0;
+}
+.toggle-visual-caption > input {
+  min-width: 0;
+  width: auto;
+  flex: 1 1 120px;
+}
+.toggle-visual-captions > select {
+  flex: 0 1 220px;
+  width: 220px;
+  min-width: 110px;
+  height: 30px;
+}
+.toggle-visual-divider > hr {
+  margin: 14px 12px 0;
+  border: 0;
+  border-top: 1px solid var(--text-secondary);
 }

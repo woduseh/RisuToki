@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   RISUP_FIELD_GROUPS,
+  RISUP_EDITABLE_FIELD_IDS,
+  getRisupFieldDefinition,
   RISUP_DISABLEABLE_NUMBER_FIELD_IDS,
   RISUP_LEGACY_FIELD_IDS,
   RISUP_JSON_FIELD_IDS,
@@ -11,41 +13,36 @@ import {
 } from './risup-fields';
 
 describe('risup field metadata', () => {
-  it('promotes the template group as the primary prompt surface before the legacy prompts group', () => {
-    const groupIds = RISUP_FIELD_GROUPS.map((g) => g.id);
-    const templatesIdx = groupIds.indexOf('templates');
-    const promptsIdx = groupIds.indexOf('prompts');
-
-    expect(templatesIdx).toBeGreaterThanOrEqual(0);
-    expect(promptsIdx).toBeGreaterThanOrEqual(0);
-    // templates must come before legacy prompts
-    expect(templatesIdx).toBeLessThan(promptsIdx);
-    // templates is the second group (right after basic) so it's the first prompt surface a user sees
-    expect(groupIds[1]).toBe('templates');
+  it('separates toggles, default variables and insertion order into focused forms', () => {
+    expect(getRisupFieldGroup('toggles')?.fields).toEqual([
+      expect.objectContaining({ id: 'customPromptTemplateToggle', editor: 'toggle-template' }),
+    ]);
+    expect(getRisupFieldGroup('variables')?.fields).toEqual([
+      expect.objectContaining({ id: 'templateDefaultVariables', editor: 'textarea' }),
+    ]);
+    expect(getRisupFieldGroup('ordering')?.fields).toEqual([
+      expect.objectContaining({ id: 'formatingOrder', editor: 'formating-order' }),
+    ]);
+    expect(getRisupFieldGroup('ordering')?.label).toBe('삽입 순서');
+    expect(getRisupFieldGroup('templates')?.label).toBe('프리셋 연동');
+    expect(getRisupFieldGroup('templates')?.fields.map((field) => field.id)).toEqual([
+      'presetBias',
+      'moduleIntergration',
+    ]);
   });
 
-  it('labels the templates group as the primary prompt surface and removes instruct/jinja from it', () => {
-    // templates group must be labeled as the primary prompt editor surface
-    expect(getRisupFieldGroup('templates')?.label).toBe('프롬프트');
-
-    // The old prompts group must not carry the plain '프롬프트' label any more
-    expect(getRisupFieldGroup('prompts')?.label).not.toBe('프롬프트');
-
-    // templates group leads with the template-driven fields
-    const templateFields = getRisupFieldGroup('templates')?.fields.map((f) => f.id) ?? [];
-    expect(templateFields[0]).toBe('promptTemplate');
-    expect(templateFields).toContain('formatingOrder');
-
-    // useInstructPrompt, instructChatTemplate, JinjaTemplate are removed from the primary prompt flow
-    expect(templateFields).not.toContain('useInstructPrompt');
-    expect(templateFields).not.toContain('instructChatTemplate');
-    expect(templateFields).not.toContain('JinjaTemplate');
-
-    // customPromptTemplateToggle must use its dedicated structured editor
-    const customToggle = getRisupFieldGroup('templates')?.fields.find((f) => f.id === 'customPromptTemplateToggle');
-    expect(customToggle?.editor).toBe('toggle-template');
+  it('keeps promptTemplate editable and resolvable without a duplicate form surface', () => {
+    expect(RISUP_FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.id))).not.toContain(
+      'promptTemplate',
+    );
+    expect(getRisupFieldDefinition('promptTemplate')).toEqual({
+      id: 'promptTemplate',
+      label: '프롬프트 템플릿',
+      editor: 'prompt-template',
+    });
+    expect(RISUP_EDITABLE_FIELD_IDS).toContain('promptTemplate');
+    expect(isRisupEditableFieldId('promptTemplate')).toBe(true);
   });
-
   it('moves useInstructPrompt/instructChatTemplate/JinjaTemplate to the legacy prompts group', () => {
     const promptsFields = getRisupFieldGroup('prompts')?.fields.map((f) => f.id) ?? [];
     expect(promptsFields).toEqual([...RISUP_LEGACY_FIELD_IDS]);
@@ -82,14 +79,7 @@ describe('risup field metadata', () => {
     const ids = RISUP_FIELD_GROUPS.flatMap((group) => group.fields.map((field) => field.id));
 
     expect(ids).toEqual(
-      expect.arrayContaining([
-        'name',
-        'aiModel',
-        'temperature',
-        'promptTemplate',
-        'jsonSchema',
-        'systemRoleReplacement',
-      ]),
+      expect.arrayContaining(['name', 'aiModel', 'temperature', 'jsonSchema', 'systemRoleReplacement']),
     );
     expect(ids).not.toContain('description');
     expect(ids).not.toContain('firstMessage');

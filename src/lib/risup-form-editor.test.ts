@@ -28,7 +28,7 @@ describe('risup form editor helpers', () => {
     expect(errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ field: 'promptTemplate', label: '프롬프트 템플릿', severity: 'error' }),
-        expect.objectContaining({ field: 'formatingOrder', label: '포매팅 순서', severity: 'error' }),
+        expect.objectContaining({ field: 'formatingOrder', label: '삽입 순서', severity: 'error' }),
         expect.objectContaining({ field: 'localStopStrings', label: '로컬 중단 문자열', severity: 'error' }),
       ]),
     );
@@ -41,7 +41,7 @@ describe('risup form editor helpers', () => {
 
     expect(errors).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ field: 'formatingOrder', label: '포매팅 순서', severity: 'error' }),
+        expect.objectContaining({ field: 'formatingOrder', label: '삽입 순서', severity: 'error' }),
       ]),
     );
   });

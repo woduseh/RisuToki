@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
-import { IconBook2, IconBraces, IconInfoCircle, IconPhoto, IconSparkles } from '@tabler/icons-vue';
+import { computed } from 'vue';
+import { IconBook2, IconBraces, IconInfoCircle, IconSparkles } from '@tabler/icons-vue';
 import { useAppStore, type LorebookEntry, type RegexEntry } from '../stores/app-store';
 import { executeAction } from '../lib/action-registry';
 import { buildFolderInfoMap, resolveLorebookFolderRef } from '../lib/lorebook-folders';
@@ -14,13 +14,8 @@ import {
 } from '../lib/risup-prompt-model';
 import { promptTypeLabel } from '../lib/risup-prompt-editor';
 
-interface AssetDetails {
-  path: string;
-  size: number;
-}
-
 const store = useAppStore();
-const assetDetails = ref<AssetDetails | null>(null);
+const assetPath = computed(() => (store.inspectorContext.kind === 'asset' ? store.inspectorContext.itemId : null));
 
 const loreIndex = computed(() => {
   const match = store.activeTabId?.match(/^lore_(\d+)$/);
@@ -65,18 +60,6 @@ const triggerCount = computed(() => {
   }
 });
 
-watch(
-  () => store.inspectorContext,
-  async (context) => {
-    assetDetails.value = null;
-    if (context.kind !== 'asset' || !context.itemId || !window.tokiAPI?.getAssetList) return;
-    const currentPath = context.itemId;
-    const asset = (await window.tokiAPI.getAssetList()).find((entry) => entry.path === currentPath);
-    if (asset && store.inspectorContext.itemId === currentPath) assetDetails.value = asset;
-  },
-  { immediate: true },
-);
-
 function updateLore<K extends keyof LorebookEntry>(key: K, value: LorebookEntry[K]) {
   if (!lore.value) return;
   lore.value[key] = value;
@@ -109,12 +92,6 @@ function updatePrompt(key: string, value: string) {
   if (key === 'type2' && 'type2' in item) item.type2 = value as never;
   data.promptTemplate = serializePromptTemplate(model);
   executeAction('workspace-model-change', { tabId: store.activeTabId, field: 'promptTemplate' });
-}
-
-function formatBytes(size: number): string {
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 </script>
 
@@ -186,34 +163,11 @@ function formatBytes(size: number): string {
       </div>
     </div>
 
-    <div v-else-if="assetDetails" class="inspector-content">
-      <div class="inspector-kind"><IconPhoto :size="17" /> 선택한 에셋</div>
-      <dl class="inspector-facts">
-        <div>
-          <dt>파일</dt>
-          <dd>{{ assetDetails.path.split('/').pop() }}</dd>
-        </div>
-        <div>
-          <dt>경로</dt>
-          <dd>{{ assetDetails.path }}</dd>
-        </div>
-        <div>
-          <dt>크기</dt>
-          <dd>{{ formatBytes(assetDetails.size) }}</dd>
-        </div>
-        <div>
-          <dt>용도</dt>
-          <dd>{{ assetDetails.path.startsWith('assets/icon/') ? '아이콘' : '추가 에셋' }}</dd>
-        </div>
-      </dl>
-      <button type="button" class="inspector-action" @click="executeAction('asset-rename-selected', assetDetails.path)">
+    <div v-else-if="assetPath" class="inspector-content asset-actions">
+      <button type="button" class="inspector-action" @click="executeAction('asset-rename-selected', assetPath)">
         이름 변경
       </button>
-      <button
-        type="button"
-        class="inspector-action danger"
-        @click="executeAction('asset-delete-selected', assetDetails.path)"
-      >
+      <button type="button" class="inspector-action danger" @click="executeAction('asset-delete-selected', assetPath)">
         삭제
       </button>
     </div>

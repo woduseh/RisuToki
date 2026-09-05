@@ -89,6 +89,9 @@ export type RisupFieldGroupId =
   | 'provider-endpoint'
   | 'advanced'
   | 'templates'
+  | 'toggles'
+  | 'variables'
+  | 'ordering'
   | 'json-schema'
   | 'misc';
 
@@ -127,16 +130,30 @@ const groups: readonly RisupFieldGroup[] = [
     fields: [{ id: 'name', label: '프리셋 이름', editor: 'text', placeholder: 'Preset name' }],
   },
   {
+    id: 'toggles',
+    label: '커스텀 템플릿 토글',
+    icon: '🎚',
+    fields: [{ id: 'customPromptTemplateToggle', label: '커스텀 템플릿 토글', editor: 'toggle-template', rows: 4 }],
+  },
+  {
+    id: 'variables',
+    label: '기본 템플릿 변수',
+    icon: '🔤',
+    fields: [{ id: 'templateDefaultVariables', label: '기본 템플릿 변수', editor: 'textarea', rows: 5 }],
+  },
+  {
+    id: 'ordering',
+    label: '삽입 순서',
+    icon: '↕',
+    fields: [{ id: 'formatingOrder', label: '삽입 순서', editor: 'formating-order' }],
+  },
+  {
     id: 'templates',
-    label: '프롬프트',
+    label: '프리셋 연동',
     icon: '🧩',
     fields: [
-      { id: 'promptTemplate', label: '프롬프트 템플릿', editor: 'prompt-template' },
       { id: 'presetBias', label: '프리셋 바이어스', editor: 'json', rows: 6 },
-      { id: 'formatingOrder', label: '포매팅 순서', editor: 'formating-order' },
-      { id: 'customPromptTemplateToggle', label: '커스텀 템플릿 토글', editor: 'toggle-template', rows: 4 },
-      { id: 'templateDefaultVariables', label: '기본 템플릿 변수', editor: 'textarea', rows: 5 },
-      { id: 'moduleIntergration', label: '모듈 통합', editor: 'text' },
+      { id: 'moduleIntergration', label: '모듈 연동', editor: 'text' },
     ],
   },
   {
@@ -271,12 +288,16 @@ const fieldMap = new Map<RisupFieldId, RisupFieldDefinition>();
 const editableFieldMap = new Map<RisupFieldId, RisupFieldDefinition>();
 const legacyFieldIdSet = new Set<string>(RISUP_LEGACY_FIELD_IDS);
 
-for (const group of groups) {
-  for (const field of group.fields) {
-    fieldMap.set(field.id, field);
-    if (!legacyFieldIdSet.has(field.id)) {
-      editableFieldMap.set(field.id, field);
-    }
+// The prompt manager owns promptTemplate editing. Keep its metadata available to
+// validation, dirty tracking and API consumers without rendering a duplicate form.
+const standaloneFields: readonly RisupFieldDefinition[] = [
+  { id: 'promptTemplate', label: '프롬프트 템플릿', editor: 'prompt-template' },
+];
+
+for (const field of [...groups.flatMap((group) => group.fields), ...standaloneFields]) {
+  fieldMap.set(field.id, field);
+  if (!legacyFieldIdSet.has(field.id)) {
+    editableFieldMap.set(field.id, field);
   }
 }
 

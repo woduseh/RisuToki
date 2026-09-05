@@ -9,6 +9,7 @@ export type WorkspaceId =
   | 'module'
   | 'basic'
   | 'prompts'
+  | 'toggles'
   | 'model'
   | 'parameters'
   | 'advanced';
@@ -72,11 +73,9 @@ const RISUM_WORKSPACES: WorkspaceDefinition[] = [
 ];
 
 const RISUP_WORKSPACES: WorkspaceDefinition[] = [
-  { id: 'basic', label: '기본', icon: 'settings' },
   { id: 'prompts', label: '프롬프트', icon: 'sparkles' },
-  { id: 'model', label: '모델/API', icon: 'cpu' },
-  { id: 'parameters', label: '파라미터', icon: 'sliders' },
-  { id: 'advanced', label: '고급', icon: 'dots' },
+  { id: 'toggles', label: '토글·변수', icon: 'sliders' },
+  { id: 'scripts', label: '정규식', icon: 'code' },
 ];
 
 export function getFileType(data: RendererDocumentData | null): 'charx' | 'risum' | 'risup' | null {
@@ -95,7 +94,7 @@ export function getWorkspaceDefinitions(data: RendererDocumentData | null): Work
 export function getDefaultWorkspace(data: RendererDocumentData | null): WorkspaceId {
   const fileType = getFileType(data);
   if (fileType === 'risum') return 'module';
-  if (fileType === 'risup') return 'basic';
+  if (fileType === 'risup') return 'prompts';
   return 'character';
 }
 
@@ -121,10 +120,8 @@ export function inferWorkspaceFromTab(tabId: string | null, data: RendererDocume
 
   const fileType = getFileType(data);
   if (fileType === 'risup') {
-    if (tabId === 'risup_basic') return 'basic';
-    if (tabId === 'risup_model-api') return 'model';
-    if (['risup_parameters', 'risup_sampling', 'risup_thinking'].includes(tabId)) return 'parameters';
-    return 'advanced';
+    if (tabId === 'risup_toggles' || tabId === 'risup_variables') return 'toggles';
+    return null;
   }
   if (fileType === 'risum' && ['moduleInfo', 'moduleDescription', 'moduleSettings'].includes(tabId)) return 'module';
   return null;
@@ -143,7 +140,7 @@ export function getInspectorContext(tabId: string | null): InspectorContext {
 export function defaultWorkspaceLayout(): WorkspaceLayoutStateV3 {
   return {
     version: 3,
-    navigatorWidth: 280,
+    navigatorWidth: 340,
     inspectorWidth: 320,
     utilityHeight: 250,
     navigatorVisible: true,

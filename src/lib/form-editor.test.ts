@@ -436,6 +436,54 @@ describe('form-editor read-only badge', () => {
   });
 });
 
+describe('focused RISUP forms preserve other settings', () => {
+  it.each([
+    ['toggles', 'customPromptTemplateToggle', 'new_toggle'],
+    ['variables', 'templateDefaultVariables', 'new_variable=1'],
+    ['ordering', 'formatingOrder', '["main","lastChat"]'],
+  ] as const)('edits %s without dropping unrelated preset fields', async (groupId, fieldId, nextValue) => {
+    const actualFields = await vi.importActual<typeof import('./risup-fields')>('./risup-fields');
+    const { getRisupFieldGroup } = await import('./risup-fields');
+    const { validateRisupDraftFields } = await import('./risup-form-editor');
+    vi.mocked(getRisupFieldGroup).mockReturnValue(actualFields.getRisupFieldGroup(groupId)!);
+    vi.mocked(validateRisupDraftFields).mockReturnValue([]);
+    initFormEditor(createDeps());
+    const original = {
+      name: 'Preset',
+      aiModel: 'pluginmodel::provider',
+      temperature: 0.8,
+      promptTemplate: '[{"type":"plain","text":"Keep prompt"}]',
+      customPromptTemplateToggle: 'old_toggle',
+      templateDefaultVariables: 'old_variable=1',
+      formatingOrder: '["main"]',
+      extraPluginSettings: { opaque: true },
+    };
+    const setValue = vi.fn();
+    showRisupEditor({
+      id: `risup_${groupId}`,
+      label: groupId,
+      language: '_risupform',
+      _risupGroupId: groupId,
+      getValue: () => structuredClone(original),
+      setValue,
+    });
+
+    if (groupId === 'variables') {
+      const textarea = document.querySelector<HTMLTextAreaElement>('.settings-textarea')!;
+      textarea.value = nextValue;
+      textarea.dispatchEvent(new Event('input'));
+    } else if (groupId === 'toggles') {
+      const { createCustomPromptTemplateToggleEditor } = await import('./risup-toggle-editor');
+      vi.mocked(createCustomPromptTemplateToggleEditor).mock.calls[0][2]!(nextValue);
+    } else {
+      const { createFormatingOrderEditor } = await import('./risup-prompt-editor');
+      vi.mocked(createFormatingOrderEditor).mock.calls[0][2]!(nextValue);
+    }
+
+    expect(setValue).toHaveBeenCalledExactlyOnceWith({ ...original, [fieldId]: nextValue });
+  });
+});
+
 describe('showRisupEditor validation boxes', () => {
   function makeRisupTab(overrides?: Partial<RisupFormTabInfo>): RisupFormTabInfo {
     return {

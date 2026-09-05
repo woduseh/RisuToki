@@ -2,7 +2,7 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-3.6.4-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-3.7.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
 [![Node](https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
@@ -19,7 +19,7 @@ RisuToki is a **desktop editor** purpose-built for [RisuAI](https://risuai.net/)
 | 🤖 **AI CLI Integration**   | Run Claude Code · GitHub Copilot CLI · Codex · Antigravity CLI in dedicated terminal tabs with automatic MCP connection                                                                                                                                                                                                                                                                                        |
 | 📦 **File & Card Import**   | Open, edit, and save `.charx` (character cards) · `.risum` (modules) · `.risup` (presets), plus import PNG/JSON Character Cards into the structured editor                                                                                                                                                                                                                                                     |
 | 📁 **Project Folders**      | Use a folder workspace as the save backend for the normal structured editor, with advanced raw markdown/json/assets access for external-tool collaboration, project-folder cloning, and `.charx`/`.risum`/`.risup` export                                                                                                                                                                                      |
-| 📚 **Unified Workspaces**   | Document-specific CHARX/RISUM/RISUP workspaces with focused navigation, a wide editor canvas, and a resizable right sidebar with peer tabs for contextual properties, guides, and reference files                                                                                                                                                                                                              |
+| 📚 **Unified Workspaces**   | Document-specific CHARX/RISUM/RISUP navigation, direct Save/Preview actions, inline contextual properties, and a separate reference sidebar                                                                                                                                                                                                                                                                    |
 | 🪄 **Asset Rule Wizard**    | Analyze real `assets/other` filenames, map name/outfit/emotion/custom dimensions, and safely generate editable `<img src="Asset_Name">` rules into a lorebook or CHARX `globalNote` block                                                                                                                                                                                                                      |
 | 🔧 **200+ MCP Tools**       | Read/write fields, lorebooks, regex, Lua/CSS sections, greetings, triggers, risup `promptTemplate`/`formatingOrder`, assets, CBS validation, references, Danbooru tags, skill docs + unopened-file probe/open + batch search/replace + structured `4xx/409` error envelopes + machine-readable confirmation / dry-run tool metadata + indexed-write stale-index guards + normalized batch `results[]` payloads |
 | 🎭 **Preview Mode**         | `.charx` chat simulation in a reusable central editor tab plus sanitized rendered Markdown guide previews (F5), including tables, code, images, and safe external links                                                                                                                                                                                                                                        |
@@ -134,19 +134,21 @@ Double-click the RisuToki executable (`.exe`) to launch.
 
 ## 2. Interface Layout
 
-<img width="1913" height="1004" alt="Interface layout" src="https://github.com/user-attachments/assets/6398e854-f7a8-49bb-a8e2-c73861446b97" />
+The layout below describes version 3.7 and later.
 
-| Area                   | Description                                                                               |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| **Workspace switcher** | CHARX, RISUM, or RISUP task groups backed only by fields supported for that document type |
-| **Navigator**          | Search, select, create, filter, and sort items for the active workspace                   |
-| **Editor**             | Wide Monaco/form/image canvas with persistent document tabs                               |
-| **Right sidebar**      | Resizable peer tabs for selected-item properties, guides, and reference files             |
-| **Terminal shelf**     | Bottom-anchored terminal with an optional avatar beside it                                |
+| Area                 | Description                                                                                               |
+| -------------------- | --------------------------------------------------------------------------------------------------------- |
+| **Document toolbar** | Document name and format, Save, Preview, and utility controls                                             |
+| **Navigator**        | Document-section buttons followed by search, selection, creation, filtering, and sorting for that section |
+| **Editor**           | Monaco/form/image canvas with persistent tabs and collapsible selected-item properties above the content  |
+| **Right sidebar**    | Guides and reference files; selecting another item keeps the reference material open                      |
+| **Terminal shelf**   | Bottom-anchored terminal with an optional avatar beside it                                                |
 
-- Drag the navigator, right sidebar, or terminal border to resize it; the dimensions persist between launches.
+- Drag the navigator, right sidebar, or terminal border to resize it; the dimensions persist between launches. Terminal height is capped to preserve editing space in short windows.
+- Open the properties disclosure above the editor to change the selected item without leaving the content or replacing your reference material.
+- Assets show Rename and Delete directly above the image, without a properties disclosure. The default navigator width is 340px; saved custom widths remain unchanged. Use View → UI 배치 초기화 to apply the new default to an existing layout.
 - Workspace panels use fixed semantic homes and do not support arbitrary panel repositioning. Drag-and-drop inside lorebook, regex, prompt, script, greeting, and asset lists continues to reorder document content.
-- Below 1180px the right sidebar becomes an overlay, and below 1020px the navigator does too. Opening one compact overlay closes the other. The editor remains pinned to the center workspace column in every visibility combination.
+- Below 1180px the right sidebar becomes an overlay, and below 1020px the navigator does too. Compact navigation starts closed. Opening one compact overlay closes the other; use its close button, the backdrop, or Escape to dismiss it. The editor remains pinned to the center workspace column in every visibility combination.
 - Toggle the navigator with `Ctrl+B` and the terminal shelf with `` Ctrl+` ``, or use the adjacent terminal and right-sidebar buttons at the right end of the workspace bar.
 - `F5` opens or reuses a `.charx` preview tab in the central editor. All product surfaces stay inside the main workspace.
 - The status bar keeps document stats visible while transient save/open/error messages appear beside them.
@@ -166,11 +168,11 @@ Double-click the RisuToki executable (`.exe`) to launch.
 
 - **PNG/JSON Character Card import**: PNG cards with `ccv3` / `chara` `tEXt` metadata and JSON Character Cards open directly in the structured `.charx` editor. Imported PNG/JSON files are remembered as sources, but **Save** opens a `.charx` save dialog instead of overwriting the import source.
 - **최근 항목**: File → **최근 항목** lists the last 10 files and project folders. Failed entries are removed automatically, and the menu includes **최근 항목 지우기**.
-- **Project folders**: File → **프로젝트 폴더로 추출** expands `.charx`, `.risum`, or `.risup` files into folder workspaces. File → **프로젝트 폴더 복제** copies the active project folder to an empty target folder and opens the clone. `.charx` keeps the RisuMari-compatible `card.json` shape; `.risum` uses `module.json`; `.risup` uses `preset.json` with sensitive key fields removed.
+- **Project folders**: File → **파일을 프로젝트 폴더로 추출…** expands `.charx`, `.risum`, or `.risup` files into folder workspaces. File → **프로젝트 폴더 복제** copies the active project folder to an empty target folder and opens the clone. `.charx` keeps the RisuMari-compatible `card.json` shape; `.risum` uses `module.json`; `.risup` uses `preset.json` with sensitive key fields removed.
 - In a project folder, **Save** writes the structured editor state back to the folder files. File → **파일로 내보내기** and **Save As** create the matching `.charx`, `.risum`, or `.risup` output when you want to import the result into RisuAI.
 - `.charx` project folders track only the generated `assets/**` and `x_meta/**` files they manage. Removing or renaming an asset removes the stale generated file on save, while unrelated files added by external tools are preserved.
 - Raw project files remain available under the collapsed **프로젝트 원본 파일** advanced sidebar area. Direct raw edits are debounced and synchronized back into the structured editor state.
-- `.charx` and `.risum` files expose integrated **로어북** and **에셋** workspaces. Selecting an item opens the central editor and the matching inspector together. Lorebook entries can be reordered by dragging, including moves between folders, and folder membership is edited by its visible name rather than an internal UUID. `.risup` uses **기본 / 프롬프트 / 모델·API / 파라미터 / 고급** progressive disclosure while preserving every supported field on save; prompt and custom-toggle rows also support drag reordering, and prompt type can be changed in the inspector.
+- `.charx` and `.risum` files expose integrated **로어북** and **에셋** workspaces. Selecting an item opens the central editor with its properties disclosure above the content. Lorebook entries can be reordered by dragging, including moves between folders, and folder membership is edited by its visible name rather than an internal UUID. `.risup` uses **프롬프트 / 토글·변수 / 정규식** navigation with secondary settings under **⋯**; prompt and custom-toggle items support drag reordering, and prompt type can be changed in the inline properties.
 - Opening another document clears the previous document's tab selection and contextual inspector, while keeping any compatible workspace (for example, 로어북) selected for rapid cross-file editing.
 - The asset workspace defaults to a filename-derived tree and uses a compact **트리 / 썸네일** view switch above the results. **전체 선택 / 전체 해제** applies to the currently visible filtered assets, and clicking an already-selected asset checkbox deselects it. **출력식 마법사** analyzes only `assets/other`, never invents missing combinations, and replaces only its stable generated block when run again.
 - View → **UI 배치 초기화** restores the default navigator, tabbed right sidebar, terminal, and avatar layout. Workspace splitters update at most once per animation frame, and vertical handles consistently grow their panel when dragged upward.
@@ -193,7 +195,7 @@ Double-click the RisuToki executable (`.exe`) to launch.
 
 ## 4. Sidebar (Item Tree)
 
-The left navigator contains the editable item tree for the active workspace. **Guides** and **Reference files** are peer tabs in the resizable right sidebar, alongside the selected item's contextual properties.
+The left navigator contains the editable item tree for the active workspace. **Guides** and **Reference files** are peer tabs in the resizable right sidebar. The selected item's contextual properties are edited above its content, so references remain available while editing.
 
 ### Navigator
 
@@ -219,14 +221,14 @@ Which items appear depends on the file type:
 | **Preset: Model/API**   | Model name, sub-model, API type, preprocessing options                                           | risup               |
 | **Preset: Parameters**  | Base parameters / sampling / reasoning options                                                   | risup               |
 
-- `.risup` files show **preset-specific form groups + description + regex folder** instead of Lua / CSS / lorebook / assets.
-- The visible **Prompts** group is built around **structured `promptTemplate` / `formatingOrder` + template variables** rather than the legacy `mainPrompt` / `jailbreak` / `globalNote` fields.
-- `promptTemplate` opens as a **card-style item list + detail editor** (not raw JSON). The `.risup` **프롬프트 관리자** gives a RisuMari-style side list for search/filter/reorder/bulk deletion, and clicking an item opens a focused single-block editor tab for `type`, `type2`, `role`, `text`, `range`, `innerFormat`, `defaultText`, and cache options. The full prompt editor remains available for broad review and advanced batch edits.
-- `formatingOrder` opens as a **reorderable token list** that preserves both known and unknown tokens. You can reorder tokens with either drag-and-drop or the existing buttons; duplicate or unmatched tokens still surface warnings without blocking saving.
-- `customPromptTemplateToggle` opens in a **visual/raw dual-mode editor** that keeps the original line syntax while making toggles, groups, captions, dividers, and select/text inputs easier to manage, including drag-and-drop reorder in visual mode. Visual fields retain focus during continuous typing, and structured prompt controls preserve their scroll position across item changes.
+- `.risup` navigation has three workspaces: **프롬프트**, **토글·변수**, and **정규식**. Presets open in the prompt workspace; rename them using the pencil beside the document title.
+- `promptTemplate` uses one **searchable/filterable item list + focused detail editor** for editing, reordering, and bulk deletion. Selecting a block opens its `type`, `type2`, `role`, `text`, `range`, `innerFormat`, `defaultText`, and cache options. Invalid prompt JSON exposes a repair editor in the list.
+- **토글·변수** provides separate screens for `customPromptTemplateToggle` and `templateDefaultVariables`. **정규식** shows scripts directly, with Add and Import actions.
+- **⋯ → 추가 설정 → 삽입 순서** opens `formatingOrder` as a **reorderable token list**, separately from prompt block order. Known and unknown tokens are preserved; duplicate or unmatched tokens surface warnings without blocking saving.
+- `customPromptTemplateToggle` opens in a **Visual/Raw editor**. Visual mode shows one-level collapsible groups with internal Add actions, captions beneath their controls, and labeled horizontal separators. Moving a group carries its contents; moving a control carries its following captions. Raw mode retains the existing line syntax and editing behavior. Visual fields retain focus during typing, and structural changes preserve scroll position.
 - For persistent block reuse across sessions, MCP now exposes a **sidecar-backed risup prompt snippet library** on top of the text serializer (`list_risup_prompt_snippets`, `save_risup_prompt_snippet`, `insert_risup_prompt_snippet`, etc.).
 - For prompt-vs-reference review, MCP also exposes **`diff_risup_prompt`**, which compares the current preset against a loaded reference `.risup` using serializer-backed `promptTemplate` line diffs plus `formatingOrder` token/warning diffs.
-- Legacy and provider-specific fields remain preserved for compatibility. The primary RISUP workspaces prioritize current fields, while the **고급** workspace and search keep supported less-common fields reachable.
+- The document toolbar's **⋯ → 추가 설정** contains model/API, parameters, provider, schema, module integration, bias, and other secondary settings; description is also available from **⋯**. Moving these settings out of primary navigation does not remove their stored values or change existing legacy-field save policy.
 - `.charx` saving follows RisuToki's stricter practical protection boundary: `personality`, `scenario`, `systemPrompt`, `nickname`, `source`, `groupOnlyGreetings`, `additionalText`, `license`, and unsafe `virtualscript` are hidden from normal editing and removed on save.
 - RisuToki can open `.risup` exports in gzip, zlib, and raw-deflate variants, and it preserves the detected compression mode on save.
 - If any JSON-backed preset field contains malformed data, saving is blocked and the status bar shows the offending field. Structured fields (`promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`) also enforce their expected array/item shapes.

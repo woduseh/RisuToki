@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { getInspectorContext, getWorkspaceDefinitions, inferWorkspaceFromTab } from './workspace-model';
+import {
+  getDefaultWorkspace,
+  getInspectorContext,
+  getWorkspaceDefinitions,
+  inferWorkspaceFromTab,
+} from './workspace-model';
 import type { RendererDocumentData } from '../stores/app-store';
 
 function data(fileType: 'charx' | 'risum' | 'risup'): RendererDocumentData {
@@ -35,13 +40,31 @@ describe('workspace model', () => {
       'lorebook',
       'assets',
     ]);
-    expect(getWorkspaceDefinitions(data('risup')).map((item) => item.id)).toEqual([
-      'basic',
-      'prompts',
-      'model',
-      'parameters',
-      'advanced',
+    expect(getWorkspaceDefinitions(data('risup')).map((item) => item.id)).toEqual(['prompts', 'toggles', 'scripts']);
+    expect(getWorkspaceDefinitions(data('risup')).map((item) => item.label)).toEqual([
+      '프롬프트',
+      '토글·변수',
+      '정규식',
     ]);
+    expect(getDefaultWorkspace(data('risup'))).toBe('prompts');
+  });
+
+  it('routes preset content and preserves navigation while document settings are open', () => {
+    const preset = data('risup');
+    expect(inferWorkspaceFromTab('risup_toggles', preset)).toBe('toggles');
+    expect(inferWorkspaceFromTab('risup_variables', preset)).toBe('toggles');
+    expect(inferWorkspaceFromTab('risup_ordering', preset)).toBeNull();
+    expect(inferWorkspaceFromTab('regex_0', preset)).toBe('scripts');
+    for (const tab of [
+      'risup_basic',
+      'risup_model-api',
+      'risup_parameters',
+      'risup_sampling',
+      'risup_thinking',
+      'risup_description',
+    ]) {
+      expect(inferWorkspaceFromTab(tab, preset)).toBeNull();
+    }
   });
 
   it('keeps active tabs and contextual inspectors in the same selection flow', () => {

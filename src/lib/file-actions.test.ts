@@ -103,7 +103,7 @@ describe('file-actions', () => {
       installTokiAPI({ newFile: vi.fn().mockResolvedValue(newData) });
       const deps = makeDeps();
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(true);
 
       expect(deps.setFileData).toHaveBeenCalledWith(newData);
       expect(deps.disposeEditorSurfaces).toHaveBeenCalledOnce();
@@ -116,7 +116,7 @@ describe('file-actions', () => {
       installTokiAPI({ newFile: vi.fn().mockResolvedValue(null) });
       const deps = makeDeps();
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(false);
 
       expect(deps.setFileData).not.toHaveBeenCalled();
       expect(deps.buildSidebar).not.toHaveBeenCalled();
@@ -130,7 +130,7 @@ describe('file-actions', () => {
         requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_CANCEL),
       });
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(false);
 
       expect(deps.requestDocumentReplacement).toHaveBeenCalledWith('새 파일');
       expect(newFile).not.toHaveBeenCalled();
@@ -146,7 +146,7 @@ describe('file-actions', () => {
         requestDocumentReplacement: vi.fn(async () => CLOSE_CHOICE_CLOSE_WITHOUT_SAVE),
       });
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(true);
 
       expect(deps.requestDocumentReplacement).toHaveBeenCalledWith('새 파일');
       expect(newFile).toHaveBeenCalledTimes(1);
@@ -166,7 +166,7 @@ describe('file-actions', () => {
       });
       deps.tabMgr.dirtyFields.add('description');
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(true);
 
       expect(deps.saveCurrentDocument).toHaveBeenCalledTimes(1);
       expect(newFile).toHaveBeenCalledTimes(1);
@@ -183,7 +183,7 @@ describe('file-actions', () => {
       });
       deps.tabMgr.dirtyFields.add('description');
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(false);
 
       expect(deps.saveCurrentDocument).toHaveBeenCalledTimes(1);
       expect(newFile).not.toHaveBeenCalled();
@@ -197,7 +197,7 @@ describe('file-actions', () => {
       installTokiAPI({ newFile: vi.fn().mockResolvedValue(newData) });
       const deps = makeDeps();
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(true);
 
       expect(store.restoredSessionLabel).toBe('');
       expect(store.statusText).toBe('새 파일 생성됨');
@@ -210,7 +210,7 @@ describe('file-actions', () => {
       installTokiAPI({ newFile: vi.fn().mockResolvedValue(null) });
       const deps = makeDeps();
 
-      await handleNew(deps);
+      expect(await handleNew(deps)).toBe(false);
 
       expect(store.restoredSessionLabel).toBe('자동복원');
       expect(store.statusText).toBe('자동 저장에서 복원됨');
