@@ -1,6 +1,7 @@
 'use strict';
 import { captureFileBaseline, assertFileUnchanged } from './src/lib/file-baseline';
 import { captureDocumentSaveScope } from './src/lib/document-save-scope';
+import { createMcpActivityBuffer } from './src/lib/mcp-activity-buffer';
 import { createDocumentReviewService } from './src/lib/document-review-service';
 import type { RestoreReviewAssetRequest } from './src/lib/document-review-types';
 
@@ -202,6 +203,7 @@ const {
 
 let mainWindow: BrowserWindow | null = null;
 const mainState = createMainStateStore() as unknown as MainStateStore;
+const mcpActivity = createMcpActivityBuffer();
 
 // MCP API server
 let mcpApi: McpApiServer | null = null;
@@ -934,6 +936,19 @@ app.whenReady().then(() => {
   });
 
   mcpApi = startApiServerImpl({
+    onActivity: (record) => broadcastToAll('mcp-activity', mcpActivity.push(record)),
+    getActivityDocument: () => {
+      if (!mainState.currentData) return undefined;
+      const documentId = serializeForRenderer(mainState.currentData)._documentId;
+      return {
+        kind: 'active',
+        ...(typeof documentId === 'string' ? { documentId } : {}),
+        name: String(mainState.currentData.name || '이름 없는 문서').slice(0, 160),
+        ...(mainState.currentProjectPath || mainState.currentFilePath
+          ? { filePath: (mainState.currentProjectPath || mainState.currentFilePath)! }
+          : {}),
+      };
+    },
     getCurrentData: () => mainState.currentData,
     getReferenceFiles: () => mainState.referenceFiles,
     askRendererConfirm,
@@ -1017,6 +1032,7 @@ app.whenReady().then(() => {
   initAssetManager({
     getCurrentData: () => mainState.currentData,
     getMainWindow: () => mainWindow,
+    onAssetsChanged: () => broadcastToAll('data-updated', 'assets', undefined),
   });
 
   // Initialize guides management
@@ -1547,6 +1563,7 @@ ipcMain.handle('save-file-as', async (_event, updatedFields: RendererDocumentPat
 
 // Get current file path (for terminal context)
 ipcMain.handle('get-file-path', () => mainState.currentFilePath);
+ipcMain.handle('get-mcp-activity', () => mcpActivity.snapshot());
 
 const documentReviewService = createDocumentReviewService({
   getCurrentData: () => mainState.currentData,

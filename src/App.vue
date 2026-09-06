@@ -23,6 +23,8 @@ import WorkspaceBar from './components/WorkspaceBar.vue';
 import NavigatorWorkspaces from './components/NavigatorWorkspaces.vue';
 import ContextInspector from './components/ContextInspector.vue';
 import DocumentReview from './components/DocumentReview.vue';
+import DocumentDiagnostics from './components/DocumentDiagnostics.vue';
+import McpActivityPanel from './components/McpActivityPanel.vue';
 import AssetOutputWizard from './components/AssetOutputWizard.vue';
 import { writeWorkspaceLayoutState } from './lib/workspace-layout-state';
 import type { RightSidebarView } from './lib/workspace-model';
@@ -260,6 +262,10 @@ function resizeWithKeyboard(kind: 'navigator' | 'inspector' | 'utility', event: 
 }
 
 function handleAction(action: string, payload?: unknown) {
+  if (action === 'activity-toggle') {
+    store.setRightSidebarView(store.activityVisible ? null : 'activity');
+    return;
+  }
   if (action === 'toggle-references') {
     toggleReferences();
     return;
@@ -433,7 +439,12 @@ function recentName(path: string) {
           :style="previewSplitStyle"
         >
           <div
-            v-show="hasEditorContent && !workbench.reviewOpen && !(store.previewFocusMode && workbench.previewOpen)"
+            v-show="
+              hasEditorContent &&
+              !workbench.reviewOpen &&
+              !workbench.diagnosticsOpen &&
+              !(store.previewFocusMode && workbench.previewOpen)
+            "
             id="editor-surface"
           >
             <div id="editor-header">
@@ -477,10 +488,30 @@ function recentName(path: string) {
               :baseline-unavailable="workbench.reviewResult?.baselineUnavailable ?? null"
               :external-changed="workbench.reviewResult?.externalChanged ?? false"
               :restore-blocked="workbench.reviewStale || !!workbench.rawDraftWarning"
+              :diagnostics="workbench.reviewDiagnostics"
+              :diagnostics-error="workbench.reviewDiagnosticsError"
               @refresh="handleAction('review-refresh')"
               @open="handleAction('review-open-source', $event)"
               @restore="handleAction('review-restore', $event)"
               @restore-asset="handleAction('review-restore-asset', $event)"
+            />
+          </div>
+          <div
+            v-show="workbench.diagnosticsOpen && !(store.previewFocusMode && workbench.previewOpen)"
+            class="workbench-review-panel"
+          >
+            <DocumentDiagnostics
+              :current="workbench.diagnosticsDraft"
+              :diagnostics="workbench.diagnostics"
+              :assets="workbench.diagnosticsAssets"
+              :loading="workbench.diagnosticsLoading"
+              :stale="workbench.diagnosticsStale"
+              :error="workbench.diagnosticsError"
+              :raw-draft-warning="workbench.rawDraftWarning"
+              :checked-at="workbench.diagnosticsCheckedAt"
+              @refresh="handleAction('diagnostics-refresh')"
+              @open="handleAction('diagnostics-open-source', $event)"
+              @assets="handleAction('diagnostics-open-assets')"
             />
           </div>
           <div
@@ -571,6 +602,18 @@ function recentName(path: string) {
                 store.referenceFiles.length
               }}</span>
             </button>
+            <button
+              id="right-sidebar-activity-tab"
+              type="button"
+              role="tab"
+              :aria-selected="store.activityVisible"
+              aria-controls="activity-drawer-body"
+              :class="{ active: store.activityVisible }"
+              @click="selectRightSidebarView('activity')"
+              @keydown="handleRightSidebarTabKeydown"
+            >
+              AI 작업
+            </button>
           </div>
           <div class="right-sidebar-actions">
             <button
@@ -584,6 +627,21 @@ function recentName(path: string) {
           </div>
         </header>
         <div class="right-sidebar-content">
+          <div
+            v-show="store.activityVisible"
+            id="activity-drawer-body"
+            role="tabpanel"
+            aria-labelledby="right-sidebar-activity-tab"
+          >
+            <McpActivityPanel
+              :current-document-id="typeof store.fileData?._documentId === 'string' ? store.fileData._documentId : null"
+              :current-document-name="store.fileData?.name || store.displayFileLabel || ''"
+              :current-selection="workbench.selection ?? undefined"
+              @open-source="handleAction('activity-open-source', $event)"
+              @open-review="handleAction('review-open')"
+              @open-terminal="store.setActiveUtility('terminal')"
+            />
+          </div>
           <div
             v-show="referenceToolsVisible"
             id="reference-drawer-body"

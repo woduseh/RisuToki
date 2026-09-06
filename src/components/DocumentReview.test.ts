@@ -25,6 +25,33 @@ function review(extra: Record<string, unknown> = {}) {
 }
 
 describe('DocumentReview', () => {
+  it('links only selected changed-field diagnostics and blocks stale source navigation', async () => {
+    const wrapper = review({
+      current: { ...baseline, description: 'changed' },
+      diagnostics: [
+        {
+          id: 'a',
+          severity: 'warning',
+          code: 'asset',
+          message: 'Missing portrait',
+          source: { field: 'description', line: 2 },
+        },
+        {
+          id: 'b',
+          severity: 'warning',
+          code: 'asset',
+          message: 'Unchanged greeting issue',
+          source: { field: 'firstMessage' },
+        },
+      ],
+    });
+    expect(wrapper.get('.review-diagnostics').text()).toContain('Missing portrait');
+    expect(wrapper.text()).not.toContain('Unchanged greeting issue');
+    await wrapper.get('.diagnostic-title button').trigger('click');
+    expect(wrapper.emitted('open')?.[0]).toEqual([{ field: 'description', line: 2 }]);
+    await wrapper.setProps({ restoreBlocked: true });
+    expect(wrapper.get('.diagnostic-title button').attributes('disabled')).toBeDefined();
+  });
   it('shows the unchanged state when only the automatic save timestamp differs', () => {
     const wrapper = review({
       baseline: { ...baseline, modificationDate: 200 },

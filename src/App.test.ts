@@ -6,8 +6,148 @@ import App from './App.vue';
 import MenuBar from './components/MenuBar.vue';
 import { registerActions } from './lib/action-registry';
 import { useAppStore } from './stores/app-store';
+import { useWorkbenchStore } from './stores/workbench-store';
+import { useMcpActivityStore } from './stores/mcp-activity-store';
 
 describe('App shell', () => {
+  it('shows diagnostics beside preview and dispatches source and refresh actions with stale guards', async () => {
+    const wrapper = mount(App, { attachTo: document.body, global: { plugins: [createPinia()] } });
+    try {
+      const store = useAppStore();
+      const workbench = useWorkbenchStore();
+      const refresh = vi.fn();
+      const open = vi.fn();
+      registerActions({ 'diagnostics-refresh': refresh, 'diagnostics-open-source': open });
+      store.setFileData({ _fileType: 'charx', name: 'Character', _documentId: 'char-1' } as never);
+      store.setActiveTabId('description');
+      workbench.diagnosticsDraft = store.fileData;
+      workbench.diagnosticsCheckedAt = Date.now();
+      workbench.diagnostics = [
+        {
+          id: 'missing-asset',
+          severity: 'warning',
+          code: 'missing-asset',
+          message: '에셋을 찾지 못했어요.',
+          source: { field: 'lorebook', index: 2, line: 3 },
+        },
+      ];
+      workbench.diagnosticsOpen = true;
+      workbench.previewOpen = true;
+      await nextTick();
+      const diagnostics = wrapper.get('.document-diagnostics');
+      expect(diagnostics.isVisible()).toBe(true);
+      expect(wrapper.get('#editor-surface').isVisible()).toBe(false);
+      expect(wrapper.get('#workbench-preview').isVisible()).toBe(true);
+      await diagnostics.get('.diagnostic-title button').trigger('click');
+      expect(open).toHaveBeenCalledWith({ field: 'lorebook', index: 2, line: 3 });
+      await diagnostics.get('.diagnostics-header button').trigger('click');
+      expect(refresh).toHaveBeenCalledOnce();
+
+      workbench.diagnosticsStale = true;
+      await nextTick();
+      expect(diagnostics.get('.diagnostic-title button').attributes('disabled')).toBeDefined();
+      await diagnostics.get('.diagnostic-title button').trigger('click');
+      expect(open).toHaveBeenCalledOnce();
+      workbench.diagnosticsStale = false;
+      workbench.diagnosticsLoading = true;
+      await nextTick();
+      expect(diagnostics.get('.diagnostics-header button').attributes('disabled')).toBeDefined();
+      expect(diagnostics.get('.diagnostic-title button').attributes('disabled')).toBeDefined();
+
+      store.setPreviewFocusMode(true);
+      await nextTick();
+      expect(diagnostics.isVisible()).toBe(false);
+      expect(wrapper.get('#workbench-preview').isVisible()).toBe(true);
+      store.setPreviewFocusMode(false);
+      workbench.diagnosticsOpen = false;
+      await nextTick();
+      expect(wrapper.get('#editor-surface').isVisible()).toBe(true);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('dispatches the module diagnostics asset action from its configuration overview', async () => {
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } });
+    try {
+      const store = useAppStore();
+      const workbench = useWorkbenchStore();
+      const assets = vi.fn();
+      registerActions({ 'diagnostics-open-assets': assets });
+      store.setFileData({
+        _fileType: 'risum',
+        name: 'Module',
+        _documentId: 'module-1',
+        lorebook: [],
+        regex: [],
+      } as never);
+      workbench.diagnosticsDraft = store.fileData;
+      workbench.diagnosticsAssets = { documentId: 'module-1', names: [], entries: [], unresolved: [] };
+      workbench.diagnosticsOpen = true;
+      await nextTick();
+      expect(wrapper.get('.document-diagnostics h2').text()).toBe('모듈 구성·진단');
+      await wrapper.get('.module-counts button').trigger('click');
+      expect(assets).toHaveBeenCalledOnce();
+      workbench.rawDraftWarning = '원본 JSON 오류';
+      await nextTick();
+      expect(wrapper.get('.module-counts button').attributes('disabled')).toBeDefined();
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
+  it('switches to AI activity and routes current-document source, review, and terminal actions', async () => {
+    const wrapper = mount(App, { attachTo: document.body, global: { plugins: [createPinia()] } });
+    try {
+      const store = useAppStore();
+      const workbench = useWorkbenchStore();
+      const activity = useMcpActivityStore();
+      const source = { documentId: 'char-1', field: 'lorebook' };
+      const open = vi.fn();
+      const review = vi.fn();
+      registerActions({ 'activity-open-source': open, 'review-open': review });
+      store.setFileData({ _fileType: 'charx', name: 'Character', _documentId: 'char-1' } as never);
+      workbench.selection = { label: '도입부', field: 'lorebook', index: 2 };
+      activity.entries = [
+        {
+          requestId: 'request-1',
+          sequence: 1,
+          startedAt: Date.now(),
+          method: 'POST',
+          route: '/api/lorebook',
+          category: 'change',
+          status: 'succeeded',
+          target: { kind: 'active', documentId: 'char-1', name: 'Character' },
+          source,
+        },
+      ];
+      store.setRightSidebarView('guides');
+      await nextTick();
+      await wrapper.get('#right-sidebar-guides-tab').trigger('keydown', { key: 'End' });
+      const activityTab = wrapper.get('#right-sidebar-activity-tab');
+      expect(activityTab.attributes('aria-selected')).toBe('true');
+      expect(document.activeElement).toBe(activityTab.element);
+      expect(wrapper.get('#activity-drawer-body').isVisible()).toBe(true);
+      expect(wrapper.get('#reference-drawer-body').isVisible()).toBe(false);
+      expect(wrapper.get('.app-selection').text()).toContain('도입부');
+      const actions = wrapper.findAll('.activity-row-actions button');
+      await actions[0].trigger('click');
+      expect(open).toHaveBeenCalledWith(source);
+      await actions[1].trigger('click');
+      expect(review).toHaveBeenCalledOnce();
+      await wrapper.get('[aria-label="터미널 열기"]').trigger('click');
+      expect(store.activeUtility).toBe('terminal');
+
+      store.setFileData({ _fileType: 'charx', name: 'Other', _documentId: 'char-2' } as never);
+      await nextTick();
+      expect(wrapper.find('.activity-row-actions').exists()).toBe(false);
+      await wrapper.get('#right-sidebar-guides-tab').trigger('click');
+      expect(wrapper.get('#activity-drawer-body').isVisible()).toBe(false);
+    } finally {
+      wrapper.unmount();
+    }
+  });
+
   it('offers asset rename and delete immediately and follows the selected asset', async () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });

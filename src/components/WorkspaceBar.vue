@@ -11,6 +11,8 @@ import {
   IconDots,
   IconChevronDown,
   IconGitCompare,
+  IconStethoscope,
+  IconActivity,
 } from '@tabler/icons-vue';
 import { useAppStore } from '../stores/app-store';
 import { useWorkbenchStore } from '../stores/workbench-store';
@@ -216,6 +218,18 @@ const showWizard = computed(
           <IconGitCompare :size="17" /> 변경 검토
         </button>
         <button
+          id="btn-workspace-diagnostics"
+          type="button"
+          class="workspace-tab"
+          :class="{ active: workbench.diagnosticsOpen }"
+          :aria-pressed="workbench.diagnosticsOpen"
+          :disabled="!store.hasFile"
+          :title="workbench.diagnosticsOpen ? '문서 진단 닫기' : store.isRisum ? '모듈 구성·진단' : '문서 진단'"
+          @click="$emit('action', 'diagnostics-toggle')"
+        >
+          <IconStethoscope :size="17" /> 진단
+        </button>
+        <button
           id="btn-workspace-save"
           type="button"
           class="workspace-tab"
@@ -249,6 +263,18 @@ const showWizard = computed(
         @click="store.toggleUtility('terminal')"
       >
         <IconTerminal2 :size="18" stroke-width="1.8" />
+      </button>
+
+      <button
+        id="btn-workspace-activity"
+        type="button"
+        class="workspace-tab"
+        :class="{ active: store.activityVisible }"
+        :aria-pressed="store.activityVisible"
+        title="AI 작업 기록"
+        @click="$emit('action', 'activity-toggle')"
+      >
+        <IconActivity :size="17" /> AI 작업
       </button>
 
       <button

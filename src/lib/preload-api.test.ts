@@ -7,11 +7,28 @@ function makeMockIpc() {
   return {
     invoke: vi.fn(),
     on: vi.fn(),
+    removeListener: vi.fn(),
     send: vi.fn(),
   };
 }
 
 describe('createTokiApi', () => {
+  test('loads activity and metadata-only asset inventory and unsubscribes its exact event listener', async () => {
+    const ipcRenderer = makeMockIpc();
+    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
+    const callback = vi.fn();
+    const stop = api.onMcpActivity(callback);
+    const listener = ipcRenderer.on.mock.calls[0][1];
+    const event = { requestId: 'request-1', sequence: 1 };
+    listener({}, event);
+    expect(callback).toHaveBeenCalledWith(event);
+    await api.getMcpActivity();
+    await api.getPreviewAssetInventory();
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('get-mcp-activity');
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('get-preview-asset-inventory');
+    stop();
+    expect(ipcRenderer.removeListener).toHaveBeenCalledWith('mcp-activity', listener);
+  });
   test('forwards review drafts and guarded asset restore requests without changing their payloads', async () => {
     const ipcRenderer = makeMockIpc();
     const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);

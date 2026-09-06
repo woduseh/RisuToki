@@ -3,6 +3,9 @@ import { computed, ref, watch } from 'vue';
 import type { RendererDocumentData } from '../lib/document-types';
 import type { DocumentReviewAssetChange } from '../lib/document-review-types';
 import { buildDocumentReviewChanges, formatReviewValue, type ReviewChange } from '../lib/document-review-model';
+import type { DiagnosticSource, DocumentDiagnostic } from '../lib/document-diagnostics';
+import { diagnosticMatchesSource, diagnosticsForChanges } from '../lib/document-diagnostic-links';
+import DiagnosticList from './DiagnosticList.vue';
 
 const props = defineProps<{
   current: RendererDocumentData | null;
@@ -14,10 +17,12 @@ const props = defineProps<{
   baselineUnavailable: string | null;
   externalChanged: boolean;
   restoreBlocked?: boolean;
+  diagnostics?: DocumentDiagnostic[] | null;
+  diagnosticsError?: string;
 }>();
 const emit = defineEmits<{
   refresh: [];
-  open: [target: { field: string; index?: number }];
+  open: [target: DiagnosticSource];
   restore: [change: ReviewChange];
   restoreAsset: [asset: DocumentReviewAssetChange];
 }>();
@@ -36,6 +41,13 @@ watch(
 );
 const selectedChange = computed(() => changes.value.find((change) => `field:${change.id}` === selectedId.value));
 const selectedAsset = computed(() => props.assets.find((asset) => `asset:${asset.path}` === selectedId.value));
+const changedIssues = computed(() => diagnosticsForChanges(props.diagnostics ?? [], changes.value));
+const changedErrors = computed(() => changedIssues.value.filter((issue) => issue.severity === 'error').length);
+const selectedIssues = computed(() =>
+  selectedChange.value
+    ? (props.diagnostics ?? []).filter((issue) => diagnosticMatchesSource(issue, selectedChange.value!))
+    : [],
+);
 const restorationBlocked = computed(
   () => props.loading || !!props.error || !!props.baselineUnavailable || props.restoreBlocked,
 );
@@ -62,6 +74,10 @@ function assetValue(asset: DocumentReviewAssetChange, side: 'before' | 'after') 
     <p v-else-if="baselineUnavailable" class="review-notice" role="status">{{ baselineUnavailable }}</p>
     <p v-else-if="externalChanged" class="review-notice" role="status">
       파일이 외부에서 변경됐어요. 아래 비교는 현재 디스크의 저장본 기준이에요.
+    </p>
+    <p v-if="diagnosticsError" class="review-notice" role="status">{{ diagnosticsError }}</p>
+    <p v-if="changedIssues.length" class="review-diagnostic-summary">
+      변경 항목의 검사 결과: 오류 {{ changedErrors }} · 경고 {{ changedIssues.length - changedErrors }}
     </p>
     <p v-if="!current" class="review-empty">문서를 열면 저장본과 변경 내용을 비교할 수 있어요.</p>
     <p v-else-if="!baseline && !baselineUnavailable && !error" class="review-empty" role="status">
@@ -116,6 +132,16 @@ function assetValue(asset: DocumentReviewAssetChange, side: 'before' | 'after') 
         </div>
         <p v-if="selectedChange.collectionNote" class="review-note">{{ selectedChange.collectionNote }}</p>
         <p v-if="selectedChange.restoreUnavailable" class="review-note">{{ selectedChange.restoreUnavailable }}</p>
+        <section v-if="diagnostics != null" class="review-diagnostics" aria-label="선택 항목 진단">
+          <h4>현재 작업본의 검사 결과</h4>
+          <p v-if="!selectedIssues.length" class="review-note">검사 범위에서 발견된 문제가 없어요.</p>
+          <DiagnosticList
+            v-else
+            :diagnostics="selectedIssues"
+            :stale="loading || restoreBlocked"
+            @open="emit('open', $event)"
+          />
+        </section>
         <div class="review-comparison">
           <section aria-label="저장본 내용">
             <h4>저장본</h4>
@@ -220,6 +246,22 @@ button:focus-visible {
 }
 .review-error {
   color: var(--ui-danger);
+}
+.review-diagnostic-summary {
+  margin: 0;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--ui-border);
+  font-size: 12px;
+  color: var(--ui-text-muted);
+}
+.review-diagnostics {
+  border-bottom: 1px solid var(--ui-border);
+}
+.review-diagnostics h4 {
+  padding: 10px 16px 0;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 550;
 }
 .review-empty {
   margin: auto;

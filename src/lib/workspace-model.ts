@@ -1,4 +1,4 @@
-import type { RendererDocumentData } from '../stores/app-store';
+import type { RendererDocumentData } from './document-types';
 
 export type WorkspaceId =
   | 'character'
@@ -15,7 +15,7 @@ export type WorkspaceId =
   | 'advanced';
 
 export type UtilityToolId = 'terminal';
-export type RightSidebarView = 'inspector' | 'guides' | 'references';
+export type RightSidebarView = 'inspector' | 'guides' | 'references' | 'activity';
 
 export interface WorkspaceDefinition {
   id: WorkspaceId;

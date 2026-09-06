@@ -109,8 +109,12 @@ export const useAppStore = defineStore('app', () => {
   const inspectorVisible = computed(() => rightSidebarView.value === 'inspector');
   const guidesVisible = computed(() => rightSidebarView.value === 'guides');
   const referencesVisible = computed(() => rightSidebarView.value === 'references');
+  const activityVisible = computed(() => rightSidebarView.value === 'activity');
   const rightSidebarVisible = computed(
-    () => rightSidebarView.value === 'references' || rightSidebarView.value === 'guides',
+    () =>
+      rightSidebarView.value === 'references' ||
+      rightSidebarView.value === 'guides' ||
+      rightSidebarView.value === 'activity',
   );
 
   // === Actions ===
@@ -369,6 +373,7 @@ export const useAppStore = defineStore('app', () => {
     rightSidebarView,
     guidesVisible,
     referencesVisible,
+    activityVisible,
     workspaceId,
     navigatorVisible,
     inspectorVisible,

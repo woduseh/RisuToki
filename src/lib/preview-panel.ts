@@ -21,15 +21,13 @@ export interface PreviewPanelViewState {
   greetingIndex: number;
   viewportPreset: PreviewViewportPresetId;
   debugOpen: boolean;
-  activeDebugTab: 'variables' | 'lorebook' | 'lua' | 'regex';
+  activeDebugTab: 'variables' | 'lorebook' | 'lua' | 'regex' | 'assets';
   inputDraft: string;
   messageMode: 'conversation' | 'user' | 'char';
 }
 
-export type PreviewSourceTarget =
-  | { type: 'greeting'; index: number }
-  | { type: 'lorebook' | 'regex'; index: number }
-  | { type: 'lua' };
+import type { PreviewSourceTarget } from './preview-asset-diagnostics';
+export type { PreviewSourceTarget } from './preview-asset-diagnostics';
 
 export interface PreviewPanelHandle {
   dispose(): void;
@@ -119,9 +117,13 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   let viewportPreset =
     PREVIEW_VIEWPORT_PRESETS.find((preset) => preset.id === initial?.viewportPreset) ?? PREVIEW_VIEWPORT_PRESETS[0];
   let debugOpen = initial?.debugOpen === true;
-  let activeDebugTab: PreviewPanelViewState['activeDebugTab'] = ['variables', 'lorebook', 'lua', 'regex'].includes(
-    initial?.activeDebugTab ?? '',
-  )
+  let activeDebugTab: PreviewPanelViewState['activeDebugTab'] = [
+    'variables',
+    'lorebook',
+    'lua',
+    'regex',
+    'assets',
+  ].includes(initial?.activeDebugTab ?? '')
     ? initial!.activeDebugTab!
     : 'variables';
   let disposed = false;
@@ -298,6 +300,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     { id: 'lorebook', label: '로어북' },
     { id: 'lua', label: 'Lua' },
     { id: 'regex', label: '정규식' },
+    { id: 'assets', label: '에셋' },
   ];
   for (const td of tabDefs) {
     const tab = document.createElement('button');
@@ -395,7 +398,12 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     if (!button) return;
     const type = button.dataset.previewSource;
     if (type === 'lua') deps.onOpenSource({ type });
-    else if (type === 'lorebook' || type === 'regex') {
+    else if (type === 'asset' || type === 'asset-reference') {
+      const index = Number(button.dataset.diagnosticIndex);
+      const missing =
+        Number.isInteger(index) && index >= 0 ? session.getSnapshot().assetDiagnostics?.missing[index] : undefined;
+      if (missing) deps.onOpenSource(type === 'asset' ? { type: 'asset', name: missing.name } : missing.source);
+    } else if (type === 'lorebook' || type === 'regex') {
       const index = Number(button.dataset.sourceIndex);
       if (Number.isInteger(index) && index >= 0) deps.onOpenSource({ type, index });
     }
@@ -444,12 +452,22 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   function updateDebugPanel(): void {
     if (disposed || !session) return;
     const snapshot = session.getSnapshot();
+    const scrollTop = debugContent.scrollTop;
+    const openSections = new Set(
+      [...debugContent.querySelectorAll<HTMLDetailsElement>('details[open][data-debug-section]')].map(
+        (section) => section.dataset.debugSection,
+      ),
+    );
     debugContent.innerHTML = renderPreviewDebugHtml({
       activeTab: activeDebugTab,
       snapshot,
       luaInitButtonId: 'main-preview-lua-init',
       sourceLinks: !!deps.onOpenSource,
     });
+    for (const section of debugContent.querySelectorAll<HTMLDetailsElement>('details[data-debug-section]')) {
+      section.open = openSections.has(section.dataset.debugSection);
+    }
+    debugContent.scrollTop = scrollTop;
 
     if (!snapshot.luaInitialized) {
       const button = debugContent.querySelector('#main-preview-lua-init') as HTMLButtonElement | null;

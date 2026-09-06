@@ -1012,3 +1012,11 @@ export function renderRightManagerPanel(): void {
     renderPanelShell(depsRef, assetRoot, '에셋 관리자', (body) => void renderAssetPanel(depsRef!, body, renderToken));
   }
 }
+
+/** Select a name or resolved path from diagnostics without retaining an unrelated group filter. */
+export function setAssetManagerSearch(value: string): void {
+  state.assetQuery = value;
+  state.assetGroup = 'all';
+  state.assetSelected.clear();
+  renderRightManagerPanel();
+}

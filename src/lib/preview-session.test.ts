@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createDocumentPreviewRuntime, PreviewRuntimeTimeoutError } from './preview-runtime';
 import type { PreviewBridgeMessage } from './preview-runtime';
 import { createPreviewSession } from './preview-session';
+import { PreviewEngine as RealPreviewEngine } from './preview-engine';
 import type {
   CreatePreviewSessionOptions,
   PreviewEngine,
@@ -285,6 +286,58 @@ function interceptSessionHtmlWrites(documentRef: Document) {
 }
 
 describe('preview session', () => {
+  it('captures the regex pipeline that actually renders the message without rerunning it for debug snapshots', async () => {
+    const runtime = createNoopRuntime();
+    runtime.appendMessage = vi.fn().mockResolvedValue(undefined);
+    const session = createPreviewSession({
+      engine: RealPreviewEngine,
+      chatFrame: createChatFrame(),
+      runtime,
+      charData: {
+        firstMessage: 'seed',
+        regex: [
+          { type: 'editoutput', find: 'seed', out: 'middle' },
+          { type: 'editdisplay', find: 'middle', out: 'final' },
+        ],
+      },
+    });
+    await session.initialize();
+    expect(runtime.appendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('final') }),
+    );
+    const snapshot = session.getSnapshot();
+    expect(
+      snapshot.regexTraces
+        ?.filter((trace) => trace.surface === 'message')
+        .map((trace) => [trace.index, trace.before, trace.after]),
+    ).toEqual([
+      [0, 'seed', 'middle'],
+      [1, 'middle', 'final'],
+    ]);
+    expect(session.getSnapshot().regexTraces).toEqual(snapshot.regexTraces);
+    session.dispose();
+  });
+
+  it('bounds trace history and text and resets the history with the local session', async () => {
+    const session = createPreviewSession({
+      engine: RealPreviewEngine,
+      chatFrame: createChatFrame(),
+      runtime: createNoopRuntime(),
+      charData: { regex: [{ type: 'editinput', find: 'x', out: 'y' }] },
+    });
+    await session.initialize();
+    for (let index = 0; index < 81; index++)
+      await session.injectMessage!('user', index === 80 ? 'x'.repeat(4000) : 'x');
+    const snapshot = session.getSnapshot();
+    expect(snapshot.regexTraces).toHaveLength(80);
+    expect(snapshot.regexTracesDropped).toBe(1);
+    expect(snapshot.regexTraces?.at(-1)).toMatchObject({ beforeLength: 4000, afterLength: 4000, truncated: true });
+    expect(snapshot.regexTraces?.at(-1)?.before).toHaveLength(3000);
+    await session.reset();
+    expect(session.getSnapshot().regexTraces).toEqual([]);
+    expect(session.getSnapshot().regexTracesDropped).toBe(0);
+    session.dispose();
+  });
   it('starts directly with restored greeting and viewport, then resets without losing those choices', async () => {
     const session = createPreviewSession({
       engine: createEngine(),

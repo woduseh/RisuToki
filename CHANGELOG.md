@@ -9,6 +9,15 @@
 
 ---
 
+## [3.9.0] - 2026-09-06
+
+### Added
+
+- Added read-only RISUM composition views for toggles, default variables, triggers, lorebook activation conditions, and asset counts, plus document diagnostics for CBS nesting, regex compilation, structured fields, and literal asset references.
+- Linked diagnostics for changed fields and collection items into saved-document review, with guarded navigation back to source.
+- Added an AI activity sidebar recording recent observed MCP requests, targets, outcomes, and timing. Records are bounded and session-local; request/response bodies and CLI-internal work are not recorded.
+- Expanded preview debugging with actual regex execution traces, lorebook matching details, literal missing-asset checks, and source navigation. Asset edits invalidate diagnostic, review, and preview snapshots.
+
 ## [3.8.3] - 2026-09-06
 
 ### Fixed

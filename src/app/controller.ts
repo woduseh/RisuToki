@@ -5,6 +5,9 @@ import { registerActions } from '../lib/action-registry';
 import { useAppStore } from '../stores/app-store';
 import { useWorkbenchStore } from '../stores/workbench-store';
 import { restoreDocumentReviewChange, type ReviewChange } from '../lib/document-review-model';
+import { diagnoseDocument, type DiagnosticSource } from '../lib/document-diagnostics';
+import type { PreviewAssetInventory } from '../lib/preview-assets';
+import type { McpActivitySource } from '../lib/mcp-activity-types';
 import type { DocumentReviewAssetChange } from '../lib/document-review-types';
 import type { PreviewPanelHandle, PreviewPanelViewState, PreviewSourceTarget } from '../lib/preview-panel';
 import type { RpMode, LorebookEntry, RegexEntry, ReferenceFile, RendererDocumentData } from '../stores/app-store';
@@ -99,7 +102,7 @@ import { formatDocumentStats, summarizeDocumentStats } from '../lib/document-sta
 import { showHelpPopup } from '../lib/help-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
 import { initSidebarDnD, destroyAllSortables } from '../lib/sidebar-dnd';
-import { initRightManagerPanel, renderRightManagerPanel } from '../lib/right-manager-panel';
+import { initRightManagerPanel, renderRightManagerPanel, setAssetManagerSearch } from '../lib/right-manager-panel';
 import { initPromptManagerPanel, renderPromptManagerPanel } from '../lib/risup-prompt-manager-panel';
 import {
   handleNew as _handleNew,
@@ -175,6 +178,8 @@ interface MonacoEditorInstance {
   getOption(id: number): unknown;
   getPosition(): { lineNumber: number; column: number } | null;
   setPosition(position: { lineNumber: number; column: number }): void;
+  revealLineInCenter?(lineNumber: number): void;
+  focus?(): void;
   getDomNode(): HTMLElement | null;
   layout(dimension?: { width: number; height: number }): void;
   [key: string]: unknown;
@@ -191,6 +196,8 @@ let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instanc
 let previewPanelHandle: PreviewPanelHandle | null = null;
 let previewRenderVersion = 0;
 let reviewVersion = 0;
+let diagnosticsVersion = 0;
+let assetRevision = 0;
 let previewSnapshot = '';
 const unappliedReviewDrafts = new Set<string>();
 let monacoReady = false;
@@ -550,6 +557,7 @@ function updateEditorModeToggle(tabInfo: Tab): void {
 
 function createOrSwitchEditor(tabInfo: Tab): void {
   useWorkbenchStore().reviewOpen = false;
+  useWorkbenchStore().diagnosticsOpen = false;
   const container = document.getElementById('editor-container')!;
   updateEditorModeToggle(tabInfo);
 
@@ -1472,6 +1480,12 @@ function buildSidebar(): void {
   if (isRisum) {
     tree.appendChild(createSectionHeader('모듈 정보'));
 
+    const overviewEl = createTreeItem('구성·진단', '🔎', 0);
+    overviewEl.addEventListener('click', () => {
+      void showDocumentDiagnostics();
+    });
+    tree.appendChild(overviewEl);
+
     const settingsEl = createTreeItem('모듈 설정', '📦', 0);
     settingsEl.addEventListener('click', () => {
       tabMgr.openTab(
@@ -2061,6 +2075,8 @@ function updateDocumentStats(): void {
 function setCurrentFileData(data: RendererDocumentData | null): void {
   disposePreviewPanel();
   reviewVersion += 1;
+  diagnosticsVersion += 1;
+  assetRevision += 1;
   previewSnapshot = '';
   unappliedReviewDrafts.clear();
   useWorkbenchStore().resetDocument();
@@ -2498,6 +2514,29 @@ function updateWorkbenchFreshness(): void {
   const snapshot = fileData ? JSON.stringify(fileData) : '';
   if (previewSnapshot && snapshot !== previewSnapshot) workbench.previewStale = true;
   if (workbench.reviewDraft && snapshot !== JSON.stringify(workbench.reviewDraft)) workbench.reviewStale = true;
+  if (workbench.diagnosticsDraft && snapshot !== JSON.stringify(workbench.diagnosticsDraft))
+    workbench.diagnosticsStale = true;
+  const active = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
+  if (!active) workbench.selection = null;
+  else {
+    const indexed = /^(lore_|regex_|altGreet_)(\d+)$/.exec(active.id);
+    const field = indexed
+      ? ({ lore_: 'lorebook', regex_: 'regex', altGreet_: 'alternateGreetings' } as Record<string, string>)[indexed[1]]
+      : active.id.startsWith('lua_s')
+        ? 'lua'
+        : active.id.startsWith('css_s')
+          ? 'css'
+          : active.id.startsWith('risup_prompt_item_')
+            ? 'promptTemplate'
+            : fileData && Object.hasOwn(fileData, active.id)
+              ? active.id
+              : undefined;
+    workbench.selection = {
+      label: active.label,
+      ...(field ? { field } : {}),
+      ...(indexed ? { index: Number(indexed[2]) } : {}),
+    };
+  }
   workbench.rawDraftWarning = tabMgr.openTabs.some(
     (tab) => tab.id.startsWith('project:') && tabMgr.dirtyFields.has(tab.id),
   )
@@ -2511,17 +2550,85 @@ function updateWorkbenchFreshness(): void {
       'JSON 문법 오류로 문서에 반영되지 않은 편집 내용이 있어요. 문법을 수정한 뒤 다시 검토하세요.';
 }
 
+async function inspectDocumentDraft(draft: RendererDocumentData) {
+  let assets: PreviewAssetInventory | null = null;
+  let assetError = '';
+  try {
+    assets = await window.tokiAPI.getPreviewAssetInventory();
+    if (assets.documentId !== draft._documentId) throw new Error('검사 중 에셋 대상 문서가 변경됐어요.');
+  } catch {
+    assets = null;
+    assetError = '에셋 목록을 확인하지 못해 에셋 참조 검사는 생략했어요. 다시 검사해 주세요.';
+  }
+  const diagnostics = diagnoseDocument(draft, { assetNames: assets?.names, assetInventoryAvailable: !!assets });
+  return { diagnostics, assets, assetError };
+}
+
+async function refreshDocumentDiagnostics(): Promise<void> {
+  if (!fileData) return;
+  const workbench = useWorkbenchStore();
+  const current = fileData;
+  const version = ++diagnosticsVersion;
+  const initialAssetRevision = assetRevision;
+  const draft = JSON.parse(JSON.stringify(current)) as RendererDocumentData;
+  if (!workbench.diagnosticsDraft) workbench.diagnosticsDraft = draft;
+  workbench.diagnosticsLoading = true;
+  workbench.diagnosticsError = '';
+  try {
+    const inspection = await inspectDocumentDraft(draft);
+    if (version !== diagnosticsVersion || current !== fileData) return;
+    workbench.diagnosticsDraft = draft;
+    workbench.diagnostics = inspection.diagnostics;
+    workbench.diagnosticsAssets = inspection.assets;
+    workbench.diagnosticsError = inspection.assetError;
+    workbench.diagnosticsCheckedAt = Date.now();
+    workbench.diagnosticsStale = initialAssetRevision !== assetRevision;
+    updateWorkbenchFreshness();
+  } catch (error) {
+    if (version === diagnosticsVersion) {
+      workbench.diagnosticsError = String(error);
+      workbench.diagnosticsStale = true;
+    }
+  } finally {
+    if (version === diagnosticsVersion) workbench.diagnosticsLoading = false;
+  }
+}
+
+async function showDocumentDiagnostics(): Promise<void> {
+  if (!fileData) return;
+  const workbench = useWorkbenchStore();
+  workbench.reviewOpen = false;
+  workbench.diagnosticsOpen = true;
+  useAppStore().setPreviewFocusMode(false);
+  await refreshDocumentDiagnostics();
+}
+
+function openDiagnosticSource(source: DiagnosticSource): void {
+  const workbench = useWorkbenchStore();
+  updateWorkbenchFreshness();
+  if (workbench.diagnosticsLoading || workbench.diagnosticsStale || workbench.rawDraftWarning) {
+    setStatus('현재 작업 내용이 바뀌었어요. 진단을 다시 검사한 뒤 원문을 여세요.');
+    return;
+  }
+  openReviewSource(source);
+}
+
 async function refreshDocumentReview(): Promise<void> {
   if (!fileData) return;
   const workbench = useWorkbenchStore();
   const current = fileData;
   const version = ++reviewVersion;
+  const initialAssetRevision = assetRevision;
   const draft = JSON.parse(JSON.stringify(current)) as RendererDocumentData;
   if (!workbench.reviewDraft) workbench.reviewDraft = draft;
   workbench.reviewLoading = true;
   workbench.reviewError = '';
+  workbench.reviewDiagnosticsError = '';
   try {
-    const result = await window.tokiAPI.getDocumentReview(draft);
+    const [result, inspection] = await Promise.all([
+      window.tokiAPI.getDocumentReview(draft),
+      inspectDocumentDraft(draft),
+    ]);
     if (version !== reviewVersion || current !== fileData) return;
     if (!result.success) {
       workbench.reviewError = result.error;
@@ -2530,7 +2637,9 @@ async function refreshDocumentReview(): Promise<void> {
     }
     workbench.reviewResult = result;
     workbench.reviewDraft = draft;
-    workbench.reviewStale = false;
+    workbench.reviewDiagnostics = inspection.diagnostics;
+    workbench.reviewDiagnosticsError = inspection.assetError;
+    workbench.reviewStale = initialAssetRevision !== assetRevision;
     updateWorkbenchFreshness();
   } catch (error) {
     if (version === reviewVersion) {
@@ -2542,7 +2651,7 @@ async function refreshDocumentReview(): Promise<void> {
   }
 }
 
-function openReviewSource(target: { field: string; index?: number }): void {
+function openReviewSource(target: DiagnosticSource): void {
   if (!fileData || target.field.startsWith('_')) return;
   updateWorkbenchFreshness();
   if (useWorkbenchStore().reviewOpen && useWorkbenchStore().reviewStale) {
@@ -2551,12 +2660,30 @@ function openReviewSource(target: { field: string; index?: number }): void {
   }
   const { field, index } = target;
   useWorkbenchStore().reviewOpen = false;
+  useWorkbenchStore().diagnosticsOpen = false;
   useAppStore().setPreviewFocusMode(false);
   if (field === 'lorebook' && index !== undefined) {
     openLorebookEntry(index);
   } else if (field === 'promptTemplate' && index !== undefined && getRisupPromptItems()[index]) {
     const itemId = getRisupPromptItems()[index].id;
     if (itemId) openRisupPromptItemTab(itemId);
+  } else if (field === 'triggerScripts') {
+    const tab = openTriggerScriptsControllerTab(tabMgr, fileData);
+    if (tab && index !== undefined && Number.isInteger(index) && index >= 0) {
+      tab._triggerSelectedIndex = index;
+      const active = tabMgr.openTabs.find((entry) => entry.id === tab.id);
+      if (active) createOrSwitchEditor(active);
+    }
+  } else if (field === 'customModuleToggle' && fileData._fileType === 'risum') {
+    tabMgr.openTab(
+      field,
+      '커스텀 토글',
+      '_toggleform',
+      () => String(fileData!.customModuleToggle ?? ''),
+      (value) => {
+        fileData!.customModuleToggle = String(value ?? '');
+      },
+    );
   } else if (field === 'regex' && index !== undefined && fileData.regex[index]) {
     tabMgr.openTab(
       `regex_${index}`,
@@ -2604,19 +2731,59 @@ function openReviewSource(target: { field: string; index?: number }): void {
     );
   }
   window.dispatchEvent(new Event('resize'));
+  if (target.line && editorInstance && tabMgr.activeTabId === field) {
+    editorInstance.setPosition({ lineNumber: target.line, column: 1 });
+    editorInstance.revealLineInCenter?.(target.line);
+    editorInstance.focus?.();
+  }
 }
 
 function openPreviewSource(target: PreviewSourceTarget): void {
+  updateWorkbenchFreshness();
   if (useWorkbenchStore().previewStale) {
     setStatus('문서가 변경됐어요. 현재본으로 미리보기를 다시 실행한 뒤 원문을 여세요.');
     return;
   }
-  if (target.type === 'greeting')
+  if (target.type === 'asset') {
+    void openAssetSource(target.name);
+  } else if (target.type === 'field') {
+    openReviewSource({ field: target.field });
+  } else if (target.type === 'greeting')
     openReviewSource({
       field: target.index < 0 ? 'firstMessage' : 'alternateGreetings',
       index: target.index < 0 ? undefined : target.index,
     });
   else openReviewSource({ field: target.type, index: 'index' in target ? target.index : undefined });
+}
+
+async function openAssetSource(name = ''): Promise<void> {
+  if (!fileData) return;
+  const current = fileData;
+  const workbench = useWorkbenchStore();
+  workbench.reviewOpen = false;
+  workbench.diagnosticsOpen = false;
+  const store = useAppStore();
+  store.setPreviewFocusMode(false);
+  store.setWorkspaceId('assets');
+  if (!store.navigatorVisible) store.toggleNavigator();
+  let path: string | undefined;
+  if (name) {
+    try {
+      const inventory = await window.tokiAPI.getPreviewAssetInventory();
+      if (current !== fileData || inventory.documentId !== current._documentId) return;
+      path = inventory.entries.find(
+        (entry) =>
+          entry.path &&
+          (entry.name.toLowerCase() === name.toLowerCase() || entry.path.toLowerCase() === name.toLowerCase()),
+      )?.path;
+    } catch {
+      if (current !== fileData) return;
+    }
+  }
+  setAssetManagerSearch(path || name);
+  if (path) openImageTab(path, path.split('/').pop() || name);
+  else if (name) setStatus(`“${name}”의 내부 파일 경로를 찾지 못했어요. 에셋 목록과 원문 참조를 확인하세요.`);
+  window.dispatchEvent(new Event('resize'));
 }
 
 async function restoreReviewChange(change: ReviewChange): Promise<void> {
@@ -2757,6 +2924,7 @@ async function refreshCharacterPreview(): Promise<void> {
 async function renderCharacterPreview(container: HTMLElement, initialViewState?: PreviewPanelViewState): Promise<void> {
   if (!fileData || (fileData._fileType || 'charx') !== 'charx') return;
   const renderVersion = ++previewRenderVersion;
+  const initialAssetRevision = assetRevision;
   const activeFileData = fileData;
   const snapshotText = JSON.stringify(fileData);
   const snapshot = JSON.parse(snapshotText) as RendererDocumentData;
@@ -2765,7 +2933,7 @@ async function renderCharacterPreview(container: HTMLElement, initialViewState?:
   const previewModulesPromise = Promise.all([import('../lib/preview-engine'), import('../lib/preview-panel')]);
 
   // Load all assets (name → data URI)
-  let assetMapForEngine: Record<string, string> = {};
+  let assetMapForEngine: Record<string, string> | null = null;
   let previewAssets: PreviewPanelDeps['previewAssets'] = null;
   try {
     const assetResult = await window.tokiAPI.getAllAssetsMap();
@@ -2807,7 +2975,7 @@ async function renderCharacterPreview(container: HTMLElement, initialViewState?:
   });
   previewPanelHandle.setVisible(useWorkbenchStore().previewOpen);
   previewSnapshot = snapshotText;
-  useWorkbenchStore().previewStale = false;
+  useWorkbenchStore().previewStale = initialAssetRevision !== assetRevision;
   updateWorkbenchFreshness();
 }
 
@@ -2975,12 +3143,42 @@ export async function initMainRenderer(): Promise<void> {
     'review-toggle': () => {
       const workbench = useWorkbenchStore();
       workbench.reviewOpen = !workbench.reviewOpen;
+      if (workbench.reviewOpen) workbench.diagnosticsOpen = false;
       useAppStore().setPreviewFocusMode(false);
       if (workbench.reviewOpen) void refreshDocumentReview();
       window.dispatchEvent(new Event('resize'));
     },
+    'review-open': () => {
+      const workbench = useWorkbenchStore();
+      workbench.reviewOpen = true;
+      workbench.diagnosticsOpen = false;
+      useAppStore().setPreviewFocusMode(false);
+      void refreshDocumentReview();
+    },
+    'diagnostics-toggle': () => {
+      const workbench = useWorkbenchStore();
+      if (workbench.diagnosticsOpen) workbench.diagnosticsOpen = false;
+      else void showDocumentDiagnostics();
+      window.dispatchEvent(new Event('resize'));
+    },
+    'diagnostics-refresh': () => refreshDocumentDiagnostics(),
+    'diagnostics-open-source': (payload) => openDiagnosticSource(payload as DiagnosticSource),
+    'diagnostics-open-assets': () => {
+      updateWorkbenchFreshness();
+      if (!useWorkbenchStore().diagnosticsStale && !useWorkbenchStore().rawDraftWarning) void openAssetSource();
+    },
+    'activity-open-source': (payload) => {
+      const source = payload as McpActivitySource;
+      if (!fileData || source?.documentId !== fileData._documentId) {
+        setStatus('작업 기록의 대상 문서가 현재 문서와 달라요.');
+        return;
+      }
+      useWorkbenchStore().reviewOpen = false;
+      if (source.field === 'assets') void openAssetSource();
+      else openReviewSource({ field: source.field });
+    },
     'review-refresh': () => refreshDocumentReview(),
-    'review-open-source': (payload) => openReviewSource(payload as { field: string; index?: number }),
+    'review-open-source': (payload) => openReviewSource(payload as DiagnosticSource),
     'review-restore': (payload) => restoreReviewChange(payload as ReviewChange),
     'review-restore-asset': (payload) => restoreReviewAsset(payload as DocumentReviewAssetChange),
     devtools: () => window.tokiAPI.toggleDevTools(),
@@ -3173,9 +3371,11 @@ export async function initMainRenderer(): Promise<void> {
     const updateField = typeof field === 'string' ? field : (field as { field?: string })?.field;
     if (!updateField) return;
     if (updateField === 'assets' || updateField === 'risumAssets') {
+      assetRevision += 1;
       tabMgr.markFieldDirty(updateField);
       useWorkbenchStore().previewStale = true;
       useWorkbenchStore().reviewStale = true;
+      useWorkbenchStore().diagnosticsStale = true;
       buildSidebar();
       const active = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
       if (active?.language === '_image') showImageViewer(active.id, active._assetPath as string);

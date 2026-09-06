@@ -25,6 +25,50 @@ const snapshot: PreviewSnapshot = {
 };
 
 describe('preview debug helpers', () => {
+  it('escapes recorded regex content and static missing-asset names while explaining their evidence', () => {
+    const dangerous = '<img src=x onerror=alert(1)>';
+    const enriched: PreviewSnapshot = {
+      ...snapshot,
+      regexTraces: [
+        {
+          index: 0,
+          comment: dangerous,
+          mode: 'editinput',
+          order: 0,
+          flags: 'g',
+          matchCount: 1,
+          changed: true,
+          before: dangerous,
+          after: 'safe',
+          sequence: 1,
+          messageIndex: 0,
+          surface: 'message',
+          beforeLength: dangerous.length,
+          afterLength: 4,
+          truncated: false,
+        },
+      ],
+      assetDiagnostics: {
+        available: true,
+        checkedReferences: 1,
+        missing: [
+          { name: dangerous, source: { type: 'greeting', index: -1 }, sourceLabel: '첫 메시지', line: 2, kind: 'cbs' },
+        ],
+        truncated: false,
+      },
+    };
+    const regexHtml = renderPreviewDebugHtml({ activeTab: 'regex', snapshot: enriched, sourceLinks: true });
+    expect(regexHtml).toContain('표시 과정에서 수집');
+    expect(regexHtml).toContain('적용 전');
+    expect(regexHtml).toContain('적용 후');
+    expect(regexHtml).not.toContain(dangerous);
+    expect(regexHtml).toContain('&lt;img');
+    const assetsHtml = renderPreviewDebugHtml({ activeTab: 'assets', snapshot: enriched, sourceLinks: true });
+    expect(assetsHtml).toContain('실제 실행·표시됐는지는 판단하지');
+    expect(assetsHtml).not.toContain(dangerous);
+    expect(assetsHtml).toContain('data-preview-source="asset-reference"');
+    expect(assetsHtml).toContain('data-preview-source="asset"');
+  });
   it('builds clipboard text with summary counts and message snippets', () => {
     const text = buildPreviewDebugClipboardText(snapshot, '12:34:56');
 

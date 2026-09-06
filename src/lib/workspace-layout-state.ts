@@ -41,7 +41,9 @@ interface WorkspaceLayoutStateV2 {
 }
 
 function normalizeRightSidebarView(value: unknown, fallback: RightSidebarView | null): RightSidebarView | null {
-  return value === 'inspector' || value === 'guides' || value === 'references' || value === null ? value : fallback;
+  return value === 'inspector' || value === 'guides' || value === 'references' || value === 'activity' || value === null
+    ? value
+    : fallback;
 }
 
 export function migrateWorkspaceLayoutV2(previous: WorkspaceLayoutStateV2 | null): WorkspaceLayoutStateV3 {

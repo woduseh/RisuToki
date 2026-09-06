@@ -3,6 +3,8 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { serialize } from 'v8';
+import { observeMcpRequest, observeMcpActiveTarget, observeMcpReferenceTarget } from './mcp-activity-observer';
+import type { McpActivityRecord, McpActivityTarget } from './mcp-activity-types';
 import { FileConflictError } from './file-baseline';
 import type { LoadedDocumentData, TriggerScript } from '../charx-io';
 import * as lorebookIo from './lorebook-io';
@@ -140,6 +142,9 @@ export interface McpSessionStatus {
 }
 
 export interface McpApiDeps {
+  /** Optional local UI telemetry. Does not change public MCP response contracts. */
+  onActivity?: (record: McpActivityRecord) => void;
+  getActivityDocument?: () => McpActivityTarget | undefined;
   hasRendererDraftChanges?: () => Promise<boolean>;
   /** Return the current in-memory document data (mutated directly by routes). */
   getCurrentData: () => LoadedDocumentData | null;
@@ -290,6 +295,28 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
   const openFileRequestState = { inFlight: false };
 
   const broadcastStatus = deps.broadcastMcpStatus;
+  function activityTarget(): McpActivityTarget | undefined {
+    try {
+      return deps.getActivityDocument?.();
+    } catch {
+      return undefined;
+    }
+  }
+  function activityReference(parts: string[]): McpActivityTarget | undefined {
+    if (parts[0] !== 'reference' || !/^\d+$/.test(parts[1] || '')) return undefined;
+    try {
+      const reference = deps.getReferenceFiles()[Number(parts[1])];
+      return reference
+        ? {
+            kind: 'reference',
+            name: String(reference.fileName || reference.name || '참고자료').slice(0, 160),
+            ...(reference.filePath ? { filePath: reference.filePath } : {}),
+          }
+        : undefined;
+    } catch {
+      return undefined;
+    }
+  }
 
   // Mutex map to prevent parallel write conflicts on the same field
   const fieldWriteMutex = new Map<string, Promise<void>>();
@@ -457,6 +484,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     }
     const url = new URL(req.url!, 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
+    if (deps.onActivity)
+      observeMcpRequest({
+        req,
+        res,
+        parts,
+        readOnly: !!getFieldReadRoute(req.method, parts),
+        activeTarget: activityTarget(),
+        referenceTarget: activityReference(parts),
+        externalFilePath: parts[0] === 'cbs' ? url.searchParams.get('file_path') : null,
+        emit: deps.onActivity,
+      });
 
     try {
       if (
@@ -499,6 +537,8 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       const isRisupPromptSnippetRoute = parts[0] === 'risup' && parts[1] === 'prompt-snippets';
       const isSkillRoute = parts[0] === 'skills' && req.method === 'GET';
       const currentData = deps.getCurrentData();
+      observeMcpActiveTarget(req, activityTarget());
+      observeMcpReferenceTarget(req, activityReference(parts));
       if (!currentData && !isSessionStatusRoute && !isReferenceRoute && !isRisupPromptSnippetRoute && !isSkillRoute) {
         return mcpError(res, 400, {
           action: 'require current document',

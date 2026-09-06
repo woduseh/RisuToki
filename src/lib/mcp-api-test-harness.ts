@@ -150,6 +150,8 @@ export interface McpNoOpRecoveryEnvelope extends McpRecoveryEnvelope {
 }
 
 export interface TestDepsOverrides {
+  onActivity?: (record: import('./mcp-activity-types').McpActivityRecord) => void;
+  getActivityDocument?: () => import('./mcp-activity-types').McpActivityTarget | undefined;
   hasRendererDraftChanges?: () => Promise<boolean>;
   askRendererConfirm?: (title: string, message: string) => Promise<boolean>;
   getCurrentData?: () => LoadedDocumentData | null;
@@ -424,6 +426,8 @@ export async function startTestApiServer(
     broadcastMcpStatus: (payload: Record<string, unknown>) => {
       void payload;
     },
+    onActivity: overrides?.onActivity,
+    getActivityDocument: overrides?.getActivityDocument,
     onListening: (port) => resolvePort(port),
     parseLuaSections: overrides?.parseLuaSections ?? parseLuaSections,
     combineLuaSections: overrides?.combineLuaSections ?? combineLuaSections,

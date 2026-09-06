@@ -27,6 +27,18 @@ This map is for source navigation. It is not a full API reference.
 
 ## MCP and agent harness
 
+- `src/lib/mcp-activity-types.ts` — bounded request observation records and source targets
+- `src/lib/mcp-activity-observer.ts` — safe HTTP request lifecycle and target observation
+- `src/lib/mcp-activity-buffer.ts` — in-memory activity retention and sequencing
+- `src/lib/document-diagnostics.ts` — static document checks and RISUM composition summaries
+- `src/lib/document-diagnostic-links.ts` — changed-item diagnostic matching
+- `src/lib/document-review-model.ts` — saved/current document change comparison
+- `src/lib/document-review-service.ts` — saved baselines, asset hashes, and guarded restoration
+- `src/lib/document-review-types.ts` — review IPC and asset-change types
+- `src/lib/preview-asset-diagnostics.ts` — preview asset findings and source links
+- `src/lib/preview-asset-references.ts` — literal asset reference scanning
+- `src/lib/risup-toggle-layout.ts` — responsive preset toggle layout
+
 - `src/lib/mcp-api-server.ts` — MCP HTTP route handling and response contracts
 - `src/lib/mcp-api-helpers.ts` — shared HTTP parsing, response, identity, surface, list, and external-field helpers
 - `src/lib/mcp-section-cache.ts` — server-local Lua/CSS parse caches with defensive copies

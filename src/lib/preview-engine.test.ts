@@ -3,6 +3,23 @@ import { PreviewEngine } from './preview-engine';
 import type { PreviewLorebookEntry, PreviewMessage } from './preview-session';
 
 describe('PreviewEngine CBS parity', () => {
+  it('reports regex changes from the same ordered execution using document indices', () => {
+    const trace = vi.fn();
+    const output = PreviewEngine.processRegex(
+      'seed',
+      [
+        { type: 'editoutput', find: 'middle', out: 'final', __mcpIndex: 99 },
+        { type: 'editoutput', find: 'seed', out: 'middle', replaceOrder: 10 },
+      ],
+      'editoutput',
+      trace,
+    );
+    expect(output).toBe('final');
+    expect(trace.mock.calls.map(([entry]) => [entry.index, entry.before, entry.after])).toEqual([
+      [1, 'seed', 'middle'],
+      [0, 'middle', 'final'],
+    ]);
+  });
   it('evaluates RisuAI single-character equality and boolean operators in first-message blocks', () => {
     PreviewEngine.resetVars();
     PreviewEngine.setDefaultVars('greeting=1\nlang=0');

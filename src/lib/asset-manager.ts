@@ -2,9 +2,12 @@ import { ipcMain, dialog, BrowserWindow } from 'electron';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import { deserialize, serialize } from 'node:v8';
+import { isDeepStrictEqual } from 'node:util';
 
 import { normalizeFolderRef } from './lorebook-folders';
-import { buildPreviewAssets, type PreviewAssetsResult } from './preview-assets';
+import { serializeActiveDocument } from './renderer-document-state';
+import { buildPreviewAssets, buildPreviewAssetInventory, type PreviewAssetsResult } from './preview-assets';
 import { extToMime } from './shared-utils';
 import { addAssetReferences, deleteAssetReferences, renameAssetReferences, validateAssetFileName } from './asset-utils';
 
@@ -17,6 +20,7 @@ import { addAssetReferences, deleteAssetReferences, renameAssetReferences, valid
 export interface AssetManagerDeps {
   getCurrentData: () => any;
   getMainWindow: () => BrowserWindow | null;
+  onAssetsChanged?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -126,6 +130,10 @@ export function invalidateAssetsMapCache(): void {
 
 export function initAssetManager(d: AssetManagerDeps): void {
   deps = d;
+  const notifyAssetsChanged = (data: any): void => {
+    invalidateAssetsMapCache();
+    if (deps.getCurrentData() === data) deps.onAssetsChanged?.();
+  };
 
   ipcMain.handle('get-asset-list', () => {
     const data = deps.getCurrentData();
@@ -134,6 +142,14 @@ export function initAssetManager(d: AssetManagerDeps): void {
       path: a.path,
       size: a.data.length,
     }));
+  });
+
+  ipcMain.handle('get-preview-asset-inventory', () => {
+    const data = deps.getCurrentData();
+    return {
+      ...buildPreviewAssetInventory(data || {}),
+      documentId: data ? serializeActiveDocument(data)._documentId : null,
+    };
   });
 
   ipcMain.handle('get-asset-data', (_, assetPath: string) => {
@@ -166,18 +182,25 @@ export function initAssetManager(d: AssetManagerDeps): void {
       properties: ['openFile', 'multiSelections'],
     });
     if (result.canceled || !result.filePaths.length) return null;
+    if (deps.getCurrentData() !== data) return null;
 
     const added: { path: string; size: number }[] = [];
+    const pending: { path: string; data: Buffer }[] = [];
     for (const filePath of result.filePaths) {
       const fileName = path.basename(filePath);
       if (validateAssetFileName(fileName)) continue;
       const assetPath = `${basePath}/${fileName}`;
-      if (data.assets.find((a: any) => a.path === assetPath)) continue;
+      if (data.assets.find((a: any) => a.path === assetPath) || pending.some((asset) => asset.path === assetPath))
+        continue;
       const fileData = fs.readFileSync(filePath);
-      data.assets.push({ path: assetPath, data: fileData });
-      addAssetReferences(data, assetPath, folder === 'icon' ? 'icon' : 'other');
-      added.push({ path: assetPath, size: fileData.length });
+      pending.push({ path: assetPath, data: fileData });
     }
+    for (const asset of pending) {
+      data.assets.push(asset);
+      addAssetReferences(data, asset.path, folder === 'icon' ? 'icon' : 'other');
+      added.push({ path: asset.path, size: asset.data.length });
+    }
+    if (added.length) notifyAssetsChanged(data);
     return added;
   });
 
@@ -194,6 +217,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     const buf = Buffer.from(base64Data, 'base64');
     data.assets.push({ path: assetPath, data: buf });
     addAssetReferences(data, assetPath, folder === 'icon' ? 'icon' : 'other');
+    notifyAssetsChanged(data);
     return { path: assetPath, size: buf.length };
   });
 
@@ -206,6 +230,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     if (idx === -1) return false;
     data.assets.splice(idx, 1);
     deleteAssetReferences(data, assetPath);
+    notifyAssetsChanged(data);
     return true;
   });
 
@@ -215,10 +240,12 @@ export function initAssetManager(d: AssetManagerDeps): void {
     if (!data || !Array.isArray(assetPaths)) return false;
     invalidateAssetsMapCache();
     const targets = new Set(assetPaths);
-    const before = data.assets.length;
+    const removed = data.assets.filter((a: any) => targets.has(a.path));
+    if (!removed.length) return false;
     data.assets = data.assets.filter((a: any) => !targets.has(a.path));
-    for (const assetPath of targets) deleteAssetReferences(data, assetPath);
-    return data.assets.length !== before;
+    for (const asset of removed) deleteAssetReferences(data, asset.path);
+    notifyAssetsChanged(data);
+    return true;
   });
 
   // Rename asset
@@ -231,9 +258,11 @@ export function initAssetManager(d: AssetManagerDeps): void {
     const dir = oldPath.substring(0, oldPath.lastIndexOf('/') + 1);
     const newPath = dir + newName;
     if (data.assets.some((a: any) => a !== asset && a.path === newPath)) return null;
+    if (oldPath === newPath) return newPath;
     asset.path = newPath;
     renameAssetReferences(data, oldPath, newPath);
     invalidateAssetsMapCache();
+    notifyAssetsChanged(data);
     return newPath;
   });
 
@@ -250,7 +279,8 @@ export function initAssetManager(d: AssetManagerDeps): void {
       return { ok: false, conflicts };
     }
 
-    for (const item of planned) {
+    const changes = planned.filter((item) => item.oldPath !== item.newPath);
+    for (const item of changes) {
       const asset = data.assets.find((entry: any) => entry.path === item.oldPath);
       if (!asset) return { ok: false, conflicts: [`${item.oldPath}: 에셋을 찾을 수 없습니다.`] };
       asset.path = item.newPath;
@@ -258,6 +288,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
     }
 
     invalidateAssetsMapCache();
+    if (changes.length) notifyAssetsChanged(data);
     return {
       ok: true,
       renamed: planned.map(({ oldPath, newPath }) => ({ oldPath, newPath })),
@@ -281,7 +312,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
       if (group === fromGroup) groupIndices.push(i);
     }
     const localFrom = groupIndices.indexOf(fromIdx);
-    if (localFrom === -1 || toIdx < 0 || toIdx >= groupIndices.length) return false;
+    if (localFrom === -1 || !Number.isInteger(toIdx) || toIdx < 0 || toIdx >= groupIndices.length) return false;
     if (localFrom === toIdx) return false;
     // Perform the move
     const [item] = data.assets.splice(fromIdx, 1);
@@ -299,6 +330,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
           ? adjustedGroupIndices[adjustedGroupIndices.length - 1] + 1
           : data.assets.length;
     data.assets.splice(targetAbsIdx, 0, item);
+    notifyAssetsChanged(data);
     return true;
   });
 
@@ -310,13 +342,19 @@ export function initAssetManager(d: AssetManagerDeps): void {
     }
 
     try {
+      const assetState = () => ({ assets: data.assets, cardAssets: data.cardAssets, xMeta: data.xMeta });
+      const snapshot = deserialize(serialize(assetState()));
       const mod = await import('./image-compressor.js');
       const { compressAssetsToWebP, updateAssetReferences } = mod;
 
-      const result = await compressAssetsToWebP(data.assets, {
+      const result = await compressAssetsToWebP(snapshot.assets, {
         quality: opts?.quality ?? 80,
         recompressWebp: opts?.recompressWebp ?? false,
       });
+      if (deps.getCurrentData() !== data || !isDeepStrictEqual(assetState(), snapshot)) {
+        return { ok: false, error: '압축 중 문서나 에셋이 변경되어 결과를 적용하지 않았습니다.' };
+      }
+      if (isDeepStrictEqual(data.assets, result.assets)) return { ok: true, stats: result.stats };
 
       // Build path map for reference updates
       const pathMap = new Map<string, string>();
@@ -333,6 +371,7 @@ export function initAssetManager(d: AssetManagerDeps): void {
       }
 
       invalidateAssetsMapCache();
+      notifyAssetsChanged(data);
       return { ok: true, stats: result.stats };
     } catch (err: unknown) {
       return {

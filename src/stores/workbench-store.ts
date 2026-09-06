@@ -2,6 +2,8 @@ import { defineStore } from 'pinia';
 import { ref, shallowRef } from 'vue';
 import type { RendererDocumentData } from '../lib/document-types';
 import type { DocumentReviewResult } from '../lib/document-review-types';
+import type { DocumentDiagnostic } from '../lib/document-diagnostics';
+import type { PreviewAssetInventory } from '../lib/preview-assets';
 
 /** Ephemeral document work, intentionally separate from persisted panel preferences. */
 export const useWorkbenchStore = defineStore('workbench', () => {
@@ -17,6 +19,17 @@ export const useWorkbenchStore = defineStore('workbench', () => {
   const reviewResult = shallowRef<Extract<DocumentReviewResult, { success: true }> | null>(null);
   const reviewDraft = shallowRef<RendererDocumentData | null>(null);
   const rawDraftWarning = ref('');
+  const diagnosticsOpen = ref(false);
+  const diagnosticsLoading = ref(false);
+  const diagnosticsStale = ref(false);
+  const diagnosticsError = ref('');
+  const diagnosticsDraft = shallowRef<RendererDocumentData | null>(null);
+  const diagnostics = shallowRef<DocumentDiagnostic[]>([]);
+  const diagnosticsAssets = shallowRef<PreviewAssetInventory | null>(null);
+  const diagnosticsCheckedAt = ref<number | null>(null);
+  const reviewDiagnostics = shallowRef<DocumentDiagnostic[] | null>(null);
+  const reviewDiagnosticsError = ref('');
+  const selection = shallowRef<{ label: string; field?: string; index?: number } | null>(null);
 
   function resetDocument() {
     previewOpen.value = false;
@@ -30,6 +43,17 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     reviewResult.value = null;
     reviewDraft.value = null;
     rawDraftWarning.value = '';
+    diagnosticsOpen.value = false;
+    diagnosticsLoading.value = false;
+    diagnosticsStale.value = false;
+    diagnosticsError.value = '';
+    diagnosticsDraft.value = null;
+    diagnostics.value = [];
+    diagnosticsAssets.value = null;
+    diagnosticsCheckedAt.value = null;
+    reviewDiagnostics.value = null;
+    reviewDiagnosticsError.value = '';
+    selection.value = null;
   }
 
   return {
@@ -45,6 +69,17 @@ export const useWorkbenchStore = defineStore('workbench', () => {
     reviewResult,
     reviewDraft,
     rawDraftWarning,
+    diagnosticsOpen,
+    diagnosticsLoading,
+    diagnosticsStale,
+    diagnosticsError,
+    diagnosticsDraft,
+    diagnostics,
+    diagnosticsAssets,
+    diagnosticsCheckedAt,
+    reviewDiagnostics,
+    reviewDiagnosticsError,
+    selection,
     resetDocument,
   };
 });

@@ -105,6 +105,24 @@ export function buildPreviewDebugClipboardText(
     lines.push(`[정규식] ${snapshot.scripts.length}개`);
   }
 
+  if (snapshot.regexTraces?.length) {
+    lines.push('\n[정규식 실제 표시 처리 기록]');
+    for (const trace of snapshot.regexTraces) {
+      lines.push(
+        `  #${trace.sequence} ${trace.mode} ${trace.surface === 'background' ? '배경' : `메시지 ${trace.messageIndex + 1}`} · ${trace.comment || `정규식 ${trace.index + 1}`} · 매칭 ${trace.matchCount}`,
+      );
+      if (trace.error) lines.push(`    오류: ${trace.error}`);
+      lines.push(`    적용 전: ${trace.before}`, `    적용 후: ${trace.after}`);
+      if (trace.truncated) lines.push(`    긴 내용 일부 표시 (${trace.beforeLength} → ${trace.afterLength}자)`);
+    }
+    if (snapshot.regexTracesDropped) lines.push(`    이전 기록 ${snapshot.regexTracesDropped}개 생략`);
+  }
+  if (snapshot.assetDiagnostics?.missing.length) {
+    lines.push('\n[정적 에셋 참조 검사 — 실행 여부 미판정]');
+    for (const missing of snapshot.assetDiagnostics.missing)
+      lines.push(`  ${missing.name} · ${missing.sourceLabel}:${missing.line}`);
+  }
+
   lines.push(`\n[메시지] ${snapshot.messages.length}개`);
 
   for (const message of snapshot.messages) {
@@ -200,6 +218,12 @@ export function renderPreviewDebugHtml({
 
       // Append decorator metadata for active entries
       if (active && match) {
+        if (match.matchedKeys?.length) {
+          statusText += '<br>매칭 키: ' + match.matchedKeys.map((key) => escapePreviewHtml(key)).join(', ');
+        }
+        if (match.excludedKeys?.length) {
+          statusText += '<br>제외 키: ' + match.excludedKeys.map((key) => escapePreviewHtml(key)).join(', ');
+        }
         const decoTags = formatDecoratorTags(match);
         if (decoTags.length) {
           statusText += '<br>' + decoTags.map((t) => escapePreviewHtml(t)).join(' ');
@@ -234,13 +258,52 @@ export function renderPreviewDebugHtml({
     return html;
   }
 
+  if (activeTab === 'assets') {
+    const report = snapshot.assetDiagnostics;
+    if (!report?.available) return `<p style="${EMPTY_STYLE}">에셋 목록을 불러오지 못해 참조를 검사하지 못했어요.</p>`;
+    let html = '<p>문서에 직접 적힌 에셋 이름을 확인했어요. 현재 화면에서 실제 실행·표시됐는지는 판단하지 않아요.</p>';
+    html += `<p>${report.checkedReferences}개 참조 확인 · 찾을 수 없는 이름 ${report.missing.length}개</p>`;
+    if (report.truncated) html += '<p>검사 한도를 넘는 내용은 일부 생략했어요.</p>';
+    if (!report.missing.length) return html + '<p>확인한 참조에서 누락된 이름은 없어요.</p>';
+    for (const [index, missing] of report.missing.entries()) {
+      html += `<div class="preview-missing-asset"><strong>${escapePreviewHtml(missing.name)}</strong><p>${escapePreviewHtml(missing.sourceLabel)} · ${missing.line}행 · ${missing.kind === 'html' ? 'HTML src' : 'CBS'}</p>`;
+      if (sourceLinks) {
+        html += `<button type="button" class="preview-tool-button" data-preview-source="asset-reference" data-diagnostic-index="${index}">참조 원문</button> `;
+        html += `<button type="button" class="preview-tool-button" data-preview-source="asset" data-diagnostic-index="${index}">에셋 찾기</button>`;
+      }
+      html += '</div>';
+    }
+    return html;
+  }
+
   if (activeTab === 'regex') {
     if (!snapshot.scripts.length) {
       return `<div style="${EMPTY_STYLE}">정규식 없음</div>`;
     }
 
     const types = ['editinput', 'editoutput', 'editdisplay', 'editprocess', 'edittrans'];
-    let html = '';
+    let html = '<div class="preview-regex-trace-list"><strong>표시 처리 기록</strong>';
+    if (snapshot.regexTraces?.length) {
+      html += '<p>현재 로컬 프리뷰의 표시 과정에서 수집한 기록이에요.</p>';
+      if (snapshot.regexTracesDropped)
+        html += `<p>최근 기록을 유지하며 이전 ${snapshot.regexTracesDropped}개는 생략했어요.</p>`;
+      for (const trace of [...snapshot.regexTraces].reverse()) {
+        const script = snapshot.scripts[trace.index];
+        const location = trace.surface === 'background' ? '배경' : `메시지 ${trace.messageIndex + 1}`;
+        const result = trace.error ? '오류' : trace.changed ? '변경됨' : '변경 없음';
+        html += `<details class="preview-regex-trace" data-debug-section="regex-trace-${trace.sequence}"><summary>#${trace.sequence} ${escapePreviewHtml(trace.comment || `정규식 ${trace.index + 1}`)} · ${escapePreviewHtml(trace.mode)} · ${location} · ${result}</summary>`;
+        html += sourceButton('regex', trace.index);
+        html += `<p>매칭 ${trace.matchCount}회 · 플래그 <code>${escapePreviewHtml(trace.flags)}</code></p>`;
+        if (trace.error) html += `<p role="status">${escapePreviewHtml(trace.error)}</p>`;
+        html += `<div>패턴 <code>${escapePreviewHtml(String(script?.find || script?.in || '').slice(0, 2000))}</code></div>`;
+        html += `<div>적용 전 (${trace.beforeLength}자)</div><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;">${escapePreviewHtml(trace.before)}</pre>`;
+        html += `<div>적용 후 (${trace.afterLength}자)</div><pre style="white-space:pre-wrap;overflow-wrap:anywhere;max-height:180px;overflow:auto;">${escapePreviewHtml(trace.after)}</pre>`;
+        if (trace.truncated) html += '<p>긴 내용은 앞부분만 표시했어요.</p>';
+        html += '</details>';
+      }
+    } else html += '<p>아직 적용 기록이 없어요. 메시지를 표시하면 해당 처리 단계의 기록이 쌓여요.</p>';
+    html +=
+      '</div><details class="preview-regex-config" data-debug-section="regex-config"><summary>정규식 설정 목록</summary>';
 
     // Active scripts grouped by type
     for (const type of types) {
@@ -273,7 +336,7 @@ export function renderPreviewDebugHtml({
       html += '</table>';
     }
 
-    return html || `<div style="${EMPTY_STYLE}">정규식 없음</div>`;
+    return html + '</details>';
   }
 
   return '';

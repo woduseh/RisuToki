@@ -2,6 +2,20 @@ import type { PreviewLoreDecorators } from './lorebook-decorators';
 import { wrapCssForPreview, type PreviewParserEngine } from './preview-format';
 import { renderPreviewMarkdown, type PreviewRenderMode } from './preview-renderer';
 import { createDocumentPreviewRuntime, PreviewRuntimeTimeoutError, type PreviewRuntime } from './preview-runtime';
+import type { RegexTraceEntry } from './content-simulation';
+import { inspectPreviewAssetReferences, type PreviewAssetDiagnosticReport } from './preview-asset-diagnostics';
+
+export interface PreviewRegexTrace extends RegexTraceEntry {
+  sequence: number;
+  messageIndex: number;
+  surface: 'message' | 'background';
+  beforeLength: number;
+  afterLength: number;
+  truncated: boolean;
+}
+
+export const PREVIEW_REGEX_TRACE_LIMIT = 80;
+export const PREVIEW_REGEX_TRACE_TEXT_LIMIT = 3000;
 
 export interface PreviewMessage {
   role: 'char' | 'user';
@@ -67,6 +81,10 @@ export interface PreviewSnapshot {
   initState: PreviewInitState;
   initError: string | null;
   runtimeError: string | null;
+  /** Captured from the same regex pipeline execution that produced the displayed output. */
+  regexTraces?: PreviewRegexTrace[];
+  regexTracesDropped?: number;
+  assetDiagnostics?: PreviewAssetDiagnosticReport;
 }
 
 export interface PreviewCharData {
@@ -98,7 +116,12 @@ export interface PreviewEngine extends PreviewParserEngine {
   setAssets(assets: Record<string, string>): void;
   setLorebook(lorebook: PreviewLorebookEntry[]): void;
   onReloadDisplay(callback: () => void): void;
-  processRegex(content: string, scripts: PreviewRegexScript[], type?: string): string;
+  processRegex(
+    content: string,
+    scripts: PreviewRegexScript[],
+    type?: string,
+    onTrace?: (entry: RegexTraceEntry) => void,
+  ): string;
   resolveAssetImages(content: string): string;
   runLuaButtonClick(chatId: number, data: string): Promise<void>;
   runLuaTrigger(triggerName: string, payload: string | null): Promise<string | null>;
@@ -180,6 +203,7 @@ export function createPreviewSession({
   const lorebook = charData.lorebook || [];
   const scripts = charData.regex || [];
   const runtime = providedRuntime ?? createDocumentPreviewRuntime(chatFrame);
+  const assetDiagnostics = inspectPreviewAssetReferences(charData, assetMap);
 
   let previewMessages: PreviewMessage[] = [];
   let msgIndex = 0;
@@ -189,6 +213,9 @@ export function createPreviewSession({
   let initState: PreviewInitState = 'idle';
   let initError: string | null = null;
   let runtimeError: string | null = null;
+  let regexTraces: PreviewRegexTrace[] = [];
+  let regexTraceSequence = 0;
+  let regexTracesDropped = 0;
   let disposed = false;
   let selectedGreetingIndex =
     Number.isInteger(initialGreetingIndex) &&
@@ -261,7 +288,39 @@ export function createPreviewSession({
       initState,
       initError,
       runtimeError,
+      regexTraces: regexTraces.map((entry) => ({ ...entry })),
+      regexTracesDropped,
+      assetDiagnostics: {
+        ...assetDiagnostics,
+        missing: assetDiagnostics.missing.map((entry) => ({ ...entry, source: { ...entry.source } })),
+      },
     };
+  }
+
+  function applyRegex(content: string, mode: string, messageIndex: number, surface: 'message' | 'background'): string {
+    if (disposed) return content;
+    return engine.processRegex(content, scripts, mode, (entry) => {
+      if (disposed) return;
+      const beforeLength = entry.before.length;
+      const afterLength = entry.after.length;
+      regexTraces.push({
+        ...entry,
+        comment: entry.comment.slice(0, 300),
+        error: entry.error?.slice(0, 1000),
+        before: entry.before.slice(0, PREVIEW_REGEX_TRACE_TEXT_LIMIT),
+        after: entry.after.slice(0, PREVIEW_REGEX_TRACE_TEXT_LIMIT),
+        sequence: ++regexTraceSequence,
+        messageIndex,
+        surface,
+        beforeLength,
+        afterLength,
+        truncated: beforeLength > PREVIEW_REGEX_TRACE_TEXT_LIMIT || afterLength > PREVIEW_REGEX_TRACE_TEXT_LIMIT,
+      });
+      if (regexTraces.length > PREVIEW_REGEX_TRACE_LIMIT) {
+        regexTraces.shift();
+        regexTracesDropped++;
+      }
+    });
   }
 
   function notifyStateChange(): void {
@@ -328,12 +387,12 @@ export function createPreviewSession({
     });
 
     if (role === 'char') {
-      content = engine.processRegex(content, scripts, 'editoutput');
+      content = applyRegex(content, 'editoutput', chatID, 'message');
       content = (await runLuaTrigger('editOutput', content)) || '';
       if (disposed) return '';
       content = engine.risuChatParser(content, cbsOptions(true));
     } else {
-      content = engine.processRegex(content, scripts, 'editinput');
+      content = applyRegex(content, 'editinput', chatID, 'message');
       content = (await runLuaTrigger('editInput', content)) || '';
       if (disposed) return '';
       content = engine.risuChatParser(content, cbsOptions(true));
@@ -355,7 +414,7 @@ export function createPreviewSession({
     // RisuAI applies editdisplay scripts while asset references still contain
     // their authored names. Resolving to data URIs first leaks the full Base64
     // value into regex capture groups and visible labels.
-    let content = engine.processRegex(rawContent, scripts, 'editdisplay');
+    let content = applyRegex(rawContent, 'editdisplay', chatID, mode === 'back' ? 'background' : 'message');
     content = engine.risuChatParser(content, cbsOptions(true));
     content = (await runLuaTrigger('editDisplay', content)) || '';
     if (disposed) return '';
@@ -540,6 +599,9 @@ export function createPreviewSession({
     initState = 'loading';
     initError = null;
     runtimeError = null;
+    regexTraces = [];
+    regexTraceSequence = 0;
+    regexTracesDropped = 0;
     notifyStateChange();
 
     try {
@@ -580,6 +642,9 @@ export function createPreviewSession({
     initState = 'loading';
     initError = null;
     runtimeError = null;
+    regexTraces = [];
+    regexTraceSequence = 0;
+    regexTracesDropped = 0;
     notifyStateChange();
 
     try {

@@ -33,6 +33,15 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     saveFile: (updatedFields) => ipcRenderer.invoke('save-file', updatedFields),
     saveFileAs: (updatedFields) => ipcRenderer.invoke('save-file-as', updatedFields),
     getFilePath: () => ipcRenderer.invoke('get-file-path'),
+    getMcpActivity: () => ipcRenderer.invoke('get-mcp-activity'),
+    onMcpActivity: (callback) => {
+      const listener = (_event: unknown, payload: Parameters<typeof callback>[0]) => callback(payload);
+      ipcRenderer.on('mcp-activity', listener);
+      return () => {
+        ipcRenderer.removeListener('mcp-activity', listener);
+      };
+    },
+    getPreviewAssetInventory: () => ipcRenderer.invoke('get-preview-asset-inventory'),
     getDocumentReview: (draft) => ipcRenderer.invoke('get-document-review', draft),
     restoreReviewAsset: (request) => ipcRenderer.invoke('restore-review-asset', request),
     getCwd: () => ipcRenderer.invoke('get-cwd'),

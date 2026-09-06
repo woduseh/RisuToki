@@ -1,4 +1,6 @@
 import type { RendererDocumentData, RendererDocumentPatch } from './lib/document-types';
+import type { McpActivityEvent, McpActivitySnapshot } from './lib/mcp-activity-types';
+import type { PreviewAssetInventory } from './lib/preview-assets';
 import type {
   DocumentReviewResult,
   RestoreReviewAssetRequest,
@@ -212,6 +214,9 @@ interface TokiAPI {
   reassembleProjectDocument: (updatedFields?: RendererDocumentPatch) => Promise<SaveResult>;
   reassembleProjectCharx: (updatedFields?: RendererDocumentPatch) => Promise<SaveResult>;
   getProjectPath: () => Promise<string | null>;
+  getMcpActivity: () => Promise<McpActivitySnapshot>;
+  onMcpActivity: (callback: (event: McpActivityEvent) => void) => () => void;
+  getPreviewAssetInventory: () => Promise<PreviewAssetInventory>;
   getDocumentReview: (draft: RendererDocumentData) => Promise<DocumentReviewResult>;
   restoreReviewAsset: (request: RestoreReviewAssetRequest) => Promise<RestoreReviewAssetResult>;
   getProjectTree: () => Promise<ProjectTreeNode | null>;

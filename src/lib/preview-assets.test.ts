@@ -1,8 +1,36 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
-import { buildPreviewAssets } from './preview-assets';
+import { buildPreviewAssets, buildPreviewAssetInventory } from './preview-assets';
 
 describe('buildPreviewAssets', () => {
+  it('lists exactly the preview aliases without serializing media bytes or exposing resource URLs', () => {
+    const data = {
+      assets: [{ path: 'assets/other/hero.png', data: Buffer.from('media-bytes') }],
+      _risuExt: {
+        additionalAssets: [
+          ['hero-alias', '__asset:0', 'png'],
+          ['broken', '__asset:99', 'png'],
+        ],
+      },
+      cardAssets: [{ name: 'remote', uri: 'https://example.test/image.png?token=private', ext: 'png' }],
+    };
+    const preview = buildPreviewAssets(data);
+    const inventory = buildPreviewAssetInventory(data);
+    expect(inventory.names).toEqual(Object.keys(preview.assets));
+    expect(inventory.unresolved).toEqual(['broken']);
+    expect(inventory.entries).toContainEqual(
+      expect.objectContaining({ name: 'hero-alias', path: 'assets/other/hero.png' }),
+    );
+    expect(JSON.stringify(inventory)).not.toMatch(/private|base64|media-bytes|https:/);
+    const encode = vi.spyOn(Buffer, 'from').mockImplementation(() => {
+      throw new Error('must not copy bytes');
+    });
+    try {
+      expect(() => buildPreviewAssetInventory(data)).not.toThrow();
+    } finally {
+      encode.mockRestore();
+    }
+  });
   it('resolves legacy __asset indexes and keeps media metadata', () => {
     const result = buildPreviewAssets({
       assets: [

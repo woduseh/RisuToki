@@ -173,6 +173,43 @@ function createStubSession(snapshot: Partial<PreviewSnapshot> = {}): PreviewSess
 }
 
 describe('preview-panel', () => {
+  it('preserves the asset debug view and routes missing references to their source and asset search separately', () => {
+    const container = document.createElement('div');
+    const onOpenSource = vi.fn();
+    const session = createStubSession({
+      assetDiagnostics: {
+        available: true,
+        checkedReferences: 1,
+        missing: [
+          {
+            name: 'missing background',
+            source: { type: 'field', field: 'backgroundEmbedding' },
+            sourceLabel: '배경',
+            line: 1,
+            kind: 'cbs',
+          },
+        ],
+        truncated: false,
+      },
+    });
+    const handle = showPreviewPanel(
+      container,
+      createDeps({
+        createSession: () => session,
+        onOpenSource,
+        initialViewState: { debugOpen: true, activeDebugTab: 'assets', inputDraft: 'keep' },
+      }),
+    );
+    expect(handle.getViewState()).toMatchObject({ activeDebugTab: 'assets', inputDraft: 'keep' });
+    container.querySelector<HTMLButtonElement>('[data-preview-source="asset-reference"]')!.click();
+    expect(onOpenSource).toHaveBeenLastCalledWith({ type: 'field', field: 'backgroundEmbedding' });
+    container.querySelector<HTMLButtonElement>('[data-preview-source="asset"]')!.click();
+    expect(onOpenSource).toHaveBeenLastCalledWith({ type: 'asset', name: 'missing background' });
+    handle.setVisible(false);
+    handle.setVisible(true);
+    expect(handle.getViewState().activeDebugTab).toBe('assets');
+    handle.dispose();
+  });
   it('hides and restores a detached debug drawer without resetting the session or losing its view state', () => {
     const container = document.createElement('div');
     document.body.appendChild(container);

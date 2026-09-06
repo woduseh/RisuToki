@@ -10,7 +10,7 @@ import type {
   PreviewMessage,
   PreviewRegexScript,
 } from './preview-session';
-import { matchLorebookEntries, runRegexPipeline } from './content-simulation';
+import { matchLorebookEntries, runRegexPipeline, type RegexTraceEntry } from './content-simulation';
 
 // ==================== Wasmoon Types (broad, minimal surface) ====================
 interface WasmoonGlobal {
@@ -1709,10 +1709,19 @@ export const PreviewEngine: PreviewEngineModule = (() => {
 
   // ==================== Regex Script Pipeline ====================
   // FIX: Case-insensitive type matching + support both find/in field names
-  function processRegex(text: string, scripts: PreviewRegexScript[], mode: string): string {
-    const result = runRegexPipeline(text, scripts || [], mode);
+  function processRegex(
+    text: string,
+    scripts: PreviewRegexScript[],
+    mode: string,
+    onTrace?: (entry: RegexTraceEntry) => void,
+  ): string {
+    const indexedScripts = onTrace
+      ? (scripts || []).map((script, index) => ({ ...script, __mcpIndex: index }))
+      : scripts || [];
+    const result = runRegexPipeline(text, indexedScripts, mode);
     for (const entry of result.trace) {
       if (entry.error) notifyError('정규식 오류', entry.error);
+      onTrace?.(entry);
     }
     return result.result;
   }

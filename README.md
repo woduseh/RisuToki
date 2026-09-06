@@ -457,6 +457,12 @@ When an AI CLI starts, the MCP server connects automatically so the AI can read 
 
 ## 8. Preview Mode / RP Mode
 
+### Document diagnostics and AI activity
+
+- **진단** checks the current draft for supported CBS nesting, regex compilation, structured-field, and literal asset-reference problems without running scripts. RISUM also shows its toggles, default variables, triggers, lorebook activation settings, and asset inventory. Dynamic asset names require runtime inspection.
+- Saved-document review shows diagnostics belonging to changed items and links to their source. These are current-draft findings, not proof that the edit introduced them. Stale snapshots require refresh before navigation or restoration.
+- **AI 작업** shows the current document/selection separately from recent MCP requests observed by this app, including target, outcome, and duration. It retains at most 80 in-memory requests and excludes request/response bodies; CLI reasoning, direct filesystem edits, and requests handled by another standalone server are outside its scope.
+
 ### Preview Mode (F5)
 
 <img width="1380" height="783" alt="Preview" src="https://github.com/user-attachments/assets/c16a9e11-b7ac-460a-80a3-b779c70bed1b" />
@@ -472,7 +478,7 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 - Character messages use the card's real icon and honor the RisuAI `largePortrait` aspect ratio.
 - Preview is available only for `.charx` files. When a `.risum` or `.risup` is the active tab, both the View menu entry and `F5` are disabled.
 - Preview uses a RisuAI-compatible Markdown pipeline with tables, nested lists, fenced syntax highlighting, inline KaTeX (`$$...$$`), safe structural HTML, and Risu quote styling.
-- Preview-only Markdown, syntax-highlighting, math, CSS-processing, and sanitization libraries load when the central preview tab is first opened instead of during application startup.
+- Preview-only Markdown, syntax-highlighting, math, CSS-processing, and sanitization libraries load when preview is first opened instead of during application startup.
 - Character CSS is class-prefixed and scoped to each `.chattext` surface like RisuAI, including nested at-rules and preserved keyframes, so card and background styling can be checked without leaking into preview controls.
 - **CBS (Conditional Block System)** execution — variable branching, button-click handling, functions (`#func`/`call`), loops (`#each`), dice/random, Unicode/encryption tags, and more, compatible with RisuAI.
 - Character replies follow editOutput → CBS/Lua → editDisplay, while user messages follow editInput → CBS/Lua → editDisplay; regex entries run in RisuAI's descending order and support display placement actions.
@@ -480,7 +486,7 @@ Simulates a chat screen using the same rendering pipeline as RisuAI.
 - Character background HTML and an embedded `module.risum` `backgroundEmbedding` are rendered together in RisuAI order.
 - Lorebook preview respects `@@depth` / `@@position` / `@@role` / `@@scan_depth` / `@@probability` / `@@activate` / `@@dont_activate` / `@@match_full_word` / `@@additional_keys` / `@@exclude_keys`. `@@probability` is simulated with a reproducible deterministic roll.
 - **Debug panel**: variable dump · lorebook activation summary (active/total + probability display) · matched/excluded keys · decorator tags · scan depth · probability verdict · warnings · insertion-order/selective badges · regex flags/inactive sections · live Lua logs.
-- The preview opens as a normal central editor tab, can be reordered or closed with the other document tabs, and exposes Reset, Debug, and Focus actions in its own header. Focus temporarily collapses the navigator, right sidebar, and terminal through their normal layout transitions, then restores their previous open state without changing saved sizes.
+- The preview opens beside the editor in a resizable split and preserves its session while hidden or while switching editor tabs. Refresh captures the current draft; Debug includes bounded actual regex traces, lorebook matching details, and literal missing-asset references with source links. Focus temporarily collapses the navigator, right sidebar, and terminal through their normal layout transitions, then restores their previous open state without changing saved sizes.
 - `risu-btn` / `risu-trigger` buttons and `triggerScripts`-based Lua handlers work in preview.
 - Lua calls to `setDescription`, `setPersonality`, `setScenario`, `setFirstMessage` take effect in the preview session immediately, letting you verify field-changing scripts more closely.
 - `{{charpersona}}` reads personality and `{{chardesc}}` reads description, so you can distinguish between the two in preview templates.

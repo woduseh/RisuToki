@@ -19,6 +19,14 @@ export interface PreviewAssetsResult {
   debug: Record<string, unknown>;
 }
 
+/** Resolved aliases and reference metadata, without media bytes or remote URLs. */
+export interface PreviewAssetInventory {
+  documentId?: string | null;
+  names: string[];
+  entries: Array<Omit<PreviewAssetManifestEntry, 'uri'>>;
+  unresolved: string[];
+}
+
 interface BinaryAsset {
   path: string;
   data: Buffer | Uint8Array;
@@ -64,7 +72,9 @@ function looksLikeBase64(value: string): boolean {
   return compact.length >= 4 && compact.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(compact);
 }
 
-export function buildPreviewAssets(data: PreviewAssetDocument): PreviewAssetsResult {
+function resolvePreviewAssets(data: PreviewAssetDocument, includeBinaryData: boolean): PreviewAssetsResult {
+  const binaryUri = (bytes: Buffer | Uint8Array, ext: string) =>
+    includeBinaryData ? toDataUri(bytes, ext) : 'available:';
   const zipAssets = Array.isArray(data.assets) ? data.assets : [];
   const cardAssets = Array.isArray(data.cardAssets) ? data.cardAssets : [];
   const risumAssets = Array.isArray(data.risumAssets) ? data.risumAssets : [];
@@ -123,7 +133,7 @@ export function buildPreviewAssets(data: PreviewAssetDocument): PreviewAssetsRes
     const resolved = resolveZipAsset(assetKey);
     if (resolved) {
       const ext = extHint || extensionFromPath(resolved.path);
-      return { uri: toDataUri(resolved.asset.data, ext), ext, path: resolved.path };
+      return { uri: binaryUri(resolved.asset.data, ext), ext, path: resolved.path };
     }
 
     if (looksLikeBase64(uri)) {
@@ -148,7 +158,7 @@ export function buildPreviewAssets(data: PreviewAssetDocument): PreviewAssetsRes
   }
   if (!icon) {
     const fallbackIcon = zipAssets.find((asset) => normalizePath(asset.path).startsWith('assets/icon/'));
-    if (fallbackIcon) icon = toDataUri(fallbackIcon.data, extensionFromPath(fallbackIcon.path));
+    if (fallbackIcon) icon = binaryUri(fallbackIcon.data, extensionFromPath(fallbackIcon.path));
   }
 
   const rawAdditionalAssets = data._risuExt?.additionalAssets;
@@ -225,7 +235,7 @@ export function buildPreviewAssets(data: PreviewAssetDocument): PreviewAssetsRes
     const ext = extValue.replace(/^\./, '').toLowerCase();
     addEntry({
       name,
-      uri: toDataUri(binary, ext),
+      uri: binaryUri(binary, ext),
       ext,
       mime: extToMime(ext),
       type: 'module-asset',
@@ -239,7 +249,7 @@ export function buildPreviewAssets(data: PreviewAssetDocument): PreviewAssetsRes
     const fileName = assetPath.split('/').pop() || assetPath;
     const name = fileName.replace(/\.[^.]+$/, '');
     const ext = extensionFromPath(assetPath);
-    const uri = toDataUri(asset.data, ext);
+    const uri = binaryUri(asset.data, ext);
     addEntry({ name, uri, ext, mime: extToMime(ext), type: 'zip-asset', source: 'zip', path: assetPath });
     if (!result[assetPath]) result[assetPath] = uri;
     if (!result[`embeded://${assetPath}`]) result[`embeded://${assetPath}`] = uri;
@@ -263,5 +273,25 @@ export function buildPreviewAssets(data: PreviewAssetDocument): PreviewAssetsRes
       totalResolved: Object.keys(result).length,
       unresolved: unresolved.slice(0, 20),
     },
+  };
+}
+
+export function buildPreviewAssets(data: PreviewAssetDocument): PreviewAssetsResult {
+  return resolvePreviewAssets(data, true);
+}
+
+export function buildPreviewAssetInventory(data: PreviewAssetDocument): PreviewAssetInventory {
+  const result = resolvePreviewAssets(data, false);
+  return {
+    names: Object.keys(result.assets),
+    entries: result.manifest.map(({ name, ext, mime, type, source, path }) => ({
+      name,
+      ext,
+      mime,
+      type,
+      source,
+      ...(path ? { path } : {}),
+    })),
+    unresolved: result.debug.unresolved as string[],
   };
 }

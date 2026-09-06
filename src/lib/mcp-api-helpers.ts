@@ -1,6 +1,7 @@
 import * as http from 'http';
 import * as crypto from 'crypto';
 import * as path from 'path';
+import { observeMcpBody, observeMcpResponse } from './mcp-activity-observer';
 
 import type { CssCacheEntry, McpApiDeps, Section } from './mcp-api-server';
 import {
@@ -121,6 +122,7 @@ export function parseYamlFrontmatter(raw: string): SkillFrontmatter {
 }
 
 export function jsonRes(res: http.ServerResponse, data: unknown, status?: number): void {
+  observeMcpResponse(res, data);
   res.writeHead(status || 200, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
@@ -428,7 +430,9 @@ export async function readJsonBody(
   }
   if (!raw.trim()) return {};
   try {
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    observeMcpBody(req, parsed);
+    return parsed;
   } catch (error) {
     jsonMcpError(
       res,
