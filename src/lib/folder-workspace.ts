@@ -121,6 +121,16 @@ function recordProjectBaseline(projectPath: string, data: object): void {
   projectBaselines.set(data, baselines);
 }
 
+/** Read-only signature for review and stale-restore checks. */
+export function captureProjectReviewState(
+  projectPath: string,
+  data: object,
+): { signature: string; externalChanged: boolean } {
+  const signature = projectFingerprint(projectPath);
+  const baseline = projectBaselines.get(data)?.get(path.resolve(projectPath));
+  return { signature, externalChanged: baseline !== undefined && baseline !== signature };
+}
+
 function ensureDir(dirPath: string): void {
   fs.mkdirSync(dirPath, { recursive: true });
 }

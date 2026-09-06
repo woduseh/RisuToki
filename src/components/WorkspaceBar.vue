@@ -10,11 +10,14 @@ import {
   IconPencil,
   IconDots,
   IconChevronDown,
+  IconGitCompare,
 } from '@tabler/icons-vue';
 import { useAppStore } from '../stores/app-store';
+import { useWorkbenchStore } from '../stores/workbench-store';
 import { getVisibleRisupFieldGroups } from '../lib/risup-fields';
 
 const store = useAppStore();
+const workbench = useWorkbenchStore();
 const emit = defineEmits<{ action: [action: string] }>();
 const isPreset = computed(() => store.fileData?._fileType === 'risup');
 const presetMenuOpen = ref(false);
@@ -192,11 +195,25 @@ const showWizard = computed(
           id="btn-workspace-preview"
           type="button"
           class="workspace-tab"
-          :disabled="!store.canPreviewCurrentFile"
-          title="미리보기 (F5)"
-          @click="$emit('action', 'preview-test')"
+          :class="{ active: workbench.previewOpen }"
+          :aria-pressed="workbench.previewOpen"
+          :disabled="!workbench.previewOpen && !store.canPreviewCurrentFile"
+          :title="workbench.previewOpen ? '미리보기 닫기' : '미리보기 (F5)'"
+          @click="$emit('action', workbench.previewOpen ? 'preview-close' : 'preview-test')"
         >
           <IconPlayerPlay :size="17" /> 미리보기
+        </button>
+        <button
+          id="btn-workspace-review"
+          type="button"
+          class="workspace-tab"
+          :class="{ active: workbench.reviewOpen }"
+          :aria-pressed="workbench.reviewOpen"
+          :disabled="!store.hasFile"
+          title="저장본과 변경 검토"
+          @click="$emit('action', 'review-toggle')"
+        >
+          <IconGitCompare :size="17" /> 변경 검토
         </button>
         <button
           id="btn-workspace-save"

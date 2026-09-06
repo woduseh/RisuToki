@@ -285,6 +285,101 @@ function interceptSessionHtmlWrites(documentRef: Document) {
 }
 
 describe('preview session', () => {
+  it('starts directly with restored greeting and viewport, then resets without losing those choices', async () => {
+    const session = createPreviewSession({
+      engine: createEngine(),
+      chatFrame: createChatFrame(),
+      runtime: createNoopRuntime(),
+      charData: { firstMessage: 'Default', alternateGreetings: ['Alternate'] },
+      initialGreetingIndex: 0,
+      initialViewport: { width: 390, height: 844 },
+    });
+    await session.initialize();
+    expect(session.getSnapshot()).toMatchObject({
+      selectedGreetingIndex: 0,
+      viewport: { width: 390, height: 844 },
+      messages: [{ role: 'char', content: 'Alternate' }],
+    });
+    await session.injectMessage!('user', 'Temporary');
+    await session.reset();
+    expect(session.getSnapshot().messages).toEqual([{ role: 'char', content: 'Alternate' }]);
+    expect(session.getSnapshot().selectedGreetingIndex).toBe(0);
+    session.dispose();
+  });
+
+  it('does not resume disposed initialization or reattach document listeners when an old iframe finishes loading', async () => {
+    let finish!: () => void;
+    const runtime = createNoopRuntime();
+    runtime.resetDocument = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    runtime.appendMessage = vi.fn().mockResolvedValue(undefined);
+    const engine = createEngine();
+    const initLua = vi.spyOn(engine, 'initLua');
+    const changed = vi.fn();
+    const frame = createChatFrame();
+    const addListener = vi.spyOn(frame.contentDocument, 'addEventListener');
+    const session = createPreviewSession({
+      engine,
+      chatFrame: frame,
+      runtime,
+      charData: { firstMessage: 'Old', lua: 'old' },
+      onStateChange: changed,
+    });
+    const initializing = session.initialize();
+    await vi.waitFor(() => expect(runtime.resetDocument).toHaveBeenCalled());
+    session.dispose();
+    const callsAtDispose = changed.mock.calls.length;
+    finish();
+    await initializing;
+    expect(initLua).not.toHaveBeenCalled();
+    expect(runtime.appendMessage).not.toHaveBeenCalled();
+    expect(addListener).not.toHaveBeenCalled();
+    expect(changed).toHaveBeenCalledTimes(callsAtDispose);
+  });
+
+  it('waits for an old session Lua operation before resetting the shared engine for its replacement', async () => {
+    let finish!: () => void;
+    const engine = createEngine();
+    engine.initLua = vi.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          finish = () => {
+            engine.setCharName('Late old Lua write');
+            resolve(true);
+          };
+        }),
+    );
+    const oldRuntime = createNoopRuntime();
+    oldRuntime.appendMessage = vi.fn().mockResolvedValue(undefined);
+    const old = createPreviewSession({
+      engine,
+      chatFrame: createChatFrame(),
+      runtime: oldRuntime,
+      charData: { name: 'Old', lua: 'old', firstMessage: 'Old greeting' },
+    });
+    const oldInitializing = old.initialize();
+    await vi.waitFor(() => expect(engine.initLua).toHaveBeenCalled());
+    old.dispose();
+    const replacement = createPreviewSession({
+      engine,
+      chatFrame: createChatFrame(),
+      runtime: createNoopRuntime(),
+      charData: { name: 'New', firstMessage: 'New greeting' },
+    });
+    const replacing = replacement.initialize();
+    await Promise.resolve();
+    expect(engine.state.charName).toBe('Old');
+    finish();
+    await Promise.all([oldInitializing, replacing]);
+    expect(engine.state.charName).toBe('New');
+    expect(replacement.getSnapshot().messages).toEqual([{ role: 'char', content: 'New greeting' }]);
+    expect(oldRuntime.appendMessage).not.toHaveBeenCalled();
+    replacement.dispose();
+  });
   it('initializes the frame, engine state, and first message', async () => {
     const engine = createEngine();
     const chatFrame = createChatFrame();

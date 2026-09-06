@@ -118,11 +118,17 @@ export function renderPreviewDebugHtml({
   activeTab,
   snapshot,
   luaInitButtonId = 'lua-init-btn',
+  sourceLinks = false,
 }: {
   activeTab: 'variables' | 'lorebook' | 'lua' | 'regex' | string;
   snapshot: PreviewSnapshot;
   luaInitButtonId?: string;
+  sourceLinks?: boolean;
 }): string {
+  const sourceButton = (type: 'lorebook' | 'regex' | 'lua', index?: number) =>
+    sourceLinks
+      ? `<button type="button" class="preview-tool-button" data-preview-source="${type}"${index === undefined ? '' : ` data-source-index="${index}"`}>원문 열기</button>`
+      : '';
   if (activeTab === 'variables') {
     const keys = Object.keys(snapshot.variables);
     if (!keys.length) {
@@ -209,7 +215,7 @@ export function renderPreviewDebugHtml({
         }
       }
 
-      html += `<tr style="${active ? ACTIVE_LORE_STYLE : ''}"><td style="${TD_STYLE}">${index}</td><td style="${TD_STYLE}">${escapePreviewHtml(entry.comment || '')}${selectiveBadge}</td><td style="${TD_STYLE}">${escapePreviewHtml(entry.key || '')}</td><td style="${TD_STYLE}">${orderStr}</td><td style="${TD_STYLE}">${statusText}</td></tr>`;
+      html += `<tr style="${active ? ACTIVE_LORE_STYLE : ''}"><td style="${TD_STYLE}">${index}</td><td style="${TD_STYLE}">${escapePreviewHtml(entry.comment || '')}${selectiveBadge}${sourceButton('lorebook', index)}</td><td style="${TD_STYLE}">${escapePreviewHtml(entry.key || '')}</td><td style="${TD_STYLE}">${orderStr}</td><td style="${TD_STYLE}">${statusText}</td></tr>`;
     }
 
     html += '</table>';
@@ -217,7 +223,7 @@ export function renderPreviewDebugHtml({
   }
 
   if (activeTab === 'lua') {
-    let html = '';
+    let html = sourceButton('lua');
     if (!snapshot.luaInitialized) {
       html += `<button id="${luaInitButtonId}" style="${LUA_BUTTON_STYLE}">Lua 초기화</button>`;
     } else {
@@ -238,27 +244,31 @@ export function renderPreviewDebugHtml({
 
     // Active scripts grouped by type
     for (const type of types) {
-      const filtered = snapshot.scripts.filter((script) => script.type === type);
+      const filtered = snapshot.scripts
+        .map((script, index) => ({ script, index }))
+        .filter(({ script }) => script.type === type);
       if (!filtered.length) continue;
 
       html += `<div style="font-weight:600;color:#4a90d9;margin:4px 0 2px;font-size:11px;">${type} (${filtered.length})</div>`;
       html += `<table style="${TABLE_STYLE}"><tr><th style="${TH_STYLE}">이름</th><th style="${TH_STYLE}">찾기</th><th style="${TH_STYLE}">바꾸기</th><th style="${TH_STYLE}">플래그</th></tr>`;
 
-      for (const script of filtered) {
+      for (const { script, index } of filtered) {
         const flag = (script['flag'] as string | undefined) || '';
-        html += `<tr><td style="${TD_STYLE}">${escapePreviewHtml(script.comment || '')}</td><td style="${TD_STYLE}"><code>${escapePreviewHtml(script.find || script.in || '')}</code></td><td style="${TD_STYLE}"><code>${escapePreviewHtml(String(script.replace || script.out || '').substring(0, 50))}</code></td><td style="${TD_STYLE}"><code>${escapePreviewHtml(flag)}</code></td></tr>`;
+        html += `<tr><td style="${TD_STYLE}">${escapePreviewHtml(script.comment || '')}${sourceButton('regex', index)}</td><td style="${TD_STYLE}"><code>${escapePreviewHtml(script.find || script.in || '')}</code></td><td style="${TD_STYLE}"><code>${escapePreviewHtml(String(script.replace || script.out || '').substring(0, 50))}</code></td><td style="${TD_STYLE}"><code>${escapePreviewHtml(flag)}</code></td></tr>`;
       }
 
       html += '</table>';
     }
 
     // Disabled scripts section
-    const disabled = snapshot.scripts.filter((script) => script.type === 'disabled');
+    const disabled = snapshot.scripts
+      .map((script, index) => ({ script, index }))
+      .filter(({ script }) => script.type === 'disabled');
     if (disabled.length > 0) {
       html += `<div style="font-weight:600;color:#666;margin:8px 0 2px;font-size:11px;">비활성 (${disabled.length})</div>`;
       html += `<table style="${TABLE_STYLE}${DISABLED_STYLE}"><tr><th style="${TH_STYLE}">이름</th><th style="${TH_STYLE}">유형</th><th style="${TH_STYLE}">찾기</th></tr>`;
-      for (const script of disabled) {
-        html += `<tr><td style="${TD_STYLE}">${escapePreviewHtml(script.comment || '')}</td><td style="${TD_STYLE}">${escapePreviewHtml(script.type || '')}</td><td style="${TD_STYLE}"><code>${escapePreviewHtml(script.find || script.in || '')}</code></td></tr>`;
+      for (const { script, index } of disabled) {
+        html += `<tr><td style="${TD_STYLE}">${escapePreviewHtml(script.comment || '')}${sourceButton('regex', index)}</td><td style="${TD_STYLE}">${escapePreviewHtml(script.type || '')}</td><td style="${TD_STYLE}"><code>${escapePreviewHtml(script.find || script.in || '')}</code></td></tr>`;
       }
       html += '</table>';
     }

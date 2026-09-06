@@ -9,7 +9,34 @@ import type {
   PreviewSnapshot,
 } from './preview-session';
 import { reportRuntimeError } from './runtime-feedback';
-import { createPreviewWorkbench, type PreviewAssetCatalog, type PreviewViewportPreset } from './preview-workbench';
+import {
+  createPreviewWorkbench,
+  PREVIEW_VIEWPORT_PRESETS,
+  type PreviewAssetCatalog,
+  type PreviewViewportPreset,
+  type PreviewViewportPresetId,
+} from './preview-workbench';
+
+export interface PreviewPanelViewState {
+  greetingIndex: number;
+  viewportPreset: PreviewViewportPresetId;
+  debugOpen: boolean;
+  activeDebugTab: 'variables' | 'lorebook' | 'lua' | 'regex';
+  inputDraft: string;
+  messageMode: 'conversation' | 'user' | 'char';
+}
+
+export type PreviewSourceTarget =
+  | { type: 'greeting'; index: number }
+  | { type: 'lorebook' | 'regex'; index: number }
+  | { type: 'lua' };
+
+export interface PreviewPanelHandle {
+  dispose(): void;
+  getViewState(): PreviewPanelViewState;
+  /** Hide the mounted session, including a detached debug drawer, without resetting it. */
+  setVisible(visible: boolean): void;
+}
 
 export interface PreviewPanelDeps {
   fileData: PreviewCharData & {
@@ -34,6 +61,8 @@ export interface PreviewPanelDeps {
   subscribeFocusMode: (listener: (focused: boolean) => void) => () => void;
   /** Optional factory for testing — defaults to the real `createPreviewSession`. */
   createSession?: (options: CreatePreviewSessionOptions) => PreviewSession;
+  initialViewState?: Partial<PreviewPanelViewState>;
+  onOpenSource?: (target: PreviewSourceTarget) => void;
 }
 
 interface DebugDragState {
@@ -46,7 +75,7 @@ interface DebugDragState {
  *
  * Returns a `dispose` function that tears down the panel and listeners.
  */
-export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps): { dispose: () => void } {
+export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps): PreviewPanelHandle {
   const {
     engine,
     fileData,
@@ -79,8 +108,26 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     regex: fileData.regex || [],
   };
 
-  let debugOpen = false;
-  let activeDebugTab = 'variables';
+  const initial = deps.initialViewState;
+  const requestedGreeting = initial?.greetingIndex ?? -1;
+  let greetingIndex =
+    Number.isInteger(requestedGreeting) &&
+    requestedGreeting >= -1 &&
+    requestedGreeting < charData.alternateGreetings!.length
+      ? requestedGreeting
+      : -1;
+  let viewportPreset =
+    PREVIEW_VIEWPORT_PRESETS.find((preset) => preset.id === initial?.viewportPreset) ?? PREVIEW_VIEWPORT_PRESETS[0];
+  let debugOpen = initial?.debugOpen === true;
+  let activeDebugTab: PreviewPanelViewState['activeDebugTab'] = ['variables', 'lorebook', 'lua', 'regex'].includes(
+    initial?.activeDebugTab ?? '',
+  )
+    ? initial!.activeDebugTab!
+    : 'variables';
+  let disposed = false;
+  let visible = true;
+  let copyTimeout: ReturnType<typeof setTimeout> | undefined;
+  let cleanupDebugResize: (() => void) | undefined;
   // Assigned after the DOM callbacks are created.
   // eslint-disable-next-line prefer-const
   let session: PreviewSession;
@@ -97,7 +144,8 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   header.className = 'preview-header';
   const headerLeft = document.createElement('span');
   headerLeft.className = 'preview-header-title';
-  headerLeft.textContent = `${charData.name} — 프리뷰`;
+  headerLeft.textContent = `${charData.name} — 로컬 프리뷰`;
+  headerLeft.title = '실제 AI 모델 응답이 아닌 CBS·스크립트·메시지 표시 테스트입니다.';
   const headerBtns = document.createElement('div');
   headerBtns.className = 'preview-header-actions';
 
@@ -160,6 +208,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   chatInput.className = 'preview-input-textarea';
   chatInput.placeholder = '메시지를 입력하세요...';
   chatInput.rows = 1;
+  chatInput.value = initial?.inputDraft ?? '';
   const messageMode = document.createElement('select');
   messageMode.className = 'preview-message-mode';
   messageMode.setAttribute('aria-label', '프리뷰 메시지 표시 방식');
@@ -173,6 +222,9 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     option.textContent = label;
     messageMode.appendChild(option);
   }
+  messageMode.value = ['conversation', 'user', 'char'].includes(initial?.messageMode ?? '')
+    ? initial!.messageMode!
+    : 'conversation';
   const sendBtn = document.createElement('button');
   sendBtn.className = 'preview-send-btn';
   sendBtn.textContent = '전송';
@@ -196,21 +248,48 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   }
 
   function applyViewport(preset: PreviewViewportPreset): void {
+    if (disposed) return;
+    viewportPreset = preset;
     frameShell.dataset.viewport = preset.id;
     frameShell.style.width = preset.id === 'desktop' ? '100%' : `min(100%, ${preset.width}px)`;
     void session.setViewportSize?.({ width: preset.width, height: preset.height });
   }
 
-  const workbench = createPreviewWorkbench(document, charData.alternateGreetings || [], previewAssets || null, {
-    onGreetingChange: (index) => session.selectGreeting?.(index),
-    onViewportChange: applyViewport,
-    onAssetInsert: insertAssetToken,
-  });
+  const workbench = createPreviewWorkbench(
+    document,
+    charData.alternateGreetings || [],
+    previewAssets || null,
+    {
+      onGreetingChange: (index) => {
+        if (disposed) return;
+        greetingIndex = index;
+        return session.selectGreeting?.(index);
+      },
+      onViewportChange: applyViewport,
+      onAssetInsert: insertAssetToken,
+    },
+    { greetingIndex, viewportPreset: viewportPreset.id },
+  );
+  frameShell.dataset.viewport = viewportPreset.id;
+  frameShell.style.width = viewportPreset.id === 'desktop' ? '100%' : `min(100%, ${viewportPreset.width}px)`;
+  if (deps.onOpenSource) {
+    const source = document.createElement('button');
+    source.type = 'button';
+    source.className = 'preview-tool-button';
+    source.dataset.action = 'open-greeting-source';
+    source.textContent = '원문 열기';
+    source.setAttribute('aria-label', '선택한 첫 메시지 원문 열기');
+    source.addEventListener('click', () => {
+      if (!disposed) deps.onOpenSource!({ type: 'greeting', index: greetingIndex });
+    });
+    workbench.toolbar.insertBefore(source, workbench.toolbar.children[1]);
+  }
 
   // ── Debug drawer (hidden by default) ──
   const debugDrawer = document.createElement('div');
   debugDrawer.className = 'preview-debug-drawer';
-  debugDrawer.style.display = 'none';
+  debugDrawer.style.display = debugOpen ? 'flex' : 'none';
+  debugBtn.classList.toggle('active', debugOpen);
 
   const debugTabs = document.createElement('div');
   debugTabs.className = 'preview-debug-tabs';
@@ -225,7 +304,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     tab.className = 'preview-debug-tab' + (td.id === activeDebugTab ? ' active' : '');
     tab.textContent = td.label;
     tab.addEventListener('click', () => {
-      activeDebugTab = td.id;
+      activeDebugTab = td.id as PreviewPanelViewState['activeDebugTab'];
       debugTabs.querySelectorAll('.preview-debug-tab').forEach((t) => t.classList.remove('active'));
       tab.classList.add('active');
       updateDebugPanel();
@@ -282,7 +361,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     debugDetachBtn.title = '디버그 패널 도킹 (복귀)';
     document.body.appendChild(debugDrawer);
     debugDrawer.classList.add('preview-debug-floating');
-    debugDrawer.style.display = '';
+    applyPanelVisibility();
     debugDrawer.style.left = '50%';
     debugDrawer.style.top = '50%';
     debugDrawer.style.transform = 'translate(-50%, -50%)';
@@ -301,7 +380,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     debugDrawer.style.top = '';
     debugDrawer.style.transform = '';
     panel.appendChild(debugDrawer);
-    debugDrawer.style.display = debugOpen ? '' : 'none';
+    applyPanelVisibility();
     debugTabs.style.cursor = '';
     debugTabs.removeEventListener('mousedown', onDebugDragStart);
   }
@@ -310,11 +389,37 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   debugContent.className = 'preview-debug-content';
   debugDrawer.appendChild(debugTabs);
   debugDrawer.appendChild(debugContent);
+  debugContent.addEventListener('click', (event) => {
+    if (disposed || !deps.onOpenSource || !(event.target instanceof Element)) return;
+    const button = event.target.closest<HTMLElement>('[data-preview-source]');
+    if (!button) return;
+    const type = button.dataset.previewSource;
+    if (type === 'lua') deps.onOpenSource({ type });
+    else if (type === 'lorebook' || type === 'regex') {
+      const index = Number(button.dataset.sourceIndex);
+      if (Number.isInteger(index) && index >= 0) deps.onOpenSource({ type, index });
+    }
+  });
 
   // ── Debug resizer (between input bar and debug drawer) ──
   const debugResizer = document.createElement('div');
   debugResizer.className = 'preview-debug-resizer';
-  debugResizer.style.display = 'none';
+  debugResizer.style.display = debugOpen ? '' : 'none';
+  function applyPanelVisibility(): void {
+    panel.style.display = visible ? '' : 'none';
+    debugDrawer.style.display = visible && debugOpen ? 'flex' : 'none';
+    debugResizer.style.display = visible && debugOpen && !debugDetached ? '' : 'none';
+  }
+
+  function setVisible(nextVisible: boolean): void {
+    if (disposed) return;
+    visible = nextVisible;
+    if (!visible) {
+      cleanupDebugResize?.();
+      onDebugDragEnd();
+    }
+    applyPanelVisibility();
+  }
   debugResizer.addEventListener('mousedown', (e) => {
     if (debugDetached) return;
     e.preventDefault();
@@ -329,17 +434,21 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
       document.removeEventListener('mousemove', onMove);
       document.removeEventListener('mouseup', onUp);
     };
+    cleanupDebugResize?.();
+    cleanupDebugResize = onUp;
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
   });
 
   // ── Session ──
   function updateDebugPanel(): void {
+    if (disposed || !session) return;
     const snapshot = session.getSnapshot();
     debugContent.innerHTML = renderPreviewDebugHtml({
       activeTab: activeDebugTab,
       snapshot,
       luaInitButtonId: 'main-preview-lua-init',
+      sourceLinks: !!deps.onOpenSource,
     });
 
     if (!snapshot.luaInitialized) {
@@ -356,6 +465,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   }
 
   function applySnapshot(snapshot: PreviewSnapshot): void {
+    if (disposed) return;
     const loading = snapshot.initState === 'loading';
     const errorMessage = snapshot.initState === 'error' ? snapshot.initError : snapshot.runtimeError;
 
@@ -380,9 +490,12 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     assetMap,
     characterAvatar: previewAssets?.icon || assetMap?.['__source:char'] || null,
     runtime: createIframePreviewRuntime(chatFrame, window),
+    initialGreetingIndex: greetingIndex,
+    initialViewport: { width: viewportPreset.width, height: viewportPreset.height },
     wrapPlainCss: true,
     logPrefix: '[Preview]',
     onError: (message, error) => {
+      if (disposed) return;
       reportRuntimeError({
         context: message,
         error,
@@ -396,10 +509,13 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     },
   });
 
-  let disposed = false;
   function disposePreview(): void {
     if (disposed) return;
     disposed = true;
+    cancelAnimationFrame(initializeFrame);
+    if (copyTimeout) clearTimeout(copyTimeout);
+    cleanupDebugResize?.();
+    onDebugDragEnd();
     session.dispose();
     unsubscribeFocusMode();
     exitFocusMode();
@@ -414,6 +530,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   });
 
   async function submitPreviewInput(): Promise<void> {
+    if (disposed) return;
     if (messageMode.value === 'conversation') {
       await session.handleSend(chatInput);
     } else {
@@ -437,8 +554,10 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   debugCopyBtn.addEventListener('click', () => {
     navigator.clipboard.writeText(buildPreviewDebugClipboardText(session.getSnapshot())).then(() => {
+      if (disposed) return;
       debugCopyBtn.textContent = '✅ 복사됨';
-      setTimeout(() => {
+      if (copyTimeout) clearTimeout(copyTimeout);
+      copyTimeout = setTimeout(() => {
         debugCopyBtn.textContent = '📋 복사';
       }, 1500);
     });
@@ -446,8 +565,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   debugBtn.addEventListener('click', () => {
     debugOpen = !debugOpen;
-    debugDrawer.style.display = debugOpen ? 'flex' : 'none';
-    debugResizer.style.display = debugOpen ? '' : 'none';
+    applyPanelVisibility();
     debugBtn.classList.toggle('active', debugOpen);
     if (debugOpen) updateDebugPanel();
   });
@@ -458,6 +576,10 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   // ── Assemble ──
   panel.appendChild(header);
+  const localNotice = document.createElement('div');
+  localNotice.className = 'preview-simulation-note';
+  localNotice.textContent = '로컬 표시·스크립트 테스트예요. 대화 모드는 모의 응답을 사용해요.';
+  panel.appendChild(localNotice);
   panel.appendChild(statusBanner);
   panel.appendChild(errorBanner);
   panel.appendChild(workbench.toolbar);
@@ -469,7 +591,9 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   container.appendChild(panel);
 
   // Initialize iframe after it's in the DOM
-  requestAnimationFrame(async () => {
+  if (debugOpen) updateDebugPanel();
+  const initializeFrame = requestAnimationFrame(async () => {
+    if (disposed) return;
     try {
       await session.initialize();
     } catch {
@@ -478,5 +602,16 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
     }
   });
 
-  return { dispose: disposePreview };
+  return {
+    dispose: disposePreview,
+    setVisible,
+    getViewState: () => ({
+      greetingIndex,
+      viewportPreset: viewportPreset.id,
+      debugOpen,
+      activeDebugTab,
+      inputDraft: chatInput.value,
+      messageMode: messageMode.value as PreviewPanelViewState['messageMode'],
+    }),
+  };
 }

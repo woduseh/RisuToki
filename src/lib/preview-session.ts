@@ -137,6 +137,8 @@ export interface CreatePreviewSessionOptions {
   onError?: (message: string, error: unknown) => void;
   onStateChange?: (snapshot: PreviewSnapshot) => void;
   runtime?: PreviewRuntime;
+  initialGreetingIndex?: number;
+  initialViewport?: PreviewViewportSize;
 }
 
 export interface PreviewSession {
@@ -156,6 +158,10 @@ function cloneMessages(messages: PreviewMessage[]): PreviewMessage[] {
   return messages.map((message) => ({ ...message }));
 }
 
+// PreviewEngine is shared. A replacement session must not reset it while a
+// disposed session's already-started Lua operation is still completing.
+const pendingEngineOperations = new WeakMap<PreviewEngine, Set<Promise<unknown>>>();
+
 export function createPreviewSession({
   engine,
   charData,
@@ -168,6 +174,8 @@ export function createPreviewSession({
   onError,
   onStateChange = () => {},
   runtime: providedRuntime,
+  initialGreetingIndex = -1,
+  initialViewport,
 }: CreatePreviewSessionOptions): PreviewSession {
   const lorebook = charData.lorebook || [];
   const scripts = charData.regex || [];
@@ -181,8 +189,34 @@ export function createPreviewSession({
   let initState: PreviewInitState = 'idle';
   let initError: string | null = null;
   let runtimeError: string | null = null;
-  let selectedGreetingIndex = -1;
-  let viewport: PreviewViewportSize = { width: 1024, height: 768 };
+  let disposed = false;
+  let selectedGreetingIndex =
+    Number.isInteger(initialGreetingIndex) &&
+    initialGreetingIndex >= -1 &&
+    initialGreetingIndex < (charData.alternateGreetings?.length ?? 0)
+      ? initialGreetingIndex
+      : -1;
+  let viewport: PreviewViewportSize = {
+    width: Number.isFinite(initialViewport?.width) ? Math.max(1, Math.round(initialViewport!.width)) : 1024,
+    height: Number.isFinite(initialViewport?.height) ? Math.max(1, Math.round(initialViewport!.height)) : 768,
+  };
+
+  async function runEngineOperation<T>(operation: () => Promise<T>): Promise<T> {
+    const pending = pendingEngineOperations.get(engine) ?? new Set<Promise<unknown>>();
+    pendingEngineOperations.set(engine, pending);
+    const promise = operation();
+    pending.add(promise);
+    try {
+      return await promise;
+    } finally {
+      pending.delete(promise);
+    }
+  }
+
+  async function waitForEngineIdle(): Promise<void> {
+    const pending = pendingEngineOperations.get(engine);
+    if (pending?.size) await Promise.allSettled([...pending]);
+  }
 
   function getSelectedGreeting(): string {
     if (selectedGreetingIndex < 0) return charData.firstMessage || '';
@@ -231,6 +265,7 @@ export function createPreviewSession({
   }
 
   function notifyStateChange(): void {
+    if (disposed) return;
     onStateChange(getSnapshot());
   }
 
@@ -249,11 +284,12 @@ export function createPreviewSession({
   }
 
   async function runLuaTrigger(triggerName: string, payload: string | null = null): Promise<string | null> {
-    if (!luaInitialized) return payload;
+    if (disposed || !luaInitialized) return payload;
 
     try {
-      return await engine.runLuaTrigger(triggerName, payload);
+      return await runEngineOperation(() => engine.runLuaTrigger(triggerName, payload));
     } catch (error) {
+      if (disposed) return payload;
       runtimeError = `Lua trigger "${triggerName}" failed: ${error instanceof Error ? error.message : String(error)}`;
       notifyStateChange();
       onError?.(`Lua trigger "${triggerName}" failed`, error);
@@ -263,11 +299,12 @@ export function createPreviewSession({
   }
 
   async function runNamedTrigger(triggerName: string): Promise<void> {
-    if (!luaInitialized) return;
+    if (disposed || !luaInitialized) return;
 
     try {
-      await engine.runLuaTriggerByName(triggerName);
+      await runEngineOperation(() => engine.runLuaTriggerByName(triggerName));
     } catch (error) {
+      if (disposed) return;
       runtimeError = `Lua named trigger "${triggerName}" failed: ${error instanceof Error ? error.message : String(error)}`;
       notifyStateChange();
       onError?.(`Lua named trigger "${triggerName}" failed`, error);
@@ -293,10 +330,12 @@ export function createPreviewSession({
     if (role === 'char') {
       content = engine.processRegex(content, scripts, 'editoutput');
       content = (await runLuaTrigger('editOutput', content)) || '';
+      if (disposed) return '';
       content = engine.risuChatParser(content, cbsOptions(true));
     } else {
       content = engine.processRegex(content, scripts, 'editinput');
       content = (await runLuaTrigger('editInput', content)) || '';
+      if (disposed) return '';
       content = engine.risuChatParser(content, cbsOptions(true));
     }
 
@@ -304,6 +343,7 @@ export function createPreviewSession({
   }
 
   async function transformDisplayContent(rawContent: string, chatID: number, mode: PreviewRenderMode): Promise<string> {
+    if (disposed) return '';
     const cbsOptions = (runVar: boolean) => ({
       runVar,
       chatID,
@@ -318,6 +358,7 @@ export function createPreviewSession({
     let content = engine.processRegex(rawContent, scripts, 'editdisplay');
     content = engine.risuChatParser(content, cbsOptions(true));
     content = (await runLuaTrigger('editDisplay', content)) || '';
+    if (disposed) return '';
     content = engine.risuChatParser(content, cbsOptions(false));
     content = engine.resolveAssetImages(content);
     content = renderPreviewMarkdown(content, mode);
@@ -329,8 +370,10 @@ export function createPreviewSession({
     rawContent: string,
     options?: { scrollToBottom?: boolean },
   ): Promise<void> {
+    if (disposed) return;
     const idx = msgIndex++;
     const content = await transformMessageContent(role, rawContent, idx);
+    if (disposed) return;
     await runtime.appendMessage({
       index: idx,
       name: role === 'char' ? charData.name || 'Character' : 'User',
@@ -339,6 +382,7 @@ export function createPreviewSession({
       largePortrait: role === 'char' && charData.largePortrait === true,
       content,
     });
+    if (disposed) return;
     previewMessages.push({ role, content: rawContent });
     if (options?.scrollToBottom !== false) {
       runtime.scrollToBottom();
@@ -347,6 +391,7 @@ export function createPreviewSession({
   }
 
   async function refreshBackground(): Promise<void> {
+    if (disposed) return;
     let backgroundSource = [charData.css, charData.backgroundEmbedding]
       .filter((source): source is string => typeof source === 'string' && source.trim().length > 0)
       .map((raw) =>
@@ -364,13 +409,16 @@ export function createPreviewSession({
     }
 
     const processed = await transformDisplayContent(backgroundSource, -1, 'back');
+    if (disposed) return;
     await runtime.setBackground(processed);
     notifyStateChange();
   }
 
   async function reRenderMessages(): Promise<void> {
+    if (disposed) return;
     const savedMessages = cloneMessages(previewMessages);
     await runtime.clearMessages();
+    if (disposed) return;
     previewMessages = [];
     msgIndex = 0;
 
@@ -382,6 +430,7 @@ export function createPreviewSession({
   }
 
   async function handleBridgeMessage(data: unknown): Promise<void> {
+    if (disposed) return;
     if (!data || typeof data !== 'object') return;
 
     const message = data as Record<string, unknown>;
@@ -395,8 +444,9 @@ export function createPreviewSession({
       const chatId = previewMessages.length > 0 ? previewMessages.length - 1 : 0;
       if (luaInitialized) {
         try {
-          await engine.runLuaButtonClick(chatId, message.data);
+          await runEngineOperation(() => engine.runLuaButtonClick(chatId, message.data as string));
         } catch (error) {
+          if (disposed) return;
           runtimeError = `Lua button "${message.data}" failed: ${error instanceof Error ? error.message : String(error)}`;
           notifyStateChange();
           onError?.(`Lua button "${message.data}" failed`, error);
@@ -439,6 +489,7 @@ export function createPreviewSession({
   }
 
   function attachDocumentBridge(): void {
+    if (disposed) return;
     const documentRef = chatFrame.contentDocument;
     if (!documentRef || documentBridgeAttached) return;
     documentRef.addEventListener('preview-runtime-bridge', onDocumentBridgeMessage as EventListener);
@@ -453,6 +504,7 @@ export function createPreviewSession({
   }
 
   async function initializeLua(runStartTrigger = true): Promise<boolean> {
+    if (disposed) return false;
     const effectiveLuaCode = buildEffectiveLuaCode();
     if (effectiveLuaCode == null || effectiveLuaCode.trim() === '') {
       luaInitialized = false;
@@ -460,7 +512,8 @@ export function createPreviewSession({
       return luaInitialized;
     }
 
-    luaInitialized = await engine.initLua(effectiveLuaCode);
+    luaInitialized = await runEngineOperation(() => engine.initLua(effectiveLuaCode));
+    if (disposed) return false;
     if (luaInitialized && runStartTrigger) {
       await runLuaTrigger('start', null);
     }
@@ -480,6 +533,7 @@ export function createPreviewSession({
   }
 
   async function initialize(): Promise<void> {
+    if (disposed) return;
     previewMessages = [];
     msgIndex = 0;
     luaInitialized = false;
@@ -488,13 +542,16 @@ export function createPreviewSession({
     runtimeError = null;
     notifyStateChange();
 
-    resetEngineState();
-    attachMessageBridge();
-
     try {
+      await waitForEngineIdle();
+      if (disposed) return;
+      resetEngineState();
+      attachMessageBridge();
       await initializeFrameDocument();
+      if (disposed) return;
       attachDocumentBridge();
       await initializeLua(true);
+      if (disposed) return;
 
       const greeting = getSelectedGreeting();
       if (greeting) {
@@ -503,6 +560,7 @@ export function createPreviewSession({
 
       await refreshBackground();
     } catch (error) {
+      if (disposed) return;
       initState = 'error';
       initError = formatInitError(error);
       notifyStateChange();
@@ -515,6 +573,7 @@ export function createPreviewSession({
   }
 
   async function reset(): Promise<void> {
+    if (disposed) return;
     previewMessages = [];
     msgIndex = 0;
     luaInitialized = false;
@@ -523,12 +582,15 @@ export function createPreviewSession({
     runtimeError = null;
     notifyStateChange();
 
-    resetEngineState();
-
     try {
+      await waitForEngineIdle();
+      if (disposed) return;
+      resetEngineState();
       await initializeFrameDocument();
+      if (disposed) return;
       attachDocumentBridge();
       await initializeLua(true);
+      if (disposed) return;
 
       const greeting = getSelectedGreeting();
       if (greeting) {
@@ -537,6 +599,7 @@ export function createPreviewSession({
 
       await refreshBackground();
     } catch (error) {
+      if (disposed) return;
       initState = 'error';
       initError = formatInitError(error);
       notifyStateChange();
@@ -549,6 +612,7 @@ export function createPreviewSession({
   }
 
   async function handleSend(inputElement: HTMLTextAreaElement | HTMLInputElement): Promise<void> {
+    if (disposed) return;
     const text = inputElement.value.trim();
     if (!text) return;
 
@@ -570,6 +634,7 @@ export function createPreviewSession({
   }
 
   async function injectMessage(role: PreviewMessage['role'], content: string): Promise<void> {
+    if (disposed) return;
     const text = content.trim();
     if (!text) return;
 
@@ -584,6 +649,7 @@ export function createPreviewSession({
   }
 
   async function selectGreeting(index: number): Promise<void> {
+    if (disposed) return;
     const greetings = charData.alternateGreetings || [];
     if (!Number.isInteger(index) || index < -1 || index >= greetings.length) {
       throw new RangeError(`Greeting index ${index} is out of range`);
@@ -593,6 +659,7 @@ export function createPreviewSession({
   }
 
   async function setViewportSize(size: PreviewViewportSize): Promise<void> {
+    if (disposed) return;
     viewport = {
       width: Math.max(1, Math.round(size.width)),
       height: Math.max(1, Math.round(size.height)),
@@ -607,6 +674,8 @@ export function createPreviewSession({
 
   return {
     dispose() {
+      if (disposed) return;
+      disposed = true;
       detachDocumentBridge();
       detachMessageBridge();
       runtime.dispose();

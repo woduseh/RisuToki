@@ -27,10 +27,32 @@ import {
   reassembleProjectCharx,
   saveProjectData,
   writeProjectFile,
+  captureProjectReviewState,
 } from './folder-workspace';
 import { PROJECT_SAVE_RECOVERY_MARKER } from './project-save-recovery';
 
 const tempDirectories: string[] = [];
+
+it('reads a project review baseline without persisting drafts or losing external-change detection', () => {
+  const root = makeTempDir();
+  const source = path.join(root, 'synthetic.charx');
+  const project = path.join(root, 'project');
+  writeFixtureCharx(source);
+  extractCharxToProject(source, project);
+  const current = loadProjectData(project);
+  const initial = captureProjectReviewState(project, current);
+  current.description = 'Unsaved draft';
+  const saved = loadProjectData(project);
+  expect(saved.description).not.toBe('Unsaved draft');
+  expect(captureProjectReviewState(project, current)).toEqual(initial);
+  expect(initial.externalChanged).toBe(false);
+  fs.writeFileSync(path.join(project, 'description.md'), 'External edit', 'utf8');
+  const external = captureProjectReviewState(project, current);
+  expect(external.externalChanged).toBe(true);
+  expect(external.signature).not.toBe(initial.signature);
+  expect(loadProjectData(project).description).toBe('External edit');
+  expect(captureProjectReviewState(project, current)).toEqual(external);
+});
 
 function makeTempDir(): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-folder-workspace-'));

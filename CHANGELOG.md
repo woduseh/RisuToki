@@ -9,6 +9,30 @@
 
 ---
 
+## [3.8.2] - 2026-09-06
+
+### Fixed
+
+- Made the document toolbar Preview button close an already open preview, preserving the session for reopening through the existing close action.
+
+## [3.8.1] - 2026-09-06
+
+### Fixed
+
+- Excluded the automatically updated CHARX modification timestamp from document change review, so unchanged content correctly displays the saved-version match state. Other metadata and content changes remain reviewable.
+
+## [3.8.0] - 2026-09-06
+
+### Added
+
+- Added a resizable editor/CHARX preview split. Switching editor tabs and hiding/reopening preview preserves the running session; explicit refresh uses the current document while retaining greeting, viewport, input draft, and debug selection. Preview reports stale content and links supported debug entries to their source.
+- Added saved-document change review for CHARX, RISUM, and RISUP, including actual asset hashes, external-file change detection, and guarded restoration into the unsaved draft. Stable-ID collection items can be restored individually; structural changes are reviewed together.
+- Added read-only project baseline comparison and explicit notices for unavailable originals and raw project drafts. Asset restoration supports same-path CHARX binary changes with unchanged references; unsupported additions, deletions, and module/reference changes remain reviewable.
+
+### Fixed
+
+- Prevented disposed preview sessions and delayed Lua initialization from overwriting a newer session, and preserved focus and floating-debug visibility across preview workbench transitions.
+
 ## [3.7.0] - 2026-09-06
 
 ### Added

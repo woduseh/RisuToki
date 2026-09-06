@@ -1,6 +1,8 @@
 'use strict';
 import { captureFileBaseline, assertFileUnchanged } from './src/lib/file-baseline';
 import { captureDocumentSaveScope } from './src/lib/document-save-scope';
+import { createDocumentReviewService } from './src/lib/document-review-service';
+import type { RestoreReviewAssetRequest } from './src/lib/document-review-types';
 
 import { app, BrowserWindow, ipcMain, dialog, net, shell, type MessageBoxOptions } from 'electron';
 import { autoUpdater } from 'electron-updater';
@@ -50,6 +52,7 @@ import {
   reassembleProjectDocument,
   saveProjectData,
   writeProjectFile,
+  captureProjectReviewState,
 } from './src/lib/folder-workspace';
 import { initGuidesManager, resolveBuiltInGuidePath } from './src/lib/guides-manager';
 import { askRendererCloseConfirm, askRendererConfirm, initIpcConfirm } from './src/lib/ipc-confirm';
@@ -1544,6 +1547,50 @@ ipcMain.handle('save-file-as', async (_event, updatedFields: RendererDocumentPat
 
 // Get current file path (for terminal context)
 ipcMain.handle('get-file-path', () => mainState.currentFilePath);
+
+const documentReviewService = createDocumentReviewService({
+  getCurrentData: () => mainState.currentData,
+  readStoredDocument: () => {
+    if (mainState.currentProjectPath && mainState.currentData) {
+      const projectPath = mainState.currentProjectPath;
+      const before = captureProjectReviewState(projectPath, mainState.currentData);
+      const data = loadProjectData(projectPath);
+      const after = captureProjectReviewState(projectPath, mainState.currentData);
+      if (before.signature !== after.signature)
+        throw new Error('프로젝트 저장본이 읽는 동안 변경되었습니다. 다시 검토해 주세요.');
+      return {
+        data,
+        label: projectPath,
+        signature: `project:${projectPath}:${after.signature}`,
+        externalChanged: after.externalChanged,
+      };
+    }
+    if (!mainState.currentFilePath) return null;
+    const filePath = mainState.currentFilePath;
+    const before = captureFileBaseline(filePath);
+    if (!before) throw new Error('저장된 원본 파일을 읽을 수 없습니다.');
+    const data = openDocumentByPath(filePath);
+    const after = captureFileBaseline(filePath);
+    if (!after || before.sha256 !== after.sha256)
+      throw new Error('저장본이 읽는 동안 변경되었습니다. 다시 검토해 주세요.');
+    return {
+      data,
+      label: filePath,
+      signature: `file:${filePath}:${after.sha256}`,
+      externalChanged: !!mainState.currentFileBaseline && mainState.currentFileBaseline.sha256 !== after.sha256,
+    };
+  },
+  onAssetRestored: () => {
+    invalidateAssetsMapCache();
+    if (mcpApi) mcpApi.invalidateSectionCaches();
+    broadcastToAll('data-updated', 'assets', undefined);
+  },
+});
+
+ipcMain.handle('get-document-review', (_event, draft: RendererDocumentData) => documentReviewService.getReview(draft));
+ipcMain.handle('restore-review-asset', (_event, request: RestoreReviewAssetRequest) =>
+  documentReviewService.restoreAsset(request),
+);
 
 ipcMain.handle('list-references', () => mainState.referenceFiles);
 ipcMain.handle('get-reference-manifest-status', () => mainState.referenceManifestStatus);

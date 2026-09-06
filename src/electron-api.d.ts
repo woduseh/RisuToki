@@ -1,4 +1,9 @@
 import type { RendererDocumentData, RendererDocumentPatch } from './lib/document-types';
+import type {
+  DocumentReviewResult,
+  RestoreReviewAssetRequest,
+  RestoreReviewAssetResult,
+} from './lib/document-review-types';
 
 type DataUpdatedCallback = (field: string, value: unknown) => void;
 type TerminalDataCallback = (data: string) => void;
@@ -207,6 +212,8 @@ interface TokiAPI {
   reassembleProjectDocument: (updatedFields?: RendererDocumentPatch) => Promise<SaveResult>;
   reassembleProjectCharx: (updatedFields?: RendererDocumentPatch) => Promise<SaveResult>;
   getProjectPath: () => Promise<string | null>;
+  getDocumentReview: (draft: RendererDocumentData) => Promise<DocumentReviewResult>;
+  restoreReviewAsset: (request: RestoreReviewAssetRequest) => Promise<RestoreReviewAssetResult>;
   getProjectTree: () => Promise<ProjectTreeNode | null>;
   readProjectFile: (relativePath: string) => Promise<string>;
   writeProjectFile: (relativePath: string, content: string) => Promise<boolean>;

@@ -3,6 +3,10 @@ import type { Section } from '../lib/section-parser';
 import type { Tab } from '../lib/tab-manager';
 import { registerActions } from '../lib/action-registry';
 import { useAppStore } from '../stores/app-store';
+import { useWorkbenchStore } from '../stores/workbench-store';
+import { restoreDocumentReviewChange, type ReviewChange } from '../lib/document-review-model';
+import type { DocumentReviewAssetChange } from '../lib/document-review-types';
+import type { PreviewPanelHandle, PreviewPanelViewState, PreviewSourceTarget } from '../lib/preview-panel';
 import type { RpMode, LorebookEntry, RegexEntry, ReferenceFile, RendererDocumentData } from '../stores/app-store';
 import {
   createTreeItem,
@@ -184,8 +188,11 @@ function setCurrentProjectPath(path: string | null): void {
   useAppStore().setProjectPath(path);
 }
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
-let previewPanelHandle: { dispose: () => void } | null = null;
+let previewPanelHandle: PreviewPanelHandle | null = null;
 let previewRenderVersion = 0;
+let reviewVersion = 0;
+let previewSnapshot = '';
+const unappliedReviewDrafts = new Set<string>();
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
 
@@ -289,7 +296,6 @@ function disposePreviewPanel(): void {
 
 function disposeEditorSurfaces(): void {
   disposeFormEditors();
-  disposePreviewPanel();
 }
 
 async function confirmDirtyTabClose(): Promise<boolean> {
@@ -315,7 +321,10 @@ const tabMgr = new TabManager(
       updateSidebarActive();
     },
     isFormTabType: (language) => FORM_TAB_TYPES.has(language),
-    onTabsRendered: () => updateDocumentStats(),
+    onTabsRendered: () => {
+      updateDocumentStats();
+      updateWorkbenchFreshness();
+    },
   },
   confirmDirtyTabClose,
 );
@@ -540,6 +549,7 @@ function updateEditorModeToggle(tabInfo: Tab): void {
 }
 
 function createOrSwitchEditor(tabInfo: Tab): void {
+  useWorkbenchStore().reviewOpen = false;
   const container = document.getElementById('editor-container')!;
   updateEditorModeToggle(tabInfo);
 
@@ -554,11 +564,9 @@ function createOrSwitchEditor(tabInfo: Tab): void {
     tabMgr.pendingEditorTabId = null;
     tabMgr.renderTabs();
     updateSidebarActive();
-    void renderCharacterPreview(container, tabInfo.id);
+    void showPreviewPanel();
     return;
   }
-
-  disposePreviewPanel();
 
   if (tabInfo.language === '_image') {
     disposeFormEditors();
@@ -2049,6 +2057,11 @@ function updateDocumentStats(): void {
 }
 
 function setCurrentFileData(data: RendererDocumentData | null): void {
+  disposePreviewPanel();
+  reviewVersion += 1;
+  previewSnapshot = '';
+  unappliedReviewDrafts.clear();
+  useWorkbenchStore().resetDocument();
   fileData = data;
   useAppStore().setFileData(data);
   updateDocumentStats();
@@ -2200,11 +2213,13 @@ function handleClearRecentItems(): void {
 
 async function handleSave(): Promise<void> {
   if (!(await projectWorkspace.syncActiveFileTab())) return;
-  return _handleSave(fileActionDeps);
+  await _handleSave(fileActionDeps);
+  if (useWorkbenchStore().reviewOpen) await refreshDocumentReview();
 }
 async function handleSaveAs(): Promise<void> {
   if (!(await projectWorkspace.syncActiveFileTab())) return;
-  return _handleSaveAs(fileActionDeps);
+  await _handleSaveAs(fileActionDeps);
+  if (useWorkbenchStore().reviewOpen) await refreshDocumentReview();
 }
 
 async function handleReassembleProjectDocument(): Promise<void> {
@@ -2437,6 +2452,252 @@ function showSettingsPopup(): void {
   });
 }
 
+function applyDocumentFieldUpdate(field: string, value: unknown): void {
+  handleMcpDataUpdate(
+    {
+      tabManager: tabMgr,
+      getFileData: () => fileData,
+      getEditor: () => editorInstance,
+      formTabTypes: FORM_TAB_TYPES,
+      createBackup,
+      buildSidebar,
+      buildLorebookTabState,
+      buildRegexTabState,
+      buildLuaSectionTabState,
+      buildCssSectionTabState,
+      buildRisupTabState,
+      applyTriggerScriptsUpdate: (nextValue) =>
+        applyTriggerScriptsControllerMcpUpdate({
+          tabMgr,
+          fileData: fileData!,
+          value: nextValue,
+          createBackup,
+          activateTab: (tab) => createOrSwitchEditor(tab),
+        }),
+      mergeLuaIntoTriggerScripts: mergeLuaIntoTriggerScriptsText,
+      updateLuaSections: (lua) => {
+        luaSections = parseLuaSections(lua);
+      },
+      updateCssSections: (css) => {
+        ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(css));
+      },
+      setFileLabel: (label) => useAppStore().setFileLabel(label),
+      setStatus,
+    },
+    field,
+    value,
+  );
+
+  updateWorkbenchFreshness();
+}
+
+function updateWorkbenchFreshness(): void {
+  const workbench = useWorkbenchStore();
+  const snapshot = fileData ? JSON.stringify(fileData) : '';
+  if (previewSnapshot && snapshot !== previewSnapshot) workbench.previewStale = true;
+  if (workbench.reviewDraft && snapshot !== JSON.stringify(workbench.reviewDraft)) workbench.reviewStale = true;
+  workbench.rawDraftWarning = tabMgr.openTabs.some(
+    (tab) => tab.id.startsWith('project:') && tabMgr.dirtyFields.has(tab.id),
+  )
+    ? '프로젝트 원본 파일의 작성 중인 내용은 이 비교에 포함되지 않아요. 원본 파일 저장이 끝난 뒤 다시 검토하세요.'
+    : '';
+  for (const id of unappliedReviewDrafts) {
+    if (!tabMgr.openTabs.some((tab) => tab.id === id)) unappliedReviewDrafts.delete(id);
+  }
+  if (unappliedReviewDrafts.size)
+    workbench.rawDraftWarning =
+      'JSON 문법 오류로 문서에 반영되지 않은 편집 내용이 있어요. 문법을 수정한 뒤 다시 검토하세요.';
+}
+
+async function refreshDocumentReview(): Promise<void> {
+  if (!fileData) return;
+  const workbench = useWorkbenchStore();
+  const current = fileData;
+  const version = ++reviewVersion;
+  const draft = JSON.parse(JSON.stringify(current)) as RendererDocumentData;
+  if (!workbench.reviewDraft) workbench.reviewDraft = draft;
+  workbench.reviewLoading = true;
+  workbench.reviewError = '';
+  try {
+    const result = await window.tokiAPI.getDocumentReview(draft);
+    if (version !== reviewVersion || current !== fileData) return;
+    if (!result.success) {
+      workbench.reviewError = result.error;
+      workbench.reviewStale = true;
+      return;
+    }
+    workbench.reviewResult = result;
+    workbench.reviewDraft = draft;
+    workbench.reviewStale = false;
+    updateWorkbenchFreshness();
+  } catch (error) {
+    if (version === reviewVersion) {
+      workbench.reviewError = String(error);
+      workbench.reviewStale = true;
+    }
+  } finally {
+    if (version === reviewVersion) workbench.reviewLoading = false;
+  }
+}
+
+function openReviewSource(target: { field: string; index?: number }): void {
+  if (!fileData || target.field.startsWith('_')) return;
+  updateWorkbenchFreshness();
+  if (useWorkbenchStore().reviewOpen && useWorkbenchStore().reviewStale) {
+    setStatus('현재 문서가 변경됐어요. 변경 검토를 갱신한 뒤 원문을 여세요.');
+    return;
+  }
+  const { field, index } = target;
+  useWorkbenchStore().reviewOpen = false;
+  useAppStore().setPreviewFocusMode(false);
+  if (field === 'lorebook' && index !== undefined) {
+    openLorebookEntry(index);
+  } else if (field === 'promptTemplate' && index !== undefined && getRisupPromptItems()[index]) {
+    const itemId = getRisupPromptItems()[index].id;
+    if (itemId) openRisupPromptItemTab(itemId);
+  } else if (field === 'regex' && index !== undefined && fileData.regex[index]) {
+    tabMgr.openTab(
+      `regex_${index}`,
+      fileData.regex[index].comment || `정규식 ${index + 1}`,
+      '_regexform',
+      () => fileData!.regex[index],
+      (value) => Object.assign(fileData!.regex[index], value),
+    );
+  } else if (
+    field === 'alternateGreetings' &&
+    index !== undefined &&
+    fileData.alternateGreetings[index] !== undefined
+  ) {
+    openProseTab(
+      `altGreet_${index}`,
+      `인사말 ${index + 1}`,
+      'html',
+      () => fileData!.alternateGreetings[index],
+      (value) => {
+        fileData!.alternateGreetings[index] = String(value);
+      },
+    );
+  } else {
+    const structured = typeof fileData[field] !== 'string';
+    tabMgr.openTab(
+      field,
+      field,
+      structured ? 'json' : field === 'lua' ? 'lua' : field === 'css' ? 'css' : 'plaintext',
+      () => (structured ? (JSON.stringify(fileData![field], null, 2) ?? '') : (fileData![field] ?? '')),
+      (value) => {
+        if (structured) {
+          try {
+            fileData![field] = JSON.parse(String(value));
+            unappliedReviewDrafts.delete(field);
+          } catch {
+            unappliedReviewDrafts.add(field);
+            setStatus('JSON 문법을 확인하세요. 유효한 값만 문서에 반영돼요.');
+          }
+        } else {
+          fileData![field] = value;
+          if (field === 'lua')
+            fileData!.triggerScripts = mergeLuaIntoTriggerScriptsText(fileData!.triggerScripts, String(value));
+        }
+      },
+    );
+  }
+  window.dispatchEvent(new Event('resize'));
+}
+
+function openPreviewSource(target: PreviewSourceTarget): void {
+  if (useWorkbenchStore().previewStale) {
+    setStatus('문서가 변경됐어요. 현재본으로 미리보기를 다시 실행한 뒤 원문을 여세요.');
+    return;
+  }
+  if (target.type === 'greeting')
+    openReviewSource({
+      field: target.index < 0 ? 'firstMessage' : 'alternateGreetings',
+      index: target.index < 0 ? undefined : target.index,
+    });
+  else openReviewSource({ field: target.type, index: 'index' in target ? target.index : undefined });
+}
+
+async function restoreReviewChange(change: ReviewChange): Promise<void> {
+  const workbench = useWorkbenchStore();
+  updateWorkbenchFreshness();
+  if (
+    !fileData ||
+    workbench.reviewLoading ||
+    workbench.reviewStale ||
+    workbench.rawDraftWarning ||
+    !workbench.reviewResult
+  )
+    return;
+  const current = fileData;
+  const token = workbench.reviewResult.baselineToken;
+  // Re-read the saved source before applying a previously displayed restoration.
+  await refreshDocumentReview();
+  if (
+    current !== fileData ||
+    workbench.reviewError ||
+    workbench.reviewStale ||
+    workbench.rawDraftWarning ||
+    workbench.reviewResult?.baselineToken !== token
+  ) {
+    setStatus('비교 기준이 변경됐어요. 갱신된 내용을 확인한 뒤 다시 복원하세요.');
+    return;
+  }
+  const patch = restoreDocumentReviewChange(current, change);
+  if (!patch) {
+    setStatus('현재 내용이 변경됐거나 복원할 수 없는 항목이에요. 다시 검토하세요.');
+    return;
+  }
+  const reviewOpen = workbench.reviewOpen;
+  for (const [field, value] of Object.entries(patch)) applyDocumentFieldUpdate(field, value);
+  tabMgr.refreshIndexedTabs('altGreet_', buildAltGreetTabState);
+  tabMgr.refreshIndexedTabs('risup_prompt_item_', (_index, tab) =>
+    buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
+  );
+  const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
+  if (activeTab) createOrSwitchEditor(activeTab);
+  workbench.reviewOpen = reviewOpen;
+  buildSidebar();
+  await refreshDocumentReview();
+  setStatus('선택한 변경을 저장본 내용으로 복원했어요. 파일에 반영하려면 저장하세요.');
+}
+
+async function restoreReviewAsset(asset: DocumentReviewAssetChange): Promise<void> {
+  const workbench = useWorkbenchStore();
+  updateWorkbenchFreshness();
+  const review = workbench.reviewResult;
+  if (
+    !asset.canRestore ||
+    !review?.baselineToken ||
+    workbench.reviewLoading ||
+    workbench.reviewStale ||
+    workbench.rawDraftWarning
+  )
+    return;
+  const current = fileData;
+  workbench.reviewLoading = true;
+  try {
+    const result = await window.tokiAPI.restoreReviewAsset({
+      documentId: review.documentId,
+      baselineToken: review.baselineToken,
+      path: asset.path,
+      currentHash: asset.after?.hash ?? null,
+    });
+    if (current !== fileData) return;
+    if (!result.success) workbench.reviewError = result.error;
+    else {
+      tabMgr.markFieldDirty('assets');
+      workbench.previewStale = true;
+      buildSidebar();
+      await refreshDocumentReview();
+      setStatus('에셋을 저장본으로 복원했어요. 파일에 반영하려면 저장하세요.');
+    }
+  } catch (error) {
+    if (current === fileData) workbench.reviewError = String(error);
+  } finally {
+    if (current === fileData) workbench.reviewLoading = false;
+  }
+}
+
 // ==================== Preview Test Panel ====================
 
 async function showPreviewPanel(): Promise<void> {
@@ -2461,13 +2722,42 @@ async function showPreviewPanel(): Promise<void> {
     return;
   }
 
-  tabMgr.openTab('preview', `${fileData.name || 'Character'} · 프리뷰`, '_preview', () => null, null);
+  const workbench = useWorkbenchStore();
+  const current = fileData;
+  workbench.previewOpen = true;
+  if (previewFocusByDefault) useAppStore().setPreviewFocusMode(true);
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  if (!workbench.previewOpen || current !== fileData) return;
+  previewPanelHandle?.setVisible(true);
+  if (!previewPanelHandle && !workbench.previewLoading) await refreshCharacterPreview();
 }
 
-async function renderCharacterPreview(container: HTMLElement, tabId: string): Promise<void> {
+async function refreshCharacterPreview(): Promise<void> {
+  const workbench = useWorkbenchStore();
+  const container = document.getElementById('character-preview-dock-container');
+  if (!container || !fileData || (fileData._fileType || 'charx') !== 'charx' || !workbench.previewOpen) return;
+  const initialViewState = previewPanelHandle?.getViewState();
+  const focusMode = useAppStore().previewFocusMode;
+  disposePreviewPanel();
+  useAppStore().setPreviewFocusMode(focusMode);
+  workbench.previewLoading = true;
+  workbench.previewError = '';
+  const version = previewRenderVersion;
+  try {
+    await renderCharacterPreview(container, initialViewState);
+  } catch (error) {
+    if (version + 1 === previewRenderVersion) workbench.previewError = String(error);
+  } finally {
+    if (version + 1 === previewRenderVersion) workbench.previewLoading = false;
+  }
+}
+
+async function renderCharacterPreview(container: HTMLElement, initialViewState?: PreviewPanelViewState): Promise<void> {
   if (!fileData || (fileData._fileType || 'charx') !== 'charx') return;
   const renderVersion = ++previewRenderVersion;
   const activeFileData = fileData;
+  const snapshotText = JSON.stringify(fileData);
+  const snapshot = JSON.parse(snapshotText) as RendererDocumentData;
   container.innerHTML = '<div class="preview-loading-state">프리뷰 준비 중…</div>';
 
   const previewModulesPromise = Promise.all([import('../lib/preview-engine'), import('../lib/preview-panel')]);
@@ -2491,14 +2781,16 @@ async function renderCharacterPreview(container: HTMLElement, tabId: string): Pr
   await ensureWasmoon();
 
   const [{ default: PreviewEngine }, { showPreviewPanel: renderPreviewPanel }] = await previewModulesPromise;
-  if (renderVersion !== previewRenderVersion || tabMgr.activeTabId !== tabId || fileData !== activeFileData) return;
+  if (renderVersion !== previewRenderVersion || fileData !== activeFileData) return;
   PreviewEngine.setErrorHandler((context, message) => {
     setStatus(`⚠️ ${context}: ${message}`);
   });
 
   container.innerHTML = '';
   previewPanelHandle = renderPreviewPanel(container, {
-    fileData: activeFileData,
+    fileData: snapshot,
+    initialViewState,
+    onOpenSource: openPreviewSource,
     assetMap: assetMapForEngine,
     previewAssets,
     engine: PreviewEngine,
@@ -2511,15 +2803,17 @@ async function renderCharacterPreview(container: HTMLElement, tabId: string): Pr
       return store.$subscribe((_mutation, state) => listener(state.previewFocusMode), { detached: true });
     },
   });
-  if (previewFocusByDefault) useAppStore().setPreviewFocusMode(true);
+  previewPanelHandle.setVisible(useWorkbenchStore().previewOpen);
+  previewSnapshot = snapshotText;
+  useWorkbenchStore().previewStale = false;
+  updateWorkbenchFreshness();
 }
 
 // ==================== Keyboard Shortcuts ====================
 // Keyboard shortcuts are in ./keyboard-shortcuts.ts
 
 function togglePreviewFocusModeShortcut(): void {
-  const activeTab = tabMgr.activeTabId ? tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId) : null;
-  if (activeTab?.language !== '_preview') return;
+  if (!useWorkbenchStore().previewOpen) return;
   useAppStore().togglePreviewFocusMode();
 }
 
@@ -2669,6 +2963,24 @@ export async function initMainRenderer(): Promise<void> {
       if (editorInstance) editorInstance.updateOptions({ fontSize: 14 });
     },
     'preview-test': () => showPreviewPanel(),
+    'preview-refresh': () => refreshCharacterPreview(),
+    'preview-close': () => {
+      useWorkbenchStore().previewOpen = false;
+      previewPanelHandle?.setVisible(false);
+      useAppStore().setPreviewFocusMode(false);
+      window.dispatchEvent(new Event('resize'));
+    },
+    'review-toggle': () => {
+      const workbench = useWorkbenchStore();
+      workbench.reviewOpen = !workbench.reviewOpen;
+      useAppStore().setPreviewFocusMode(false);
+      if (workbench.reviewOpen) void refreshDocumentReview();
+      window.dispatchEvent(new Event('resize'));
+    },
+    'review-refresh': () => refreshDocumentReview(),
+    'review-open-source': (payload) => openReviewSource(payload as { field: string; index?: number }),
+    'review-restore': (payload) => restoreReviewChange(payload as ReviewChange),
+    'review-restore-asset': (payload) => restoreReviewAsset(payload as DocumentReviewAssetChange),
     devtools: () => window.tokiAPI.toggleDevTools(),
 
     // Terminal
@@ -2856,40 +3168,18 @@ export async function initMainRenderer(): Promise<void> {
 
   // Listen for MCP data updates (AI assistant modified data via MCP server)
   window.tokiAPI.onDataUpdated((field, value) => {
-    handleMcpDataUpdate(
-      {
-        tabManager: tabMgr,
-        getFileData: () => fileData,
-        getEditor: () => editorInstance,
-        formTabTypes: FORM_TAB_TYPES,
-        createBackup,
-        buildSidebar,
-        buildLorebookTabState,
-        buildRegexTabState,
-        buildLuaSectionTabState,
-        buildCssSectionTabState,
-        buildRisupTabState,
-        applyTriggerScriptsUpdate: (nextValue) =>
-          applyTriggerScriptsControllerMcpUpdate({
-            tabMgr,
-            fileData: fileData!,
-            value: nextValue,
-            createBackup,
-            activateTab: (tab) => createOrSwitchEditor(tab),
-          }),
-        mergeLuaIntoTriggerScripts: mergeLuaIntoTriggerScriptsText,
-        updateLuaSections: (lua) => {
-          luaSections = parseLuaSections(lua);
-        },
-        updateCssSections: (css) => {
-          ({ sections: cssSections, prefix: _cssStylePrefix, suffix: _cssStyleSuffix } = parseCssSections(css));
-        },
-        setFileLabel: (label) => useAppStore().setFileLabel(label),
-        setStatus,
-      },
-      field,
-      value,
-    );
+    const updateField = typeof field === 'string' ? field : (field as { field?: string })?.field;
+    if (!updateField) return;
+    if (updateField === 'assets' || updateField === 'risumAssets') {
+      tabMgr.markFieldDirty(updateField);
+      useWorkbenchStore().previewStale = true;
+      useWorkbenchStore().reviewStale = true;
+      buildSidebar();
+      const active = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
+      if (active?.language === '_image') showImageViewer(active.id, active._assetPath as string);
+      return;
+    }
+    applyDocumentFieldUpdate(updateField, value);
   });
   // Load Terminal (async, non-blocking)
   try {

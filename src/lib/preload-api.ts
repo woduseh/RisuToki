@@ -33,6 +33,8 @@ export function createTokiApi(ipcRenderer: IpcRenderer): TokiApi {
     saveFile: (updatedFields) => ipcRenderer.invoke('save-file', updatedFields),
     saveFileAs: (updatedFields) => ipcRenderer.invoke('save-file-as', updatedFields),
     getFilePath: () => ipcRenderer.invoke('get-file-path'),
+    getDocumentReview: (draft) => ipcRenderer.invoke('get-document-review', draft),
+    restoreReviewAsset: (request) => ipcRenderer.invoke('restore-review-asset', request),
     getCwd: () => ipcRenderer.invoke('get-cwd'),
     setTerminalCwd: (cwd) => ipcRenderer.invoke('set-terminal-cwd', cwd),
     terminalStart: (cols, rows) => ipcRenderer.invoke('terminal-start', cols, rows),

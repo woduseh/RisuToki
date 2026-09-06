@@ -15,12 +15,14 @@ import {
   IconX,
 } from '@tabler/icons-vue';
 import { useAppStore } from './stores/app-store';
+import { useWorkbenchStore } from './stores/workbench-store';
 import { executeAction } from './lib/action-registry';
 import MenuBar from './components/MenuBar.vue';
 import StatusBar from './components/StatusBar.vue';
 import WorkspaceBar from './components/WorkspaceBar.vue';
 import NavigatorWorkspaces from './components/NavigatorWorkspaces.vue';
 import ContextInspector from './components/ContextInspector.vue';
+import DocumentReview from './components/DocumentReview.vue';
 import AssetOutputWizard from './components/AssetOutputWizard.vue';
 import { writeWorkspaceLayoutState } from './lib/workspace-layout-state';
 import type { RightSidebarView } from './lib/workspace-model';
@@ -28,6 +30,52 @@ import { TOKI_APP_ICON } from './lib/avatar';
 import { showHelpPopup } from './lib/help-popup';
 
 const store = useAppStore();
+const workbench = useWorkbenchStore();
+const workbenchElement = ref<HTMLElement | null>(null);
+const previewStacked = ref(window.innerWidth < 1100);
+let workbenchObserver: ResizeObserver | null = null;
+let stopPreviewResize: (() => void) | null = null;
+const previewSplitStyle = computed(() => ({
+  '--preview-edit-share': `${100 - workbench.previewSplit}fr`,
+  '--preview-share': `${workbench.previewSplit}fr`,
+}));
+function setPreviewSplit(value: number) {
+  workbench.previewSplit = Math.min(70, Math.max(30, value));
+}
+function resizePreviewWithKeyboard(event: KeyboardEvent) {
+  const decrease = previewStacked.value ? 'ArrowDown' : 'ArrowRight';
+  const increase = previewStacked.value ? 'ArrowUp' : 'ArrowLeft';
+  if (![increase, decrease, 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  if (event.key === 'Home') setPreviewSplit(30);
+  else if (event.key === 'End') setPreviewSplit(70);
+  else setPreviewSplit(workbench.previewSplit + (event.key === increase ? 1 : -1) * (event.shiftKey ? 10 : 2));
+}
+function startPreviewResize(event: PointerEvent) {
+  if (!workbenchElement.value) return;
+  event.preventDefault();
+  stopPreviewResize?.();
+  const bounds = workbenchElement.value.getBoundingClientRect();
+  const stacked = previewStacked.value;
+  const onMove = (move: PointerEvent) => {
+    const length = stacked ? bounds.height : bounds.width;
+    if (length <= 0) return;
+    const position = stacked ? move.clientY - bounds.top : move.clientX - bounds.left;
+    setPreviewSplit(100 - (position / length) * 100);
+  };
+  const stop = () => {
+    document.removeEventListener('pointermove', onMove);
+    document.removeEventListener('pointerup', stop);
+    document.removeEventListener('pointercancel', stop);
+    document.body.classList.remove('workspace-resizing');
+    stopPreviewResize = null;
+  };
+  stopPreviewResize = stop;
+  document.body.classList.add('workspace-resizing');
+  document.addEventListener('pointermove', onMove);
+  document.addEventListener('pointerup', stop);
+  document.addEventListener('pointercancel', stop);
+}
 const desktopAvailable = !!window.tokiAPI;
 const viewportHeight = ref(window.innerHeight);
 const utilityHeightLimit = computed(() =>
@@ -57,11 +105,19 @@ function updateViewport() {
   overlayReferences.value = window.innerWidth < 1180;
 }
 onMounted(() => {
+  if (typeof ResizeObserver !== 'undefined' && workbenchElement.value) {
+    workbenchObserver = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width > 0) previewStacked.value = entry.contentRect.width < 960;
+    });
+    workbenchObserver.observe(workbenchElement.value);
+  }
   if (compact.value && store.navigatorVisible) store.toggleNavigator();
   window.addEventListener('resize', updateViewport);
   window.addEventListener('keydown', dismissDrawer);
 });
 onBeforeUnmount(() => {
+  workbenchObserver?.disconnect();
+  stopPreviewResize?.();
   window.removeEventListener('resize', updateViewport);
   window.removeEventListener('keydown', dismissDrawer);
 });
@@ -365,27 +421,112 @@ function recentName(path: string) {
             </button>
           </div>
         </div>
-        <div v-show="hasEditorContent" id="editor-surface">
-          <div id="editor-header">
-            <div id="editor-tabs"></div>
-            <button id="editor-mode-toggle" type="button" style="display: none">코드 보기</button>
-          </div>
-          <div v-if="store.inspectorContext.kind === 'asset'" id="editor-asset-actions">
-            <ContextInspector />
-          </div>
-          <details
-            v-else-if="store.hasInspectorContext"
-            id="editor-properties"
-            :open="propertiesOpen"
-            @toggle="propertiesOpen = ($event.target as HTMLDetailsElement).open"
+        <div
+          v-show="hasEditorContent"
+          id="document-workbench"
+          ref="workbenchElement"
+          :class="{
+            'preview-open': workbench.previewOpen,
+            'preview-focused': store.previewFocusMode && workbench.previewOpen,
+            'preview-stacked': previewStacked,
+          }"
+          :style="previewSplitStyle"
+        >
+          <div
+            v-show="hasEditorContent && !workbench.reviewOpen && !(store.previewFocusMode && workbench.previewOpen)"
+            id="editor-surface"
           >
-            <summary>{{ inspectorTabLabel }} <span>이 항목의 동작 조건과 정보를 편집해요</span></summary>
-            <ContextInspector />
-          </details>
-          <p v-if="store.fileData?._fileType === 'risup' && !store.activeTabId" class="navigator-empty">
-            왼쪽에서 프롬프트를 선택하거나 토글·변수, 정규식을 열어 작업하세요.
-          </p>
-          <div id="editor-container"></div>
+            <div id="editor-header">
+              <div id="editor-tabs"></div>
+              <button id="editor-mode-toggle" type="button" style="display: none">코드 보기</button>
+            </div>
+            <div v-if="store.inspectorContext.kind === 'asset'" id="editor-asset-actions">
+              <ContextInspector />
+            </div>
+            <details
+              v-else-if="store.hasInspectorContext"
+              id="editor-properties"
+              :open="propertiesOpen"
+              @toggle="propertiesOpen = ($event.target as HTMLDetailsElement).open"
+            >
+              <summary>{{ inspectorTabLabel }} <span>이 항목의 동작 조건과 정보를 편집해요</span></summary>
+              <ContextInspector />
+            </details>
+            <p v-if="store.fileData?._fileType === 'risup' && !store.activeTabId" class="navigator-empty">
+              왼쪽에서 프롬프트를 선택하거나 토글·변수, 정규식을 열어 작업하세요.
+            </p>
+            <div id="editor-container"></div>
+          </div>
+          <div
+            v-show="workbench.reviewOpen && !(store.previewFocusMode && workbench.previewOpen)"
+            class="workbench-review-panel"
+          >
+            <p v-if="workbench.reviewStale" class="workbench-notice" role="status">
+              검토 이후 작업본이 바뀌었어요. 새로 확인하면 현재 변경 내용으로 갱신돼요.
+            </p>
+            <p v-if="workbench.rawDraftWarning" class="workbench-notice" role="status">
+              {{ workbench.rawDraftWarning }}
+            </p>
+            <DocumentReview
+              :current="workbench.reviewDraft"
+              :baseline="workbench.reviewResult?.baseline ?? null"
+              :assets="workbench.reviewResult?.assets ?? []"
+              :loading="workbench.reviewLoading"
+              :error="workbench.reviewError"
+              :baseline-label="workbench.reviewResult?.baselineLabel ?? ''"
+              :baseline-unavailable="workbench.reviewResult?.baselineUnavailable ?? null"
+              :external-changed="workbench.reviewResult?.externalChanged ?? false"
+              :restore-blocked="workbench.reviewStale || !!workbench.rawDraftWarning"
+              @refresh="handleAction('review-refresh')"
+              @open="handleAction('review-open-source', $event)"
+              @restore="handleAction('review-restore', $event)"
+              @restore-asset="handleAction('review-restore-asset', $event)"
+            />
+          </div>
+          <div
+            v-show="workbench.previewOpen && !store.previewFocusMode"
+            id="preview-split-resizer"
+            role="separator"
+            aria-label="미리보기 크기 조절"
+            :aria-orientation="previewStacked ? 'horizontal' : 'vertical'"
+            aria-valuemin="30"
+            aria-valuemax="70"
+            :aria-valuenow="workbench.previewSplit"
+            :aria-valuetext="`미리보기 ${Math.round(workbench.previewSplit)}%`"
+            tabindex="0"
+            @pointerdown="startPreviewResize"
+            @keydown="resizePreviewWithKeyboard"
+          />
+          <section
+            v-show="workbench.previewOpen"
+            id="workbench-preview"
+            aria-label="실행 미리보기"
+            :aria-busy="workbench.previewLoading"
+          >
+            <header class="workbench-preview-toolbar">
+              <strong>미리보기</strong>
+              <div>
+                <button type="button" :disabled="workbench.previewLoading" @click="handleAction('preview-refresh')">
+                  {{ workbench.previewLoading ? '실행 중…' : '현재본 다시 실행' }}
+                </button>
+                <button
+                  type="button"
+                  title="미리보기 닫기"
+                  aria-label="미리보기 닫기"
+                  @click="handleAction('preview-close')"
+                >
+                  <IconX :size="17" />
+                </button>
+              </div>
+            </header>
+            <p v-if="workbench.previewError" class="workbench-notice workbench-error" role="alert">
+              {{ workbench.previewError }}
+            </p>
+            <p v-else-if="workbench.previewStale" class="workbench-notice" role="status">
+              작업본이 바뀌었어요. 현재본을 다시 실행해 결과를 확인하세요.
+            </p>
+            <div id="character-preview-dock-container"></div>
+          </section>
         </div>
       </section>
 

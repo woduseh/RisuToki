@@ -12,6 +12,36 @@ function makeMockIpc() {
 }
 
 describe('createTokiApi', () => {
+  test('forwards review drafts and guarded asset restore requests without changing their payloads', async () => {
+    const ipcRenderer = makeMockIpc();
+    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
+    const draft: Parameters<typeof api.getDocumentReview>[0] = {
+      _documentId: 'document-1',
+      _fileType: 'charx',
+      name: 'Synthetic',
+      description: 'Draft',
+      firstMessage: '',
+      alternateGreetings: [],
+      globalNote: '',
+      css: '',
+      defaultVariables: '',
+      lua: '',
+      triggerScripts: '[]',
+      lorebook: [],
+      regex: [],
+    };
+    const request = {
+      documentId: 'document-1',
+      baselineToken: 'baseline-1',
+      path: 'assets/icon/test.png',
+      currentHash: 'sha256',
+    };
+    await api.getDocumentReview(draft);
+    await api.restoreReviewAsset(request);
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('get-document-review', draft);
+    expect(ipcRenderer.invoke).toHaveBeenCalledWith('restore-review-asset', request);
+  });
+
   test('does not expose the retired sync server controls', () => {
     const ipcRenderer = makeMockIpc();
     const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);

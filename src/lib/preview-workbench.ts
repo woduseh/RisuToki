@@ -70,6 +70,7 @@ export function createPreviewWorkbench(
   alternateGreetings: string[],
   previewAssets: PreviewAssetCatalog | null,
   callbacks: PreviewWorkbenchCallbacks,
+  initialState?: { greetingIndex?: number; viewportPreset?: PreviewViewportPresetId },
 ): PreviewWorkbench {
   const toolbar = documentRef.createElement('div');
   toolbar.className = 'preview-workbench-toolbar';
@@ -92,6 +93,12 @@ export function createPreviewWorkbench(
     option.textContent = `대체 인사 ${index + 1}`;
     greetingSelect.appendChild(option);
   });
+  const initialGreeting = initialState?.greetingIndex ?? -1;
+  greetingSelect.value = String(
+    Number.isInteger(initialGreeting) && initialGreeting >= -1 && initialGreeting < alternateGreetings.length
+      ? initialGreeting
+      : -1,
+  );
   greetingSelect.addEventListener('change', () => {
     void callbacks.onGreetingChange(Number(greetingSelect.value));
   });
@@ -101,13 +108,16 @@ export function createPreviewWorkbench(
   viewportGroup.className = 'preview-viewport-group';
   viewportGroup.setAttribute('role', 'group');
   viewportGroup.setAttribute('aria-label', '프리뷰 화면 크기');
-  const viewportButtons = PREVIEW_VIEWPORT_PRESETS.map((preset, index) => {
+  const initialViewport = PREVIEW_VIEWPORT_PRESETS.some((preset) => preset.id === initialState?.viewportPreset)
+    ? initialState!.viewportPreset
+    : 'desktop';
+  const viewportButtons = PREVIEW_VIEWPORT_PRESETS.map((preset) => {
     const button = documentRef.createElement('button');
     button.type = 'button';
-    button.className = `preview-tool-button${index === 0 ? ' active' : ''}`;
+    button.className = `preview-tool-button${preset.id === initialViewport ? ' active' : ''}`;
     button.textContent = preset.label;
     button.title = `${preset.width} × ${preset.height}`;
-    button.setAttribute('aria-pressed', index === 0 ? 'true' : 'false');
+    button.setAttribute('aria-pressed', preset.id === initialViewport ? 'true' : 'false');
     button.addEventListener('click', () => {
       for (const sibling of viewportGroup.querySelectorAll<HTMLButtonElement>('button')) {
         const active = sibling === button;

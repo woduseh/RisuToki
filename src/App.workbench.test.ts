@@ -1,0 +1,63 @@
+import { mount } from '@vue/test-utils';
+import { createPinia } from 'pinia';
+import { nextTick } from 'vue';
+import { describe, expect, it, vi } from 'vitest';
+import App from './App.vue';
+import { useAppStore } from './stores/app-store';
+import { useWorkbenchStore } from './stores/workbench-store';
+import { registerActions } from './lib/action-registry';
+
+describe('document workbench shell', () => {
+  it('keeps editor and preview session DOM mounted while switching review, preview and focus', async () => {
+    const pinia = createPinia();
+    const wrapper = mount(App, { global: { plugins: [pinia] } });
+    const store = useAppStore();
+    const workbench = useWorkbenchStore();
+    store.setFileData({ _fileType: 'charx', name: '문서' } as never);
+    workbench.previewOpen = true;
+    await nextTick();
+    const preview = wrapper.get('#character-preview-dock-container').element;
+    const editor = wrapper.get('#editor-container').element;
+    preview.appendChild(document.createElement('iframe'));
+    workbench.reviewOpen = true;
+    await nextTick();
+    expect(wrapper.get('#editor-surface').attributes('style')).toContain('display: none');
+    expect(wrapper.get('#character-preview-dock-container').element).toBe(preview);
+    store.setPreviewFocusMode(true);
+    await nextTick();
+    expect(wrapper.get('#document-workbench').classes()).toContain('preview-focused');
+    expect(wrapper.get('.workbench-review-panel').attributes('style')).toContain('display: none');
+    store.setPreviewFocusMode(false);
+    workbench.previewOpen = false;
+    workbench.reviewOpen = false;
+    await nextTick();
+    expect(wrapper.get('#editor-container').element).toBe(editor);
+    expect(wrapper.find('#character-preview-dock-container iframe').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('exposes bounded keyboard resizing and routes review and preview actions', async () => {
+    const wrapper = mount(App, { global: { plugins: [createPinia()] } });
+    const store = useAppStore();
+    const workbench = useWorkbenchStore();
+    store.setFileData({ _fileType: 'charx', name: '문서' } as never);
+    workbench.previewOpen = true;
+    const refresh = vi.fn();
+    const close = vi.fn();
+    const review = vi.fn();
+    registerActions({ 'preview-refresh': refresh, 'preview-close': close, 'review-toggle': review });
+    await nextTick();
+    const separator = wrapper.get('#preview-split-resizer');
+    await separator.trigger('keydown', { key: 'End' });
+    expect(workbench.previewSplit).toBe(70);
+    await separator.trigger('keydown', { key: 'Home' });
+    expect(workbench.previewSplit).toBe(30);
+    await wrapper.get('.workbench-preview-toolbar button').trigger('click');
+    await wrapper.get('[aria-label="미리보기 닫기"]').trigger('click');
+    await wrapper.get('#btn-workspace-review').trigger('click');
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+    expect(review).toHaveBeenCalledOnce();
+    wrapper.unmount();
+  });
+});

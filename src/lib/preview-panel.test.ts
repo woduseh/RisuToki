@@ -145,7 +145,179 @@ function createDeps(overrides: Partial<PreviewPanelDeps> = {}): PreviewPanelDeps
   };
 }
 
+function createStubSession(snapshot: Partial<PreviewSnapshot> = {}): PreviewSession {
+  return {
+    dispose: vi.fn(),
+    getSnapshot: () => ({
+      messages: [],
+      luaInitialized: false,
+      variables: {},
+      lorebook: [],
+      loreMatches: [],
+      scripts: [],
+      defaultVariables: '',
+      luaOutput: [],
+      initState: 'idle',
+      initError: null,
+      runtimeError: null,
+      ...snapshot,
+    }),
+    initialize: vi.fn().mockResolvedValue(undefined),
+    initializeLua: vi.fn().mockResolvedValue(false),
+    handleSend: vi.fn().mockResolvedValue(undefined),
+    refreshBackground: vi.fn().mockResolvedValue(undefined),
+    reset: vi.fn().mockResolvedValue(undefined),
+    selectGreeting: vi.fn().mockResolvedValue(undefined),
+    setViewportSize: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 describe('preview-panel', () => {
+  it('hides and restores a detached debug drawer without resetting the session or losing its view state', () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const session = createStubSession();
+    const handle = showPreviewPanel(
+      container,
+      createDeps({
+        createSession: () => session,
+        initialViewState: { debugOpen: true, activeDebugTab: 'lua', inputDraft: 'Keep draft' },
+      }),
+    );
+    container.querySelector<HTMLButtonElement>('[title="디버그 패널 분리 (플로팅)"]')!.click();
+    const drawer = document.body.querySelector<HTMLElement>('.preview-debug-floating')!;
+    expect(drawer.parentElement).toBe(document.body);
+    const before = handle.getViewState();
+    handle.setVisible(false);
+    expect(drawer.style.display).toBe('none');
+    expect(container.querySelector<HTMLElement>('.preview-panel')!.style.display).toBe('none');
+    expect(handle.getViewState()).toEqual(before);
+    handle.setVisible(true);
+    expect(drawer.style.display).toBe('flex');
+    expect(container.querySelector<HTMLElement>('.preview-panel')!.style.display).not.toBe('none');
+    expect(container.querySelector<HTMLElement>('.preview-debug-resizer')!.style.display).toBe('none');
+    expect(session.reset).not.toHaveBeenCalled();
+    expect(session.dispose).not.toHaveBeenCalled();
+    handle.dispose();
+    handle.setVisible(true);
+    expect(document.body.querySelector('.preview-debug-floating')).toBeNull();
+    container.remove();
+  });
+  it('restores view choices and captures new choices for a remount without replaying the previous session', () => {
+    const container = document.createElement('div');
+    const session = createStubSession();
+    const createSession = vi.fn(() => session);
+    const handle = showPreviewPanel(
+      container,
+      createDeps({
+        fileData: { alternateGreetings: ['alternate'] },
+        createSession,
+        initialViewState: {
+          greetingIndex: 0,
+          viewportPreset: 'mobile',
+          inputDraft: 'draft',
+          messageMode: 'char',
+          debugOpen: true,
+          activeDebugTab: 'regex',
+        },
+      }),
+    );
+    expect(createSession).toHaveBeenCalledWith(
+      expect.objectContaining({ initialGreetingIndex: 0, initialViewport: { width: 390, height: 844 } }),
+    );
+    expect(session.selectGreeting).not.toHaveBeenCalled();
+    expect(session.reset).not.toHaveBeenCalled();
+    expect(container.querySelector('.preview-frame-shell')?.getAttribute('data-viewport')).toBe('mobile');
+    expect(container.querySelector<HTMLSelectElement>('.preview-tool-select')!.value).toBe('0');
+    expect(container.querySelector<HTMLElement>('.preview-debug-drawer')!.style.display).toBe('flex');
+    expect(container.querySelector('.preview-debug-tab.active')?.textContent).toBe('정규식');
+    const input = container.querySelector<HTMLTextAreaElement>('.preview-input-textarea')!;
+    input.value = 'preserved draft';
+    container.querySelectorAll<HTMLButtonElement>('.preview-viewport-group button')[1].click();
+    const state = handle.getViewState();
+    expect(state).toEqual({
+      greetingIndex: 0,
+      viewportPreset: 'tablet',
+      inputDraft: 'preserved draft',
+      messageMode: 'char',
+      debugOpen: true,
+      activeDebugTab: 'regex',
+    });
+    handle.dispose();
+    const replacement = showPreviewPanel(
+      container,
+      createDeps({
+        fileData: { alternateGreetings: ['updated'] },
+        createSession: () => createStubSession(),
+        initialViewState: state,
+      }),
+    );
+    expect(replacement.getViewState()).toEqual(state);
+    replacement.dispose();
+  });
+
+  it('falls back to the default greeting when a preserved alternate was removed', () => {
+    const container = document.createElement('div');
+    const handle = showPreviewPanel(
+      container,
+      createDeps({ createSession: () => createStubSession(), initialViewState: { greetingIndex: 4 } }),
+    );
+    expect(handle.getViewState().greetingIndex).toBe(-1);
+    handle.dispose();
+  });
+
+  it('opens source entries using original indices even when folders are hidden and regex rows are grouped', () => {
+    const container = document.createElement('div');
+    const onOpenSource = vi.fn();
+    const session = createStubSession({
+      lorebook: [{ mode: 'folder', comment: 'Folder' }, { comment: 'Entry' }],
+      scripts: [
+        { type: 'disabled', comment: 'Disabled' },
+        { type: 'editoutput', comment: 'Output' },
+        { type: 'editinput', comment: 'Input' },
+      ],
+    });
+    const handle = showPreviewPanel(
+      container,
+      createDeps({
+        onOpenSource,
+        createSession: () => session,
+        initialViewState: { debugOpen: true, activeDebugTab: 'lorebook' },
+      }),
+    );
+    container.querySelector<HTMLButtonElement>('[data-action="open-greeting-source"]')!.click();
+    expect(onOpenSource).toHaveBeenLastCalledWith({ type: 'greeting', index: -1 });
+    container.querySelector<HTMLButtonElement>('[data-preview-source="lorebook"]')!.click();
+    expect(onOpenSource).toHaveBeenLastCalledWith({ type: 'lorebook', index: 1 });
+    container.querySelectorAll<HTMLButtonElement>('.preview-debug-tab')[3].click();
+    container.querySelector<HTMLButtonElement>('[data-preview-source="regex"]')!.click();
+    expect(onOpenSource).toHaveBeenLastCalledWith({ type: 'regex', index: 2 });
+    container.querySelectorAll<HTMLButtonElement>('.preview-debug-tab')[2].click();
+    container.querySelector<HTMLButtonElement>('[data-preview-source="lua"]')!.click();
+    expect(onOpenSource).toHaveBeenLastCalledWith({ type: 'lua' });
+    handle.dispose();
+  });
+
+  it('cancels a disposed panel startup even if its queued animation callback still fires', async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    vi.stubGlobal('cancelAnimationFrame', vi.fn());
+    const first = createStubSession();
+    const second = createStubSession();
+    const container = document.createElement('div');
+    const old = showPreviewPanel(container, createDeps({ createSession: () => first }));
+    old.dispose();
+    const replacement = showPreviewPanel(container, createDeps({ createSession: () => second }));
+    await frames[0](0);
+    await frames[1](0);
+    expect(first.initialize).not.toHaveBeenCalled();
+    expect(second.initialize).toHaveBeenCalledOnce();
+    replacement.dispose();
+    vi.unstubAllGlobals();
+  });
   it('merges partial fileData overrides with preview defaults', () => {
     const deps = createDeps({
       fileData: {
