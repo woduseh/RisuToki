@@ -675,6 +675,8 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   const isLargeFile = initialValue.length > 100000;
   const simpleProse = tabInfo.editorKind === 'prose' && (tabInfo.editorView ?? 'simple') === 'simple';
   editorInstance = monaco.editor.create(container, {
+    // Use textarea input: native EditContext can double-delete with Windows IMEs.
+    editContext: false,
     value: initialValue,
     language: tabInfo.language,
     theme: monacoThemeId,

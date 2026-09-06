@@ -9,6 +9,12 @@
 
 ---
 
+## [3.8.3] - 2026-09-06
+
+### Fixed
+
+- Disabled experimental Monaco EditContext input in main and form editors to fix reported double Backspace deletion, confirmed resolved by the affected user. Added native Electron single/repeated Backspace coverage.
+
 ## [3.8.2] - 2026-09-06
 
 ### Fixed

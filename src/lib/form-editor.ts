@@ -229,6 +229,8 @@ export function createMiniMonaco(
 
   try {
     const ed = win.monaco!.editor.create(container, {
+      // Keep the same Windows IME input path as the main editor.
+      editContext: false,
       value: value || '',
       language: language,
       theme: d.getMonacoThemeId(),

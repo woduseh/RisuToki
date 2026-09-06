@@ -234,6 +234,11 @@ async function smoke() {
   await check('create-edit-save', async () => {
     await menu('새로 만들기');
     await openDescription();
+    assert.equal(
+      await evaluate(() => !!document.querySelector('#editor-container textarea.inputarea:not([readonly])')),
+      true,
+      'Main editor must use textarea input for Windows IME compatibility',
+    );
     // Monaco's EditContext mode also contains a readonly IME textarea; use its live input.
     currentWindow.webContents.focus();
     await until(
@@ -251,6 +256,18 @@ async function smoke() {
     await currentWindow.webContents.insertText(text);
     // Observe the editor value; do not replace the editor model or invoke a save handler directly.
     await until(() => evaluate(visibleEditorValue).then((value) => value === text), 'typed description');
+    await currentWindow.webContents.insertText('abc');
+    await until(() => evaluate(visibleEditorValue).then((value) => value === text + 'abc'), 'Backspace fixture');
+    currentWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+    currentWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+    await sleep(150);
+    assert.equal(await evaluate(visibleEditorValue), text + 'ab', 'One Backspace must delete one ASCII character');
+    for (let index = 0; index < 2; index++) {
+      currentWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
+      currentWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
+      await sleep(50);
+    }
+    assert.equal(await evaluate(visibleEditorValue), text, 'Repeated Backspace must preserve preceding text');
     await menu('저장');
     await until(
       () => fs.existsSync(saved) && openCharx(saved).description === text,

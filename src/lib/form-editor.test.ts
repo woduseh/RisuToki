@@ -175,6 +175,7 @@ describe('createMiniMonaco', () => {
         domReadOnly: false,
         readOnly: false,
         theme: 'risutoki-kisaki',
+        editContext: false,
         value: 'lore content',
       }),
     );
