@@ -147,6 +147,7 @@ This map is for source navigation. It is not a full API reference.
 
 ## Editor, layout, and sidebar UI
 
+- `src/lib/workbench-freshness.ts` — cached text baselines and sticky stale-state checks for preview, review, and diagnostics
 - `src/lib/workspace-model.ts` — file-type workspace definitions plus navigator and contextual inspector selection contracts
 - `src/lib/workspace-layout-state.ts` — normalized/persisted V3 navigator, unified right-sidebar, and terminal-shelf layout state, including one-way migration from V2 and legacy layouts
 - `src/lib/tab-manager.ts` — tab lifecycle management

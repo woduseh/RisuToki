@@ -13,6 +13,8 @@
 
 ### Changed
 
+- Cached preview/review/diagnostic text baselines and skipped whole-document freshness checks when there is no live baseline or a view is already stale.
+
 - Removed unused terminal palettes and a redundant collection-digest argument; moved five pure test files to Node without changing their test cases.
 - Replaced selected CSS source-shape assertions with cascade checks and removed prose-wording assertions already covered by catalog/reference checks.
 - Corrected default MCP session discovery and V3 workspace documentation; dated the historical Windows environment verification.

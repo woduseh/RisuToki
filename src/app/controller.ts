@@ -1,3 +1,4 @@
+import { markStaleWorkbenchSnapshots, type WorkbenchSnapshots } from '../lib/workbench-freshness';
 import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections } from '../lib/section-parser';
 import type { Section } from '../lib/section-parser';
 import type { Tab } from '../lib/tab-manager';
@@ -198,7 +199,7 @@ let previewRenderVersion = 0;
 let reviewVersion = 0;
 let diagnosticsVersion = 0;
 let assetRevision = 0;
-let previewSnapshot = '';
+const workbenchSnapshots: WorkbenchSnapshots = {};
 const unappliedReviewDrafts = new Set<string>();
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
@@ -2077,7 +2078,9 @@ function setCurrentFileData(data: RendererDocumentData | null): void {
   reviewVersion += 1;
   diagnosticsVersion += 1;
   assetRevision += 1;
-  previewSnapshot = '';
+  delete workbenchSnapshots.preview;
+  delete workbenchSnapshots.review;
+  delete workbenchSnapshots.diagnostics;
   unappliedReviewDrafts.clear();
   useWorkbenchStore().resetDocument();
   fileData = data;
@@ -2511,11 +2514,7 @@ function applyDocumentFieldUpdate(field: string, value: unknown): void {
 
 function updateWorkbenchFreshness(): void {
   const workbench = useWorkbenchStore();
-  const snapshot = fileData ? JSON.stringify(fileData) : '';
-  if (previewSnapshot && snapshot !== previewSnapshot) workbench.previewStale = true;
-  if (workbench.reviewDraft && snapshot !== JSON.stringify(workbench.reviewDraft)) workbench.reviewStale = true;
-  if (workbench.diagnosticsDraft && snapshot !== JSON.stringify(workbench.diagnosticsDraft))
-    workbench.diagnosticsStale = true;
+  markStaleWorkbenchSnapshots(fileData, workbenchSnapshots, workbench);
   const active = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
   if (!active) workbench.selection = null;
   else {
@@ -2570,8 +2569,12 @@ async function refreshDocumentDiagnostics(): Promise<void> {
   const current = fileData;
   const version = ++diagnosticsVersion;
   const initialAssetRevision = assetRevision;
-  const draft = JSON.parse(JSON.stringify(current)) as RendererDocumentData;
-  if (!workbench.diagnosticsDraft) workbench.diagnosticsDraft = draft;
+  const snapshotText = JSON.stringify(current);
+  const draft = JSON.parse(snapshotText) as RendererDocumentData;
+  if (!workbench.diagnosticsDraft) {
+    workbench.diagnosticsDraft = draft;
+    workbenchSnapshots.diagnostics = snapshotText;
+  }
   workbench.diagnosticsLoading = true;
   workbench.diagnosticsError = '';
   try {
@@ -2582,6 +2585,7 @@ async function refreshDocumentDiagnostics(): Promise<void> {
     workbench.diagnosticsAssets = inspection.assets;
     workbench.diagnosticsError = inspection.assetError;
     workbench.diagnosticsCheckedAt = Date.now();
+    workbenchSnapshots.diagnostics = snapshotText;
     workbench.diagnosticsStale = initialAssetRevision !== assetRevision;
     updateWorkbenchFreshness();
   } catch (error) {
@@ -2619,8 +2623,12 @@ async function refreshDocumentReview(): Promise<void> {
   const current = fileData;
   const version = ++reviewVersion;
   const initialAssetRevision = assetRevision;
-  const draft = JSON.parse(JSON.stringify(current)) as RendererDocumentData;
-  if (!workbench.reviewDraft) workbench.reviewDraft = draft;
+  const snapshotText = JSON.stringify(current);
+  const draft = JSON.parse(snapshotText) as RendererDocumentData;
+  if (!workbench.reviewDraft) {
+    workbench.reviewDraft = draft;
+    workbenchSnapshots.review = snapshotText;
+  }
   workbench.reviewLoading = true;
   workbench.reviewError = '';
   workbench.reviewDiagnosticsError = '';
@@ -2639,6 +2647,7 @@ async function refreshDocumentReview(): Promise<void> {
     workbench.reviewDraft = draft;
     workbench.reviewDiagnostics = inspection.diagnostics;
     workbench.reviewDiagnosticsError = inspection.assetError;
+    workbenchSnapshots.review = snapshotText;
     workbench.reviewStale = initialAssetRevision !== assetRevision;
     updateWorkbenchFreshness();
   } catch (error) {
@@ -2974,7 +2983,7 @@ async function renderCharacterPreview(container: HTMLElement, initialViewState?:
     },
   });
   previewPanelHandle.setVisible(useWorkbenchStore().previewOpen);
-  previewSnapshot = snapshotText;
+  workbenchSnapshots.preview = snapshotText;
   useWorkbenchStore().previewStale = initialAssetRevision !== assetRevision;
   updateWorkbenchFreshness();
 }
