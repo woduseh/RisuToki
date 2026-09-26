@@ -33,54 +33,74 @@ export interface ActiveDocumentBinding {
   hash: string;
 }
 
-export interface FacadePreviewEntry {
+interface PreviewPlan {
   activeDocument?: ActiveDocumentBinding;
-  token: string;
   operationDigest: string;
   target: FacadeV1Target;
-  operations: FacadeV1EditOperation[];
   routes: FacadeRoute[];
   touchedTargets: string[];
   requiredGuards: FacadeV1Guard[];
+}
+
+interface PreviewLease {
+  token: string;
   expiresAtMs: number;
 }
 
-export interface ManageItemsPreviewEntry {
-  activeDocument?: ActiveDocumentBinding;
-  token: string;
-  operationDigest: string;
-  target: FacadeV1Target;
+type PreviewEntry = PreviewPlan & PreviewLease;
+
+export interface FacadePreviewEntry extends PreviewEntry {
+  operations: FacadeV1EditOperation[];
+}
+
+export interface ManageItemsPreviewEntry extends PreviewEntry {
   family: ManageItemsFamily;
   operation: ManageItemsOperation;
-  routes: FacadeRoute[];
-  touchedTargets: string[];
-  requiredGuards: FacadeV1Guard[];
-  expiresAtMs: number;
 }
 
-export interface ManageAssetsPreviewEntry {
-  activeDocument?: ActiveDocumentBinding;
-  token: string;
-  operationDigest: string;
-  target: FacadeV1Target;
+export interface ManageAssetsPreviewEntry extends PreviewEntry {
   assetFamily: ManageAssetsFamily | undefined;
   operation: ManageAssetsOperation;
-  routes: FacadeRoute[];
-  touchedTargets: string[];
-  requiredGuards: FacadeV1Guard[];
-  expiresAtMs: number;
 }
 
-export interface ManageFilePreviewEntry {
-  activeDocument?: ActiveDocumentBinding;
-  token: string;
-  operationDigest: string;
-  target: FacadeV1Target;
+export interface ManageFilePreviewEntry extends PreviewEntry {
   operation: ManageFileOperation;
-  routes: FacadeRoute[];
-  touchedTargets: string[];
-  requiredGuards: FacadeV1Guard[];
-  expiresAtMs: number;
+}
+
+/** Keep only the token lifecycle common; operation payloads remain domain-typed. */
+export function rememberPreview<T extends PreviewPlan>(
+  store: { set(token: string, entry: T & PreviewLease): unknown },
+  plan: T,
+): PreviewLease {
+  const lease = { token: makePreviewToken(), expiresAtMs: Date.now() + FACADE_PREVIEW_TTL_MS };
+  store.set(lease.token, { ...plan, ...lease });
+  return lease;
+}
+
+type PreviewConsumption<T> = { kind: 'ready'; entry: T } | { kind: 'missing' } | { kind: 'mismatch' };
+
+/** Consume synchronously before any mutation awaits. Invalid bindings never consume a valid token. */
+export function consumePreview<T extends PreviewEntry>(
+  store: Map<string, T>,
+  token: string,
+  digest: string,
+  target: FacadeV1Target,
+  matchesFamily?: (entry: T) => boolean,
+): PreviewConsumption<T> {
+  const entry = store.get(token);
+  if (!entry || entry.expiresAtMs <= Date.now()) {
+    store.delete(token);
+    return { kind: 'missing' };
+  }
+  if (
+    entry.operationDigest !== digest ||
+    !sameTarget(entry.target, target) ||
+    (matchesFamily && !matchesFamily(entry))
+  ) {
+    return { kind: 'mismatch' };
+  }
+  store.delete(token);
+  return { kind: 'ready', entry };
 }
 
 export const facadePreviewStore = new Map<string, FacadePreviewEntry>();
@@ -117,17 +137,10 @@ export function isReadOnlyFacadeFieldPayload(data: unknown): boolean {
 
 export function cleanupFacadePreviews(): void {
   const now = Date.now();
-  for (const [token, entry] of facadePreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) facadePreviewStore.delete(token);
-  }
-  for (const [token, entry] of manageItemsPreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) manageItemsPreviewStore.delete(token);
-  }
-  for (const [token, entry] of manageAssetsPreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) manageAssetsPreviewStore.delete(token);
-  }
-  for (const [token, entry] of manageFilePreviewStore.entries()) {
-    if (entry.expiresAtMs <= now) manageFilePreviewStore.delete(token);
+  for (const store of [facadePreviewStore, manageItemsPreviewStore, manageAssetsPreviewStore, manageFilePreviewStore]) {
+    for (const [token, entry] of store) {
+      if (entry.expiresAtMs <= now) store.delete(token);
+    }
   }
 }
 
@@ -166,11 +179,11 @@ export function manageFileOperationDigest(target: FacadeV1Target, operation: Man
   return crypto.createHash('sha256').update(stableJson({ target, operation })).digest('hex');
 }
 
-export function makePreviewToken(): string {
+function makePreviewToken(): string {
   return `facade-preview-v1.${crypto.randomBytes(18).toString('base64url')}`;
 }
 
-export function sameTarget(a: FacadeV1Target, b: FacadeV1Target): boolean {
+function sameTarget(a: FacadeV1Target, b: FacadeV1Target): boolean {
   return stableJson(a) === stableJson(b);
 }
 

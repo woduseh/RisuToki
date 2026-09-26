@@ -11,9 +11,7 @@ import {
   cleanupFacadePreviews,
   facadeApiError,
   facadePreviewStore,
-  FACADE_PREVIEW_TTL_MS,
   isApiError,
-  makePreviewToken,
   manageAssetsOperationDigest,
   manageAssetsPreviewStore,
   manageFileOperationDigest,
@@ -23,7 +21,8 @@ import {
   operationDigest,
   recordString,
   route,
-  sameTarget,
+  consumePreview,
+  rememberPreview,
   selectorTarget,
   type FacadeRoute,
 } from './mcp-facade-runtime';
@@ -823,18 +822,14 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
         if (conflict) return textResult(conflict);
       }
       const digest = operationDigest(target, operations);
-      const token = makePreviewToken();
-      const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
-      facadePreviewStore.set(token, {
+      const { token, expiresAtMs } = rememberPreview(facadePreviewStore, {
         activeDocument,
-        token,
         operationDigest: digest,
         target,
         operations,
         routes,
         touchedTargets,
         requiredGuards,
-        expiresAtMs,
       });
       return textResult(
         boundFacadePayload(
@@ -895,8 +890,8 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
     },
     safeToolHandler('apply_edit', async ({ preview_token, operation_digest, target, guard_values, max_bytes }) => {
       cleanupFacadePreviews();
-      const entry = facadePreviewStore.get(preview_token);
-      if (!entry) {
+      const consumed = consumePreview(facadePreviewStore, preview_token, operation_digest, target);
+      if (consumed.kind === 'missing') {
         return textResult(
           facadeApiError(
             404,
@@ -905,7 +900,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
           ),
         );
       }
-      if (entry.operationDigest !== operation_digest || !sameTarget(entry.target, target)) {
+      if (consumed.kind === 'mismatch') {
         return textResult(
           facadeApiError(
             409,
@@ -914,7 +909,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
           ),
         );
       }
-      facadePreviewStore.delete(preview_token);
+      const entry = consumed.entry;
       if (entry.activeDocument) {
         const conflict = await checkActiveDocumentBinding(entry.activeDocument);
         if (conflict) return textResult(conflict);
@@ -1085,11 +1080,8 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             if (conflict) return textResult(conflict);
           }
           const digest = manageItemsOperationDigest(target, family, operation);
-          const token = makePreviewToken();
-          const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
-          manageItemsPreviewStore.set(token, {
+          const { token, expiresAtMs } = rememberPreview(manageItemsPreviewStore, {
             activeDocument,
-            token,
             operationDigest: digest,
             target,
             family,
@@ -1097,7 +1089,6 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             routes: preview.routes,
             touchedTargets: preview.touched,
             requiredGuards: preview.requiredGuards,
-            expiresAtMs,
           });
           return textResult(
             boundFacadePayload(
@@ -1160,8 +1151,14 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             ),
           );
         }
-        const entry = manageItemsPreviewStore.get(preview_token);
-        if (!entry) {
+        const consumed = consumePreview(
+          manageItemsPreviewStore,
+          preview_token,
+          operation_digest,
+          target,
+          (entry) => entry.family === family,
+        );
+        if (consumed.kind === 'missing') {
           return textResult(
             facadeApiError(
               404,
@@ -1170,11 +1167,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             ),
           );
         }
-        if (
-          entry.operationDigest !== operation_digest ||
-          !sameTarget(entry.target, target) ||
-          entry.family !== family
-        ) {
+        if (consumed.kind === 'mismatch') {
           return textResult(
             facadeApiError(
               409,
@@ -1183,7 +1176,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             ),
           );
         }
-        manageItemsPreviewStore.delete(preview_token);
+        const entry = consumed.entry;
         if (entry.activeDocument) {
           const conflict = await checkActiveDocumentBinding(entry.activeDocument);
           if (conflict) return textResult(conflict);
@@ -1296,11 +1289,8 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             if (conflict) return textResult(conflict);
           }
           const digest = manageAssetsOperationDigest(body.target, requestedFamily, body.operation!);
-          const token = makePreviewToken();
-          const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
-          manageAssetsPreviewStore.set(token, {
+          const { token, expiresAtMs } = rememberPreview(manageAssetsPreviewStore, {
             activeDocument,
-            token,
             operationDigest: digest,
             target: body.target,
             assetFamily: requestedFamily,
@@ -1308,7 +1298,6 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             routes: preview.routes,
             touchedTargets: preview.touched,
             requiredGuards: preview.requiredGuards,
-            expiresAtMs,
           });
           return textResult(
             boundFacadePayload(
@@ -1353,8 +1342,14 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
           );
         }
 
-        const entry = manageAssetsPreviewStore.get(body.preview_token!);
-        if (!entry) {
+        const consumed = consumePreview(
+          manageAssetsPreviewStore,
+          body.preview_token!,
+          body.operation_digest!,
+          body.target,
+          (entry) => entry.assetFamily === requestedFamily,
+        );
+        if (consumed.kind === 'missing') {
           return textResult(
             facadeApiError(
               404,
@@ -1363,11 +1358,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             ),
           );
         }
-        if (
-          entry.operationDigest !== body.operation_digest ||
-          !sameTarget(entry.target, body.target) ||
-          entry.assetFamily !== requestedFamily
-        ) {
+        if (consumed.kind === 'mismatch') {
           return textResult(
             facadeApiError(
               409,
@@ -1376,7 +1367,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             ),
           );
         }
-        manageAssetsPreviewStore.delete(body.preview_token!);
+        const entry = consumed.entry;
         if (entry.activeDocument) {
           const conflict = await checkActiveDocumentBinding(entry.activeDocument);
           if (conflict) return textResult(conflict);
@@ -1495,18 +1486,14 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             if (conflict) return textResult(conflict);
           }
           const digest = manageFileOperationDigest(body.target, body.operation!);
-          const token = makePreviewToken();
-          const expiresAtMs = Date.now() + FACADE_PREVIEW_TTL_MS;
-          manageFilePreviewStore.set(token, {
+          const { token, expiresAtMs } = rememberPreview(manageFilePreviewStore, {
             activeDocument,
-            token,
             operationDigest: digest,
             target: body.target,
             operation: body.operation!,
             routes: preview.routes,
             touchedTargets: preview.touched,
             requiredGuards: preview.requiredGuards,
-            expiresAtMs,
           });
           return textResult(
             boundFacadePayload(
@@ -1549,8 +1536,13 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
           );
         }
 
-        const entry = manageFilePreviewStore.get(body.preview_token!);
-        if (!entry) {
+        const consumed = consumePreview(
+          manageFilePreviewStore,
+          body.preview_token!,
+          body.operation_digest!,
+          body.target,
+        );
+        if (consumed.kind === 'missing') {
           return textResult(
             facadeApiError(
               404,
@@ -1559,7 +1551,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             ),
           );
         }
-        if (entry.operationDigest !== body.operation_digest || !sameTarget(entry.target, body.target)) {
+        if (consumed.kind === 'mismatch') {
           return textResult(
             facadeApiError(
               409,
@@ -1568,7 +1560,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
             ),
           );
         }
-        manageFilePreviewStore.delete(body.preview_token!);
+        const entry = consumed.entry;
         if (entry.activeDocument) {
           const conflict = await checkActiveDocumentBinding(entry.activeDocument);
           if (conflict) return textResult(conflict);
