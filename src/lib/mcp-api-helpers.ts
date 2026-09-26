@@ -46,19 +46,34 @@ const MAX_SURFACE_REPLACE_MATCHES = 1000;
 
 export function readBody(req: http.IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
-    let body = '';
+    const chunks: Buffer[] = [];
     let bytes = 0;
+    let settled = false;
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      chunks.length = 0;
+      reject(error);
+    };
     req.on('data', (chunk: Buffer | string) => {
-      bytes += Buffer.byteLength(chunk as string);
+      if (settled) return;
+      const buffer = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk;
+      bytes += buffer.length;
       if (bytes > MAX_BODY_BYTES) {
+        fail(new Error(`Request body exceeds ${MAX_BODY_BYTES} bytes`));
         req.destroy();
-        reject(new Error(`Request body exceeds ${MAX_BODY_BYTES} bytes`));
         return;
       }
-      body += chunk;
+      chunks.push(buffer);
     });
-    req.on('end', () => resolve(body));
-    req.on('error', reject);
+    req.once('end', () => {
+      if (settled) return;
+      settled = true;
+      resolve(Buffer.concat(chunks, bytes).toString('utf8'));
+      chunks.length = 0;
+    });
+    req.on('error', fail);
+    req.once('aborted', () => fail(new Error('Request body was interrupted')));
   });
 }
 

@@ -9,6 +9,12 @@
 
 ---
 
+## [3.9.2] - 2026-09-27
+
+### Fixed
+
+- Preserved split UTF-8 characters in MCP HTTP requests and responses; incomplete responses now settle through the existing error envelope, with a total request deadline and no automatic mutation retry.
+
 ## [3.9.1] - 2026-09-27
 
 ### Changed

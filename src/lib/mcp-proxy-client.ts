@@ -32,14 +32,16 @@ export function createMcpProxyClient(deps: McpProxyClientDeps) {
       const requestTimeoutSeconds = requestTimeoutMs / 1000;
       let settled = false;
       let requestDispatched = false;
-      const requestState: { req?: http.ClientRequest } = {};
+      const requestState: { req?: http.ClientRequest; deadline?: ReturnType<typeof setTimeout> } = {};
       const finish = (value: unknown) => {
         if (settled) return;
         settled = true;
+        clearTimeout(requestState.deadline);
         signal?.removeEventListener('abort', abortRequest);
         resolve(value);
       };
       const abortRequest = () => {
+        if (settled) return;
         const mutationOutcomeUnknown = mutatingRequest && requestDispatched;
         finish({
           [API_ERROR_KEY]: true,
@@ -91,9 +93,24 @@ export function createMcpProxyClient(deps: McpProxyClientDeps) {
 
       const req = http.request(options, (res) => {
         const chunks: string[] = [];
-        res.on('data', (chunk) => chunks.push(chunk as string));
+        // IncomingMessage keeps incomplete UTF-8 bytes between data events.
+        res.setEncoding('utf8');
+        res.on('data', (chunk: string) => {
+          if (!settled) chunks.push(chunk);
+        });
+        res.on('error', onNetworkError);
+        res.once('close', () => {
+          if (!res.complete) onNetworkError(new Error('API response ended before the full body arrived'));
+          chunks.length = 0;
+        });
         res.on('end', () => {
+          if (settled) return;
+          if (!res.complete) {
+            onNetworkError(new Error('Incomplete API response'));
+            return;
+          }
           const data = chunks.join('');
+          chunks.length = 0;
           const elapsedMs = Date.now() - startedAt;
           try {
             const parsed = JSON.parse(data);
@@ -153,7 +170,7 @@ export function createMcpProxyClient(deps: McpProxyClientDeps) {
         });
       });
 
-      req.on('error', (err: NodeJS.ErrnoException) => {
+      function onNetworkError(err: NodeJS.ErrnoException): void {
         if (settled) return;
         deps.noteRuntimeError('apiNetworkError', `${err.code ?? 'network'} ${method} ${urlPath}: ${err.message}`);
         deps.logProcessDiagnostic('apiNetworkError', {
@@ -189,9 +206,12 @@ export function createMcpProxyClient(deps: McpProxyClientDeps) {
             outcome: mutatingRequest ? 'unknown' : 'not_started',
           });
         }
-      });
+      }
+      req.on('error', onNetworkError);
       requestState.req = req;
-      req.setTimeout(requestTimeoutMs, () => {
+      // Bound the entire request, not just socket inactivity (a trickle must also finish).
+      requestState.deadline = setTimeout(() => {
+        if (settled) return;
         deps.noteRuntimeError('apiTimeout', `${method} ${urlPath} timed out after ${requestTimeoutSeconds} seconds`);
         deps.logProcessDiagnostic('apiTimeout', {
           method,
@@ -211,8 +231,8 @@ export function createMcpProxyClient(deps: McpProxyClientDeps) {
           retry_mode: mutatingRequest ? 'inspect_outcome' : 'backoff',
           outcome: mutatingRequest ? 'unknown' : 'not_started',
         });
-        req?.destroy();
-      });
+        req.destroy();
+      }, requestTimeoutMs);
 
       signal?.addEventListener('abort', abortRequest, { once: true });
       requestDispatched = true;
