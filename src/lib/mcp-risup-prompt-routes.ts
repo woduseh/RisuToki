@@ -1,3 +1,4 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 
 import {
@@ -113,13 +114,7 @@ export async function handleRisupPromptRoute(
     // ----------------------------------------------------------------
     // POST /risup/prompt-items/search — search prompt items by text/name
     // ----------------------------------------------------------------
-    if (
-      parts[0] === 'risup' &&
-      parts[1] === 'prompt-items' &&
-      parts[2] === 'search' &&
-      !parts[3] &&
-      req.method === 'POST'
-    ) {
+    if (getStructuredReadRoute(req.method, parts) === 'risup-prompt-search') {
       const fileType = currentData._fileType || 'charx';
       if (fileType !== 'risup') {
         return mcpError(res, 400, {
@@ -180,13 +175,7 @@ export async function handleRisupPromptRoute(
     // ----------------------------------------------------------------
     // POST /risup/prompt-item/batch — batch read prompt items
     // ----------------------------------------------------------------
-    if (
-      parts[0] === 'risup' &&
-      parts[1] === 'prompt-item' &&
-      parts[2] === 'batch' &&
-      !parts[3] &&
-      req.method === 'POST'
-    ) {
+    if (getStructuredReadRoute(req.method, parts) === 'risup-prompt-batch') {
       const fileType = currentData._fileType || 'charx';
       if (fileType !== 'risup') {
         return mcpError(res, 400, {
@@ -1694,7 +1683,7 @@ export async function handleRisupPromptRoute(
     // ----------------------------------------------------------------
     // POST /risup/prompt-diff — compare current risup prompt vs reference
     // ----------------------------------------------------------------
-    if (parts[0] === 'risup' && parts[1] === 'prompt-diff' && !parts[2] && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'risup-prompt-diff') {
       const fileType = currentData._fileType || 'charx';
       if (fileType !== 'risup') {
         return mcpError(res, 400, {

@@ -1,3 +1,4 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 
 import { resolve as cbsResolve, generateCombinations } from './cbs-evaluator';
@@ -300,7 +301,7 @@ export async function handleCbsRoute(
     return true;
   }
 
-  if (parts[1] === 'simulate' && !parts[2] && req.method === 'POST') {
+  if (getStructuredReadRoute(req.method, parts) === 'cbs-simulate') {
     const currentData = requireCurrentData(res, deps, 'cbs/simulate');
     if (!currentData) return true;
 
@@ -427,7 +428,7 @@ export async function handleCbsRoute(
     return true;
   }
 
-  if (parts[1] === 'diff' && !parts[2] && req.method === 'POST') {
+  if (getStructuredReadRoute(req.method, parts) === 'cbs-diff') {
     const currentData = requireCurrentData(res, deps, 'cbs/diff');
     if (!currentData) return true;
 

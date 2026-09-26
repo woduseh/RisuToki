@@ -1,3 +1,4 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
@@ -484,12 +485,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
     }
     const url = new URL(req.url!, 'http://127.0.0.1');
     const parts = url.pathname.split('/').filter(Boolean);
+    const readOnlyPost = !!getFieldReadRoute(req.method, parts) || !!getStructuredReadRoute(req.method, parts);
     if (deps.onActivity)
       observeMcpRequest({
         req,
         res,
         parts,
-        readOnly: !!getFieldReadRoute(req.method, parts),
+        readOnly: readOnlyPost,
         activeTarget: activityTarget(),
         referenceTarget: activityReference(parts),
         externalFilePath: parts[0] === 'cbs' ? url.searchParams.get('file_path') : null,
@@ -554,14 +556,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // Bind confirmation to the state the route reads, including array order.
       // V8 serialization preserves binary assets without expanding each byte into JSON.
       const documentDigest = () => crypto.createHash('sha256').update(serialize(currentData)).digest('hex');
-      // These POST reads use the field dispatcher's matcher and never need a mutation
-      // snapshot. Keep the eager snapshot for every other POST, before any awaits.
-      const fieldReadRoute = getFieldReadRoute(req.method, parts);
-      const initialDocumentDigest = req.method === 'POST' && currentData && !fieldReadRoute ? documentDigest() : null;
+      // Dispatch and snapshot policy share the verified read matchers. Keep an
+      // eager snapshot for every other POST, including unknown routes and dry runs.
+      const initialDocumentDigest = req.method === 'POST' && currentData && !readOnlyPost ? documentDigest() : null;
       const documentPath = deps.getCurrentFilePath?.();
       async function confirmActiveMutation(title: string, message: string): Promise<boolean> {
-        if (fieldReadRoute) {
-          throw new ActiveDocumentConflictError('A read-only field request cannot confirm a document mutation.');
+        if (readOnlyPost) {
+          throw new ActiveDocumentConflictError('A read-only request cannot confirm a document mutation.');
         }
         const assertCurrent = async () => {
           const renderer = deps.hasRendererDraftChanges ? null : (await deps.getSessionStatus?.())?.renderer;

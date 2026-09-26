@@ -13,6 +13,8 @@
 
 ### Changed
 
+- Removed whole-document binary snapshot hashing from verified structured batch/search/diff and CBS read-only POST routes; shared their dispatch matchers with the snapshot policy while retaining write conflict guards.
+
 - Cached preview/review/diagnostic text baselines and skipped whole-document freshness checks when there is no live baseline or a view is already stale.
 
 - Removed unused terminal palettes and a redundant collection-digest argument; moved five pure test files to Node without changing their test cases.

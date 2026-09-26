@@ -98,3 +98,60 @@ describe('MCP field reads with binary assets', () => {
     }
   });
 });
+
+describe('MCP structured reads with binary assets', () => {
+  it.each(['charx', 'risum', 'risup'] as const)(
+    'does not snapshot unrelated %s assets for batch, search or analysis',
+    async (fileType) => {
+      const bytes = Buffer.alloc(1024 * 1024, 42);
+      const data = {
+        ...createSearchFixture(),
+        _fileType: fileType,
+        assets: [{ path: 'assets/portrait.webp', data: bytes }],
+        lua: '-- ===== main =====\nprint("alpha")\n',
+        css: '<style>\n/* ===== main ===== */\n.test { color: red; }\n</style>',
+        regex: [{ comment: 'alpha', type: 'editdisplay', find: 'alpha', replace: 'beta', flag: 'g' }],
+        triggerScripts: [{ comment: 'alpha', type: 'start', conditions: [], effect: [] }],
+        promptTemplate: JSON.stringify([{ type: 'plain', type2: 'normal', role: 'system', text: 'alpha' }]),
+        formatingOrder: '[]',
+      };
+      const reference = { fileName: `reference.${fileType}`, data: { ...data, assets: [] } };
+      const before = JSON.stringify({ ...data, assets: undefined });
+      const confirm = vi.fn(async () => true);
+      const api = await startTestApiServer(data, [reference], undefined, { askRendererConfirm: confirm });
+      const requests: Array<[string, Record<string, unknown>]> = [
+        ['/lorebook/batch', { indices: [0] }],
+        ['/regex/batch', { indices: [0] }],
+        ['/trigger/batch', { indices: [0] }],
+        ['/greeting/alternate/batch', { indices: [0] }],
+        ['/lua/batch', { indices: [0] }],
+        ['/css-section/batch', { indices: [0] }],
+        ['/lorebook/diff', { index: 0, refIndex: 0, refEntryIndex: 0 }],
+        ['/cbs/simulate', { field: 'description', toggles: {} }],
+        ['/cbs/diff', { field: 'description', toggles: { toggle_demo: '1' } }],
+      ];
+      if (fileType === 'risup')
+        requests.push(
+          ['/risup/prompt-item/batch', { indices: [0] }],
+          ['/risup/prompt-items/search', { query: 'alpha' }],
+          ['/risup/prompt-diff', { refIndex: 0 }],
+        );
+      try {
+        for (const [route, body] of requests) {
+          const response = await postJson<Record<string, unknown>>(api.port, api.token, route, body);
+          expect(response.status, `${route}: ${JSON.stringify(response.data)}`).toBe(200);
+          if (route.endsWith('/batch')) expect(response.data.count, route).toBe(1);
+        }
+        for (const [route] of requests.filter(([route]) => route.endsWith('/batch'))) {
+          expect((await postJson(api.port, api.token, route, { indices: 'invalid' })).status, route).toBe(400);
+        }
+        expect(serialize).not.toHaveBeenCalled();
+        expect(confirm).not.toHaveBeenCalled();
+        expect(JSON.stringify({ ...data, assets: undefined })).toBe(before);
+        expect(bytes.equals(Buffer.alloc(bytes.length, 42))).toBe(true);
+      } finally {
+        await closeServer(api.server);
+      }
+    },
+  );
+});

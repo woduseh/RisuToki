@@ -1,3 +1,4 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 import * as crypto from 'crypto';
 
@@ -106,7 +107,7 @@ export async function handleLorebookRoute(
     // ----------------------------------------------------------------
     // POST /lorebook/batch — batch read multiple entries
     // ----------------------------------------------------------------
-    if (parts[0] === 'lorebook' && parts[1] === 'batch' && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'lorebook-batch') {
       const body = await readJsonBody(req, res, 'lorebook/batch', broadcastStatus);
       if (!body) return;
       const indices: number[] = body.indices;
@@ -531,7 +532,7 @@ export async function handleLorebookRoute(
     // ----------------------------------------------------------------
     // POST /lorebook/diff — diff current vs reference lorebook entry
     // ----------------------------------------------------------------
-    if (parts[0] === 'lorebook' && parts[1] === 'diff' && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'lorebook-diff') {
       const body = await readJsonBody(req, res, 'lorebook/diff', broadcastStatus);
       if (!body) return;
       const { index, refIndex, refEntryIndex } = body;

@@ -1,3 +1,4 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 
 import {
@@ -210,7 +211,7 @@ export async function handleStructuredItemRoute(
     // ----------------------------------------------------------------
     // POST /regex/batch — batch read multiple regex entries
     // ----------------------------------------------------------------
-    if (parts[0] === 'regex' && parts[1] === 'batch' && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'regex-batch') {
       const body = await readJsonBody(req, res, 'regex/batch', broadcastStatus);
       if (!body) return;
       const indices: number[] = body.indices;
@@ -1136,7 +1137,7 @@ export async function handleStructuredItemRoute(
     // ----------------------------------------------------------------
     // POST /greeting/:type/batch — batch read multiple greetings
     // ----------------------------------------------------------------
-    if (parts[0] === 'greeting' && parts[1] && parts[2] === 'batch' && !parts[3] && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'greeting-batch') {
       const greetingType = parts[1];
       const fieldName = getGreetingFieldName(greetingType);
       if (!fieldName) {
@@ -1790,7 +1791,7 @@ export async function handleStructuredItemRoute(
     // ----------------------------------------------------------------
     // POST /trigger/batch — batch read trigger scripts
     // ----------------------------------------------------------------
-    if (parts[0] === 'trigger' && parts[1] === 'batch' && !parts[2] && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'trigger-batch') {
       const body = await readJsonBody(req, res, 'trigger/batch', broadcastStatus);
       if (!body) return;
       const indices: number[] = body.indices;

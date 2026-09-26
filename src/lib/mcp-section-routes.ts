@@ -1,3 +1,4 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 
 import {
@@ -86,7 +87,7 @@ export async function handleSectionRoute(
     // ----------------------------------------------------------------
     // POST /lua/batch — batch read Lua sections
     // ----------------------------------------------------------------
-    if (parts[0] === 'lua' && parts[1] === 'batch' && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'lua-batch') {
       const body = await readJsonBody(req, res, 'lua/batch', broadcastStatus);
       if (!body) return;
       const indices: number[] = body.indices;
@@ -672,7 +673,7 @@ export async function handleSectionRoute(
     // ----------------------------------------------------------------
     // POST /css-section/batch — batch read CSS sections
     // ----------------------------------------------------------------
-    if (parts[0] === 'css-section' && parts[1] === 'batch' && req.method === 'POST') {
+    if (getStructuredReadRoute(req.method, parts) === 'css-batch') {
       const body = await readJsonBody(req, res, 'css-section/batch', broadcastStatus);
       if (!body) return;
       const indices: number[] = body.indices;
