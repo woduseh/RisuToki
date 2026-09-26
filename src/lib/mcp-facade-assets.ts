@@ -1,3 +1,14 @@
+import {
+  assetBytesFromUnknown,
+  assetPathBasename,
+  assetExtension,
+  assetMimeType,
+  charxAssetSummary,
+  risumModuleAssets,
+  risumAssetSummary,
+  resolveManageAssetsSelector,
+  type ManageAssetsSummary,
+} from './mcp-asset-metadata';
 import * as path from 'path';
 import { open } from 'fs/promises';
 import { createHash } from 'crypto';
@@ -71,14 +82,6 @@ export function createFacadeAssetsEngine({
 }: FacadeAssetsEngineDeps) {
   type ManageAssetsResolvedFamily = Exclude<ManageAssetsFamily, 'auto'>;
 
-  interface ManageAssetsSummary {
-    index: number;
-    path: string;
-    name?: string;
-    size: number;
-    mimeType?: string;
-  }
-
   interface ManageAssetsContext {
     family: ManageAssetsResolvedFamily;
     summaries: ManageAssetsSummary[];
@@ -104,27 +107,12 @@ export function createFacadeAssetsEngine({
     };
   }
 
-  function assetBytesFromUnknown(value: unknown): Buffer {
-    if (Buffer.isBuffer(value)) return value;
-    if (value instanceof Uint8Array) return Buffer.from(value);
-    if (Array.isArray(value) && value.every((entry) => typeof entry === 'number')) {
-      return Buffer.from(value as number[]);
-    }
-    const record = asRecord(value);
-    if (record?.type === 'Buffer' && Array.isArray(record.data)) return Buffer.from(record.data as number[]);
-    return Buffer.alloc(0);
-  }
-
   function assetBufferJsonFromBase64(base64: string): Record<string, unknown> {
     return { type: 'Buffer', data: [...Buffer.from(base64, 'base64')] };
   }
 
   function assetBufferJsonFromBuffer(buffer: Buffer): Record<string, unknown> {
     return { type: 'Buffer', data: [...buffer] };
-  }
-
-  function assetPathBasename(assetPath: string): string {
-    return assetPath.split(/[\\/]/).filter(Boolean).pop() ?? assetPath;
   }
 
   function assetPathDirname(assetPath: string): string {
@@ -135,24 +123,6 @@ export function createFacadeAssetsEngine({
 
   function normalizeAssetPath(assetPath: string): string {
     return assetPath.replace(/\\/g, '/').replace(/^\/+/, '');
-  }
-
-  function assetExtension(nameOrPath: string): string {
-    const base = assetPathBasename(nameOrPath);
-    const dotIndex = base.lastIndexOf('.');
-    return dotIndex >= 0 ? base.slice(dotIndex + 1).toLowerCase() : '';
-  }
-
-  function assetMimeType(assetPath: string): string {
-    const ext = assetExtension(assetPath);
-    if (ext === 'png') return 'image/png';
-    if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
-    if (ext === 'gif') return 'image/gif';
-    if (ext === 'webp') return 'image/webp';
-    if (ext === 'svg') return 'image/svg+xml';
-    if (ext === 'json') return 'application/json';
-    if (ext === 'txt' || ext === 'md') return 'text/plain';
-    return 'application/octet-stream';
   }
 
   function validateManageAssetFileName(name: string, action: string): ApiErrorResult | undefined {
@@ -418,46 +388,6 @@ export function createFacadeAssetsEngine({
     return fileType === 'risum' ? 'risum' : 'charx';
   }
 
-  function charxAssetSummary(entry: unknown, index: number): ManageAssetsSummary | ApiErrorResult {
-    const record = asRecord(entry);
-    if (!record || typeof record.path !== 'string') {
-      return facadeApiError(
-        400,
-        'charx asset entry is not an object with path',
-        'Repair the asset list or use the granular surface tools for precision debugging.',
-        { index },
-      );
-    }
-    const bytes = assetBytesFromUnknown(record.data);
-    return {
-      index,
-      path: record.path,
-      name: assetPathBasename(record.path),
-      size: bytes.length,
-      mimeType: assetMimeType(record.path),
-    };
-  }
-
-  function risumModuleAssets(moduleData: Record<string, unknown> | undefined): unknown[] {
-    const moduleRecord = asRecord(moduleData?.module) ?? moduleData;
-    return Array.isArray(moduleRecord?.assets) ? (moduleRecord.assets as unknown[]) : [];
-  }
-
-  function risumAssetSummary(asset: unknown, index: number, moduleData?: Record<string, unknown>): ManageAssetsSummary {
-    const meta = risumModuleAssets(moduleData)[index];
-    const tuple = Array.isArray(meta) ? meta : [];
-    const name = typeof tuple[0] === 'string' ? tuple[0] : `asset_${index}`;
-    const assetPath = typeof tuple[2] === 'string' ? tuple[2] : '';
-    const bytes = assetBytesFromUnknown(asset);
-    return {
-      index,
-      name,
-      path: assetPath,
-      size: bytes.length,
-      mimeType: assetMimeType(assetPath || name),
-    };
-  }
-
   async function readOptionalExternalRecordArraySurface(
     filePath: string,
     surfacePath: string,
@@ -637,46 +567,6 @@ export function createFacadeAssetsEngine({
       { target },
       ['inspect_document'],
     );
-  }
-
-  function resolveManageAssetsSelector(
-    context: ManageAssetsContext,
-    selector: Extract<ManageAssetsOperation, { action: 'read_asset' | 'delete_asset' | 'rename_asset' }>['selector'],
-    action: string,
-  ): ManageAssetsSummary | ApiErrorResult {
-    if (selector.index !== undefined) {
-      const summary = context.summaries.find((entry) => entry.index === selector.index);
-      if (!summary) {
-        return facadeApiError(
-          404,
-          `Asset index not found: ${selector.index}`,
-          'Refresh asset summaries and retry with a current index or path.',
-          { index: selector.index, action },
-          ['manage_assets'],
-        );
-      }
-      return summary;
-    }
-    const byPath = context.summaries.filter((entry) => entry.path === selector.path || entry.name === selector.path);
-    if (byPath.length === 0) {
-      return facadeApiError(
-        404,
-        `Asset path not found: ${selector.path}`,
-        'Refresh asset summaries and retry with a current path or index.',
-        { path: selector.path, action },
-        ['manage_assets'],
-      );
-    }
-    if (byPath.length > 1) {
-      return facadeApiError(
-        409,
-        `Asset selector is ambiguous: ${selector.path}`,
-        'Use selector.index for this asset operation.',
-        { path: selector.path, matches: byPath.map((entry) => entry.index), action },
-        ['manage_assets'],
-      );
-    }
-    return byPath[0];
   }
 
   function cloneJsonValue<T>(value: T): T {
@@ -1395,6 +1285,32 @@ export function createFacadeAssetsEngine({
     requestedFamily: ManageAssetsFamily,
     operation: ManageAssetsOperation,
   ): Promise<{ result: Record<string, unknown>; routes: FacadeRoute[]; touched: string[] } | ApiErrorResult> {
+    // Read-only external queries need one projection, not the mutation context's raw surfaces.
+    if (target.kind === 'external' && (operation.action === 'list_assets' || operation.action === 'read_asset')) {
+      const family = await resolveManageAssetsFamily(target, requestedFamily);
+      if (isApiError(family)) return family;
+      const data = await apiRequest('POST', '/external/assets/read', {
+        file_path: target.file_path,
+        ...(operation.action === 'read_asset' ? { selector: operation.selector } : {}),
+      });
+      if (isApiError(data)) return data;
+      const record = asRecord(data);
+      if (!Array.isArray(record?.assets))
+        return facadeApiError(502, 'Invalid external asset metadata', 'Restart both MCP and editor runtimes.');
+      const summaries = record.assets as ManageAssetsSummary[];
+      const touched = `external:${target.file_path}:${family === 'charx' ? 'charx-assets' : 'risum-assets'}`;
+      const asset = asRecord(record.asset);
+      return {
+        result: {
+          action: operation.action,
+          family,
+          ...(operation.action === 'list_assets' ? { count: summaries.length, assets: summaries } : { asset }),
+          asset_collection_digest: manageAssetsCollectionDigest(summaries),
+        },
+        routes: [route('manage_assets', 'POST', '/external/assets/read')],
+        touched: operation.action === 'read_asset' ? [touched, `${touched}:${asset?.index}`] : [touched],
+      };
+    }
     const context = await readManageAssetsContext(target, requestedFamily);
     if (isApiError(context)) return context;
     const collectionGuard = assetCollectionDigestGuard(context.summaries);

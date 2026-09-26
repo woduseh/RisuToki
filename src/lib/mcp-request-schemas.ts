@@ -901,7 +901,7 @@ export type ManageItemsBody = z.infer<typeof manageItemsBodySchema>;
 export const manageAssetsFamilySchema = z.enum(['auto', 'charx', 'risum']).default('auto');
 export type ManageAssetsFamily = z.infer<typeof manageAssetsFamilySchema>;
 
-const manageAssetsSelectorSchema = z
+export const manageAssetsSelectorSchema = z
   .object({
     index: z.number().int().nonnegative().optional(),
     path: z.string().min(1).optional(),

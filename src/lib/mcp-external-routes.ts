@@ -1,3 +1,13 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
+import {
+  charxAssetSummary,
+  risumAssetSummary,
+  resolveManageAssetsSelector,
+  assetBytesFromUnknown,
+  type ManageAssetsSummary,
+} from './mcp-asset-metadata';
+import { asRecord, isApiError } from './mcp-facade-runtime';
+import { manageAssetsSelectorSchema } from './mcp-request-schemas';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
@@ -250,6 +260,73 @@ export async function handleExternalRoute(
   } = routeDeps;
 
   async function dispatch(): Promise<void | false> {
+    if (getStructuredReadRoute(req.method, parts) === 'external-assets-read') {
+      const probe = await readProbeDocumentRequest(
+        req,
+        res,
+        'external/assets/read',
+        'read external assets',
+        'external:assets',
+      );
+      if (!probe) return;
+      const currentPath = deps.getCurrentFilePath?.();
+      if (currentPath && sameDocumentPath(currentPath, probe.filePath))
+        return mcpError(res, 409, {
+          action: 'read external assets',
+          target: 'external:assets',
+          message: 'The requested file is already open in the UI session.',
+          suggestion: 'Use an active manage_assets target.',
+        });
+      if (probe.fileType === 'risup')
+        return mcpError(res, 400, {
+          action: 'read external assets',
+          target: 'external:assets',
+          message: 'manage_assets supports external .charx or .risum files',
+        });
+      const summaries: ManageAssetsSummary[] = [];
+      const rawAssets = probe.fileType === 'charx' ? probe.data.assets : probe.data.risumAssets;
+      const binaries: unknown[] = Array.isArray(rawAssets) ? rawAssets : [];
+      for (const [index, entry] of (binaries || []).entries()) {
+        const summary =
+          probe.fileType === 'charx'
+            ? charxAssetSummary(entry, index)
+            : risumAssetSummary(entry, index, asRecord(probe.data._moduleData));
+        if (isApiError(summary))
+          return mcpError(res, summary.status, {
+            action: 'read external assets',
+            target: 'external:assets',
+            message: String(summary.error),
+            suggestion: String(summary.suggestion),
+          });
+        summaries.push(summary);
+      }
+      let asset: (ManageAssetsSummary & { base64: string }) | undefined;
+      if (probe.body.selector !== undefined) {
+        const parsed = parseBody(res, probe.body, z.object({ selector: manageAssetsSelectorSchema }), {
+          action: 'read external asset',
+          target: 'external:assets',
+        });
+        if (!parsed) return;
+        const summary = resolveManageAssetsSelector({ summaries }, parsed.selector, 'read_asset');
+        if (isApiError(summary))
+          return mcpError(res, summary.status, {
+            action: 'read external asset',
+            target: 'external:assets',
+            message: String(summary.error),
+            suggestion: String(summary.suggestion),
+            details: asRecord(summary.details),
+          });
+        const raw = binaries?.[summary.index];
+        const bytes = assetBytesFromUnknown(probe.fileType === 'charx' ? asRecord(raw)?.data : raw);
+        asset = { ...summary, base64: bytes.toString('base64') };
+      }
+      return jsonResSuccess(
+        res,
+        { assets: summaries, ...(asset ? { asset } : {}) },
+        { toolName: 'manage_assets', summary: 'Read external asset metadata', artifacts: { count: summaries.length } },
+      );
+    }
+
     if (req.method === 'POST' && parts.join('/') === 'external/create') {
       const body = await readJsonBody(req, res, 'external/create', () => {});
       if (!body) return;

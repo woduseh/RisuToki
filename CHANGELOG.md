@@ -17,6 +17,8 @@
 
 ### Changed
 
+- External asset list/read operations now use a single read-only metadata projection and transfer only the selected binary when requested. Mutation loading and collection guards remain separate.
+
 - Separated private active-document binding from the full surface inventory and hash binary views directly for facade preview/apply. Public surface hashes retain their exact legacy format, now streamed with one hash/size traversal per inventory row. Read-only raw surface requests no longer create mutation snapshots.
 
 ## [3.9.1] - 2026-09-27
