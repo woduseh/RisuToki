@@ -1,3 +1,4 @@
+import { hashDocumentState } from './mcp-surface-fingerprint';
 import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 import * as crypto from 'crypto';
@@ -553,6 +554,13 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // Routes that support an empty editor session return before reading the
       // document. The remaining route handlers operate on a loaded document.
       const activeData = currentData as LoadedDocumentData;
+      // Private facade binding: no surface inventory or renderer IPC is needed.
+      if (req.method === 'GET' && parts[0] === 'document' && parts[1] === 'binding' && !parts[2]) {
+        return jsonRes(res, {
+          document_hash: hashDocumentState(activeData),
+          file_path: deps.getCurrentFilePath?.() ?? null,
+        });
+      }
       // Bind confirmation to the state the route reads, including array order.
       // V8 serialization preserves binary assets without expanding each byte into JSON.
       const documentDigest = () => crypto.createHash('sha256').update(serialize(currentData)).digest('hex');

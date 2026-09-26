@@ -15,6 +15,10 @@
 
 - Preserved split UTF-8 characters in MCP HTTP requests and responses; incomplete responses now settle through the existing error envelope, with a total request deadline and no automatic mutation retry.
 
+### Changed
+
+- Separated private active-document binding from the full surface inventory and hash binary views directly for facade preview/apply. Public surface hashes retain their exact legacy format, now streamed with one hash/size traversal per inventory row. Read-only raw surface requests no longer create mutation snapshots.
+
 ## [3.9.1] - 2026-09-27
 
 ### Changed

@@ -6,6 +6,7 @@
 export function getStructuredReadRoute(method: string | undefined, parts: readonly string[]) {
   if (method !== 'POST') return null;
   const [family, action, detail] = parts;
+  if (family === 'surface' && action === 'read' && !detail) return 'surface-read';
   if (family === 'lorebook') {
     if (action === 'batch') return 'lorebook-batch';
     if (action === 'diff') return 'lorebook-diff';

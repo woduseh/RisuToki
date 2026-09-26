@@ -1,3 +1,4 @@
+import { getStructuredReadRoute } from './mcp-read-routes';
 import type * as http from 'http';
 import type { McpErrorInfo, McpSuccessOptions } from './mcp-response-envelope';
 import type { SupportedFileType } from './mcp-field-access';
@@ -90,7 +91,7 @@ export async function handleSurfaceRoute(
     return true;
   }
 
-  if (parts[0] === 'surface' && parts[1] === 'read' && !parts[2] && req.method === 'POST') {
+  if (getStructuredReadRoute(req.method, parts) === 'surface-read') {
     const body = await deps.readJsonBody(req, res, 'surface/read', deps.broadcastStatus);
     if (!body) return true;
     const pointer = typeof body.path === 'string' ? body.path : '';

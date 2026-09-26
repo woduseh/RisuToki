@@ -1,3 +1,4 @@
+import { fingerprintSurface } from './mcp-surface-fingerprint';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import * as path from 'path';
@@ -512,14 +513,21 @@ export function stableJson(value: unknown): string {
 }
 
 export function hashSurface(value: unknown): string {
-  return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
+  return fingerprintSurface(value).hash;
 }
 
-export function measureSurface(value: unknown): { type: string; byteSize: number; count?: number; preview?: string } {
+export function measureSurface(
+  value: unknown,
+  measuredBytes?: number,
+): { type: string; byteSize: number; count?: number; preview?: string } {
   if (Array.isArray(value))
-    return { type: 'array', byteSize: Buffer.byteLength(stableJson(value)), count: value.length };
+    return { type: 'array', byteSize: measuredBytes ?? fingerprintSurface(value).byteSize, count: value.length };
   if (value && typeof value === 'object') {
-    return { type: 'object', byteSize: Buffer.byteLength(stableJson(value)), count: Object.keys(value).length };
+    return {
+      type: 'object',
+      byteSize: measuredBytes ?? fingerprintSurface(value).byteSize,
+      count: Object.keys(value).length,
+    };
   }
   if (typeof value === 'string') {
     return {
@@ -528,7 +536,10 @@ export function measureSurface(value: unknown): { type: string; byteSize: number
       preview: value.slice(0, 120) + (value.length > 120 ? '…' : ''),
     };
   }
-  return { type: value === null ? 'null' : typeof value, byteSize: Buffer.byteLength(stableJson(value)) };
+  return {
+    type: value === null ? 'null' : typeof value,
+    byteSize: measuredBytes ?? fingerprintSurface(value).byteSize,
+  };
 }
 
 export function parseJsonPointer(pointer: string | undefined): string[] {
@@ -774,12 +785,13 @@ export function buildSurfaceList(
     .sort()
     .map((name) => {
       const value = data[name];
-      const measure = measureSurface(value);
+      const fingerprint = fingerprintSurface(value);
+      const measure = measureSurface(value, fingerprint.byteSize);
       return {
         name,
         path: `/${name}`,
         ...measure,
-        hash: hashSurface(value),
+        hash: fingerprint.hash,
         dedicatedToolFamily:
           name === 'lorebook'
             ? 'lorebook'

@@ -23,6 +23,7 @@ describe('MCP field reads with binary assets', () => {
       try {
         for (const [route, body, expected] of [
           ['/field/batch', { fields: ['name', 'description'] }, { count: 2 }],
+          ['/surface/read', { path: '/description' }, { path: '/description', value: data.description }],
           ['/field/description/search', { query: 'alpha' }, { totalMatches: 1 }],
           ['/search-all', { query: 'alpha' }, { totalMatches: 4 }],
         ] as const) {

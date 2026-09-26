@@ -101,14 +101,12 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
   const { previewManageAssetsOperation, readManageAssetsOperation, applyManageAssetsOperation } = assets;
 
   async function readActiveDocumentBinding() {
-    const surfaces = await apiRequest('GET', '/surfaces');
-    if (isApiError(surfaces)) return surfaces;
-    const session = await apiRequest('GET', '/session/status');
-    if (isApiError(session)) return session;
-    const hash = recordString(asRecord(surfaces), 'document_hash');
+    const binding = await apiRequest('GET', '/document/binding');
+    if (isApiError(binding)) return binding;
+    const hash = recordString(asRecord(binding), 'document_hash');
     if (!hash)
       return facadeApiError(409, 'Active document hash is unavailable', 'Read the current document and preview again.');
-    return { hash, path: recordString(asRecord(asRecord(session)?.document), 'filePath') ?? null };
+    return { hash, path: recordString(asRecord(binding), 'file_path') ?? null };
   }
 
   async function checkActiveDocumentBinding(expected: { path: string | null; hash: string }) {

@@ -35,7 +35,7 @@ describe.each(['edit', 'items', 'assets', 'file'] as const)('active %s preview d
         } as unknown as McpServer,
         {
           apiRequest: async (_method: string, route: string) =>
-            route === '/surfaces' ? { document_hash: hashSurface(entries) } : { document: { filePath: path } },
+            route === '/document/binding' ? { document_hash: hashSurface(entries), file_path: path } : {},
           assets: {
             previewManageAssetsOperation: async () => ({ result: {}, routes: [], touched: [], requiredGuards: [] }),
             applyManageAssetsOperation: apply,
