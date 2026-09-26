@@ -13,6 +13,8 @@
 
 ### Changed
 
+- Moved review/diagnostic request lifetimes, preview baselines, and shared stale-state coordination into a document workbench controller, keeping widget construction and source navigation in the renderer composition layer.
+
 - Shared typed preview-token creation, expiration, binding checks, and one-shot consumption across edit/items/assets/files without merging their mutation or error contracts.
 
 - Detached only the renderer text projection of saved review documents and retained source signatures rather than duplicate saved binaries. Kept the active-draft isolation copy and fresh disk/asset hash checks on restore.

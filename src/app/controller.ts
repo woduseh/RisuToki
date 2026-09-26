@@ -1,4 +1,4 @@
-import { markStaleWorkbenchSnapshots, type WorkbenchSnapshots } from '../lib/workbench-freshness';
+import { createDocumentWorkbenchController } from './document-workbench-controller';
 import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections } from '../lib/section-parser';
 import type { Section } from '../lib/section-parser';
 import type { Tab } from '../lib/tab-manager';
@@ -6,8 +6,7 @@ import { registerActions } from '../lib/action-registry';
 import { useAppStore } from '../stores/app-store';
 import { useWorkbenchStore } from '../stores/workbench-store';
 import { restoreDocumentReviewChange, type ReviewChange } from '../lib/document-review-model';
-import { diagnoseDocument, type DiagnosticSource } from '../lib/document-diagnostics';
-import type { PreviewAssetInventory } from '../lib/preview-assets';
+import type { DiagnosticSource } from '../lib/document-diagnostics';
 import type { McpActivitySource } from '../lib/mcp-activity-types';
 import type { DocumentReviewAssetChange } from '../lib/document-review-types';
 import type { PreviewPanelHandle, PreviewPanelViewState, PreviewSourceTarget } from '../lib/preview-panel';
@@ -196,11 +195,22 @@ function setCurrentProjectPath(path: string | null): void {
 let editorInstance: MonacoEditorInstance | null = null; // Monaco editor instance
 let previewPanelHandle: PreviewPanelHandle | null = null;
 let previewRenderVersion = 0;
-let reviewVersion = 0;
-let diagnosticsVersion = 0;
-let assetRevision = 0;
-const workbenchSnapshots: WorkbenchSnapshots = {};
 const unappliedReviewDrafts = new Set<string>();
+const documentWorkbench = createDocumentWorkbenchController({
+  getFileData: () => fileData,
+  getTabs: () => tabMgr,
+  getStore: useWorkbenchStore,
+  api: {
+    getPreviewAssetInventory: () => window.tokiAPI.getPreviewAssetInventory(),
+    getDocumentReview: (draft) => window.tokiAPI.getDocumentReview(draft),
+  },
+  unappliedDrafts: unappliedReviewDrafts,
+});
+const {
+  updateFreshness: updateWorkbenchFreshness,
+  refreshDiagnostics: refreshDocumentDiagnostics,
+  refreshReview: refreshDocumentReview,
+} = documentWorkbench;
 let monacoReady = false;
 let monacoLoadTask: Promise<boolean> | null = null;
 
@@ -2075,14 +2085,7 @@ function updateDocumentStats(): void {
 
 function setCurrentFileData(data: RendererDocumentData | null): void {
   disposePreviewPanel();
-  reviewVersion += 1;
-  diagnosticsVersion += 1;
-  assetRevision += 1;
-  delete workbenchSnapshots.preview;
-  delete workbenchSnapshots.review;
-  delete workbenchSnapshots.diagnostics;
-  unappliedReviewDrafts.clear();
-  useWorkbenchStore().resetDocument();
+  documentWorkbench.resetDocument();
   fileData = data;
   useAppStore().setFileData(data);
   updateDocumentStats();
@@ -2512,92 +2515,6 @@ function applyDocumentFieldUpdate(field: string, value: unknown): void {
   updateWorkbenchFreshness();
 }
 
-function updateWorkbenchFreshness(): void {
-  const workbench = useWorkbenchStore();
-  markStaleWorkbenchSnapshots(fileData, workbenchSnapshots, workbench);
-  const active = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
-  if (!active) workbench.selection = null;
-  else {
-    const indexed = /^(lore_|regex_|altGreet_)(\d+)$/.exec(active.id);
-    const field = indexed
-      ? ({ lore_: 'lorebook', regex_: 'regex', altGreet_: 'alternateGreetings' } as Record<string, string>)[indexed[1]]
-      : active.id.startsWith('lua_s')
-        ? 'lua'
-        : active.id.startsWith('css_s')
-          ? 'css'
-          : active.id.startsWith('risup_prompt_item_')
-            ? 'promptTemplate'
-            : fileData && Object.hasOwn(fileData, active.id)
-              ? active.id
-              : undefined;
-    workbench.selection = {
-      label: active.label,
-      ...(field ? { field } : {}),
-      ...(indexed ? { index: Number(indexed[2]) } : {}),
-    };
-  }
-  workbench.rawDraftWarning = tabMgr.openTabs.some(
-    (tab) => tab.id.startsWith('project:') && tabMgr.dirtyFields.has(tab.id),
-  )
-    ? '프로젝트 원본 파일의 작성 중인 내용은 이 비교에 포함되지 않아요. 원본 파일 저장이 끝난 뒤 다시 검토하세요.'
-    : '';
-  for (const id of unappliedReviewDrafts) {
-    if (!tabMgr.openTabs.some((tab) => tab.id === id)) unappliedReviewDrafts.delete(id);
-  }
-  if (unappliedReviewDrafts.size)
-    workbench.rawDraftWarning =
-      'JSON 문법 오류로 문서에 반영되지 않은 편집 내용이 있어요. 문법을 수정한 뒤 다시 검토하세요.';
-}
-
-async function inspectDocumentDraft(draft: RendererDocumentData) {
-  let assets: PreviewAssetInventory | null = null;
-  let assetError = '';
-  try {
-    assets = await window.tokiAPI.getPreviewAssetInventory();
-    if (assets.documentId !== draft._documentId) throw new Error('검사 중 에셋 대상 문서가 변경됐어요.');
-  } catch {
-    assets = null;
-    assetError = '에셋 목록을 확인하지 못해 에셋 참조 검사는 생략했어요. 다시 검사해 주세요.';
-  }
-  const diagnostics = diagnoseDocument(draft, { assetNames: assets?.names, assetInventoryAvailable: !!assets });
-  return { diagnostics, assets, assetError };
-}
-
-async function refreshDocumentDiagnostics(): Promise<void> {
-  if (!fileData) return;
-  const workbench = useWorkbenchStore();
-  const current = fileData;
-  const version = ++diagnosticsVersion;
-  const initialAssetRevision = assetRevision;
-  const snapshotText = JSON.stringify(current);
-  const draft = JSON.parse(snapshotText) as RendererDocumentData;
-  if (!workbench.diagnosticsDraft) {
-    workbench.diagnosticsDraft = draft;
-    workbenchSnapshots.diagnostics = snapshotText;
-  }
-  workbench.diagnosticsLoading = true;
-  workbench.diagnosticsError = '';
-  try {
-    const inspection = await inspectDocumentDraft(draft);
-    if (version !== diagnosticsVersion || current !== fileData) return;
-    workbench.diagnosticsDraft = draft;
-    workbench.diagnostics = inspection.diagnostics;
-    workbench.diagnosticsAssets = inspection.assets;
-    workbench.diagnosticsError = inspection.assetError;
-    workbench.diagnosticsCheckedAt = Date.now();
-    workbenchSnapshots.diagnostics = snapshotText;
-    workbench.diagnosticsStale = initialAssetRevision !== assetRevision;
-    updateWorkbenchFreshness();
-  } catch (error) {
-    if (version === diagnosticsVersion) {
-      workbench.diagnosticsError = String(error);
-      workbench.diagnosticsStale = true;
-    }
-  } finally {
-    if (version === diagnosticsVersion) workbench.diagnosticsLoading = false;
-  }
-}
-
 async function showDocumentDiagnostics(): Promise<void> {
   if (!fileData) return;
   const workbench = useWorkbenchStore();
@@ -2615,49 +2532,6 @@ function openDiagnosticSource(source: DiagnosticSource): void {
     return;
   }
   openReviewSource(source);
-}
-
-async function refreshDocumentReview(): Promise<void> {
-  if (!fileData) return;
-  const workbench = useWorkbenchStore();
-  const current = fileData;
-  const version = ++reviewVersion;
-  const initialAssetRevision = assetRevision;
-  const snapshotText = JSON.stringify(current);
-  const draft = JSON.parse(snapshotText) as RendererDocumentData;
-  if (!workbench.reviewDraft) {
-    workbench.reviewDraft = draft;
-    workbenchSnapshots.review = snapshotText;
-  }
-  workbench.reviewLoading = true;
-  workbench.reviewError = '';
-  workbench.reviewDiagnosticsError = '';
-  try {
-    const [result, inspection] = await Promise.all([
-      window.tokiAPI.getDocumentReview(draft),
-      inspectDocumentDraft(draft),
-    ]);
-    if (version !== reviewVersion || current !== fileData) return;
-    if (!result.success) {
-      workbench.reviewError = result.error;
-      workbench.reviewStale = true;
-      return;
-    }
-    workbench.reviewResult = result;
-    workbench.reviewDraft = draft;
-    workbench.reviewDiagnostics = inspection.diagnostics;
-    workbench.reviewDiagnosticsError = inspection.assetError;
-    workbenchSnapshots.review = snapshotText;
-    workbench.reviewStale = initialAssetRevision !== assetRevision;
-    updateWorkbenchFreshness();
-  } catch (error) {
-    if (version === reviewVersion) {
-      workbench.reviewError = String(error);
-      workbench.reviewStale = true;
-    }
-  } finally {
-    if (version === reviewVersion) workbench.reviewLoading = false;
-  }
 }
 
 function openReviewSource(target: DiagnosticSource): void {
@@ -2933,10 +2807,8 @@ async function refreshCharacterPreview(): Promise<void> {
 async function renderCharacterPreview(container: HTMLElement, initialViewState?: PreviewPanelViewState): Promise<void> {
   if (!fileData || (fileData._fileType || 'charx') !== 'charx') return;
   const renderVersion = ++previewRenderVersion;
-  const initialAssetRevision = assetRevision;
   const activeFileData = fileData;
-  const snapshotText = JSON.stringify(fileData);
-  const snapshot = JSON.parse(snapshotText) as RendererDocumentData;
+  const captured = documentWorkbench.capturePreview(fileData);
   container.innerHTML = '<div class="preview-loading-state">프리뷰 준비 중…</div>';
 
   const previewModulesPromise = Promise.all([import('../lib/preview-engine'), import('../lib/preview-panel')]);
@@ -2967,7 +2839,7 @@ async function renderCharacterPreview(container: HTMLElement, initialViewState?:
 
   container.innerHTML = '';
   previewPanelHandle = renderPreviewPanel(container, {
-    fileData: snapshot,
+    fileData: captured.draft,
     initialViewState,
     onOpenSource: openPreviewSource,
     assetMap: assetMapForEngine,
@@ -2983,9 +2855,7 @@ async function renderCharacterPreview(container: HTMLElement, initialViewState?:
     },
   });
   previewPanelHandle.setVisible(useWorkbenchStore().previewOpen);
-  workbenchSnapshots.preview = snapshotText;
-  useWorkbenchStore().previewStale = initialAssetRevision !== assetRevision;
-  updateWorkbenchFreshness();
+  documentWorkbench.acceptPreview(captured);
 }
 
 // ==================== Keyboard Shortcuts ====================
@@ -3380,11 +3250,8 @@ export async function initMainRenderer(): Promise<void> {
     const updateField = typeof field === 'string' ? field : (field as { field?: string })?.field;
     if (!updateField) return;
     if (updateField === 'assets' || updateField === 'risumAssets') {
-      assetRevision += 1;
+      documentWorkbench.markAssetsChanged();
       tabMgr.markFieldDirty(updateField);
-      useWorkbenchStore().previewStale = true;
-      useWorkbenchStore().reviewStale = true;
-      useWorkbenchStore().diagnosticsStale = true;
       buildSidebar();
       const active = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
       if (active?.language === '_image') showImageViewer(active.id, active._assetPath as string);

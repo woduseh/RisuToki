@@ -59,7 +59,7 @@ The only renderer entrypoint is `src/main.ts`. It mounts the Vue application and
 
 - `App.vue` and `src/components/` own the persistent workspace shell.
 - `src/app/controller.ts` coordinates document tabs, editors, inspectors, previews, references, terminals, settings, and assistant actions.
-- `src/app/*-controller.ts` modules own bounded integration areas such as project workspaces, terminal sessions, recovery, RISUP tabs, and trigger scripts.
+- `src/app/*-controller.ts` modules own bounded integration areas such as project workspaces, terminal sessions, recovery, RISUP tabs, and trigger scripts. `document-workbench-controller.ts` owns preview baselines and review/diagnostic request lifetimes, while editor/preview widget construction stays in the renderer integration layer.
 - `src/stores/app-store.ts` owns renderer UI state. It is not the authoritative persistence store for the open artifact.
 - Browser-safe behavior shared across UI features lives under `src/lib/`.
 
