@@ -13,6 +13,8 @@
 
 ### Changed
 
+- Detached only the renderer text projection of saved review documents and retained source signatures rather than duplicate saved binaries. Kept the active-draft isolation copy and fresh disk/asset hash checks on restore.
+
 - Removed whole-document binary snapshot hashing from verified structured batch/search/diff and CBS read-only POST routes; shared their dispatch matchers with the snapshot policy while retaining write conflict guards.
 
 - Cached preview/review/diagnostic text baselines and skipped whole-document freshness checks when there is no live baseline or a view is already stale.

@@ -103,7 +103,7 @@ export function createDocumentReviewService(deps: ReviewDeps) {
   let latest: {
     token: string;
     active: LoadedDocumentData;
-    stored: StoredReviewDocument;
+    storedSignature: string;
     changes: DocumentReviewAssetChange[];
   } | null = null;
 
@@ -119,8 +119,8 @@ export function createDocumentReviewService(deps: ReviewDeps) {
       // Validation and renderer normalization happen on a detached clone only.
       const current = cloneDocument(active);
       applyUpdates(current, draft);
-      const loaded = deps.readStoredDocument();
-      if (!loaded)
+      const stored = deps.readStoredDocument();
+      if (!stored)
         return {
           success: true,
           documentId,
@@ -131,16 +131,17 @@ export function createDocumentReviewService(deps: ReviewDeps) {
           baselineToken: null,
           assets: [],
         };
-      const stored = { ...loaded, data: cloneDocument(loaded.data) };
       const changes = compareReviewAssets(stored.data, current);
       // Re-reading an unchanged source must retain the comparison identity so
       // the renderer can validate a text restoration against the same baseline.
       const token = createHash('sha256').update(documentId).update('\0').update(stored.signature).digest('hex');
-      latest = { token, active, stored, changes };
+      // Restoration rereads disk and checks hashes; retaining saved binaries is unnecessary.
+      latest = { token, active, storedSignature: stored.signature, changes };
       return {
         success: true,
         documentId,
-        baseline: serializeForRenderer(cloneDocument(stored.data)),
+        // Strip binaries before detaching the renderer projection.
+        baseline: deserialize(serialize(serializeForRenderer(stored.data))) as RendererDocumentData,
         baselineLabel: stored.label,
         baselineUnavailable: null,
         externalChanged: stored.externalChanged,
@@ -169,7 +170,7 @@ export function createDocumentReviewService(deps: ReviewDeps) {
       if (!row?.canRestore)
         throw new Error('이 에셋은 참조 정보와 함께 수정해야 하므로 개별 복원을 지원하지 않습니다.');
       const stored = deps.readStoredDocument();
-      if (!stored || stored.signature !== snapshot.stored.signature)
+      if (!stored || stored.signature !== snapshot.storedSignature)
         throw new Error('저장본이 변경되었습니다. 변경 검토를 새로 고침해 주세요.');
       const currentAsset = active.assets.find((asset) => asset.path === request.path);
       const savedAsset = stored.data.assets.find((asset) => asset.path === request.path);

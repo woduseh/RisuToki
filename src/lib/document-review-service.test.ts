@@ -1,9 +1,16 @@
 // @vitest-environment node
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { serialize } from 'node:v8';
 import { openCharxCardDocument, type LoadedDocumentData } from '../charx-io';
 import { createDocumentReviewService, compareReviewAssets, type StoredReviewDocument } from './document-review-service';
 import { serializeActiveDocument } from './renderer-document-state';
 import type { DocumentReviewResult, RestoreReviewAssetRequest } from './document-review-types';
+
+vi.mock('node:v8', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:v8')>();
+  return { ...actual, serialize: vi.fn(actual.serialize) };
+});
+afterEach(() => vi.clearAllMocks());
 
 function document(description = 'Saved', bytes = 'abc'): LoadedDocumentData {
   return openCharxCardDocument(
@@ -171,24 +178,33 @@ describe('document review service', () => {
     expect(f.service.restoreAsset(request).success).toBe(false);
   });
 
-  it.each(['document', 'disk', 'bytes', 'references', 'duplicate', 'token', 'hash'] as const)(
-    'rejects stale %s without mutation',
-    (change) => {
-      const f = fixture();
-      const request = restoreRequest(f.service.getReview(serializeActiveDocument(f.active)));
-      if (change === 'document') f.active = document('Replacement', 'xyz');
-      if (change === 'disk') f.stored!.signature = 'changed-disk';
-      if (change === 'bytes') f.active.assets[0].data = Buffer.from('new');
-      if (change === 'references') f.active.cardAssets = [{ name: 'changed' }];
-      if (change === 'duplicate') f.active.assets.push({ ...f.active.assets[0] });
-      if (change === 'token') request.baselineToken = 'old-token';
-      if (change === 'hash') request.currentHash = 'old-hash';
-      const before = Buffer.from(f.active.assets[0].data);
-      expect(f.service.restoreAsset(request).success).toBe(false);
-      expect(f.active.assets[0].data).toEqual(before);
-      expect(f.onAssetRestored).not.toHaveBeenCalled();
-    },
-  );
+  it.each([
+    'document',
+    'disk',
+    'bytes',
+    'in-place-bytes',
+    'saved-bytes',
+    'references',
+    'duplicate',
+    'token',
+    'hash',
+  ] as const)('rejects stale %s without mutation', (change) => {
+    const f = fixture();
+    const request = restoreRequest(f.service.getReview(serializeActiveDocument(f.active)));
+    if (change === 'document') f.active = document('Replacement', 'xyz');
+    if (change === 'disk') f.stored!.signature = 'changed-disk';
+    if (change === 'bytes') f.active.assets[0].data = Buffer.from('new');
+    if (change === 'in-place-bytes') f.active.assets[0].data[0] ^= 255;
+    if (change === 'saved-bytes') f.stored!.data.assets[0].data[0] ^= 255;
+    if (change === 'references') f.active.cardAssets = [{ name: 'changed' }];
+    if (change === 'duplicate') f.active.assets.push({ ...f.active.assets[0] });
+    if (change === 'token') request.baselineToken = 'old-token';
+    if (change === 'hash') request.currentHash = 'old-hash';
+    const before = Buffer.from(f.active.assets[0].data);
+    expect(f.service.restoreAsset(request).success).toBe(false);
+    expect(f.active.assets[0].data).toEqual(before);
+    expect(f.onAssetRestored).not.toHaveBeenCalled();
+  });
 
   it('summarizes additions, removals, module binary and reference changes without offering unsafe restore', () => {
     const before = document();
@@ -214,5 +230,36 @@ describe('document review service', () => {
     before.xMeta = { first: 1, second: 2 };
     after.xMeta = { second: 2, first: 1 };
     expect(compareReviewAssets(before, after)).toEqual([]);
+  });
+});
+
+describe('review snapshot ownership', () => {
+  it('copies the active binary once, not again for the saved baseline or renderer response', () => {
+    const f = fixture();
+    const size = 1024 * 1024;
+    f.active.assets[0].data = Buffer.alloc(size, 42);
+    f.stored!.data.assets[0].data = Buffer.alloc(size, 43);
+    const draft = serializeActiveDocument(f.active);
+    vi.mocked(serialize).mockClear();
+    const result = success(f.service.getReview(draft));
+    const copiedBytes = vi
+      .mocked(serialize)
+      .mock.results.reduce((sum, result) => sum + (result.type === 'return' ? result.value.byteLength : 0), 0);
+    expect(result.assets.find((row) => row.path === 'assets/icon/test.png')?.canRestore).toBe(true);
+    expect(copiedBytes).toBeLessThan(size + 64 * 1024);
+    expect(result.baseline).not.toHaveProperty('assets');
+    expect(f.active.assets[0].data[0]).toBe(42);
+    expect(f.stored!.data.assets[0].data[0]).toBe(43);
+  });
+
+  it('does not alias mutable renderer baseline fields with the persisted document', () => {
+    const f = fixture();
+    f.stored!.data.alternateGreetings = ['Saved greeting'];
+    const first = success(f.service.getReview(serializeActiveDocument(f.active)));
+    first.baseline!.alternateGreetings[0] = 'Changed response';
+    expect(f.stored!.data.alternateGreetings).toEqual(['Saved greeting']);
+    const second = success(f.service.getReview(serializeActiveDocument(f.active)));
+    f.stored!.data.alternateGreetings[0] = 'Changed disk';
+    expect(second.baseline!.alternateGreetings).toEqual(['Saved greeting']);
   });
 });
