@@ -405,7 +405,6 @@ describe('canonical architecture and contributor workflow stay current', () => {
       { docReference: 'mcp-facade-edit.ts', filePath: 'src/lib/mcp-facade-edit.ts' },
     ];
 
-    expect(architecture).toContain('one main process, one Vue renderer, one preload bridge');
     for (const entrypoint of requiredEntrypoints) {
       expect(architecture, `ARCHITECTURE.md must document ${entrypoint.docReference}`).toContain(
         entrypoint.docReference,

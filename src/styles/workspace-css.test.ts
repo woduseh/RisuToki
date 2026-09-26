@@ -10,7 +10,7 @@ describe('workspace sidebar folder visibility', () => {
     document.querySelectorAll('[data-cascade-test]').forEach((element) => element.remove());
   });
 
-  it.each(['character', 'module', 'messages', 'scripts', 'basic', 'model', 'parameters', 'advanced'])(
+  it.each(['character', 'module', 'messages', 'scripts', 'basic', 'model', 'parameters', 'advanced', 'toggles'])(
     'keeps collapsed children hidden in the %s workspace and follows folder clicks',
     (workspace) => {
       const style = document.createElement('style');
@@ -44,14 +44,18 @@ describe('workspace sidebar folder visibility', () => {
   );
 });
 
-describe('workspace.css – document workspace geometry', () => {
-  it('exposes preset toggle and variable rows in their dedicated navigator workspace', () => {
-    expect(css).toContain("#app-body[data-workspace='toggles'] #sidebar-tree > [data-workspace='toggles']");
-    expect(css).toMatch(
-      /#app-body\[data-workspace='toggles'\] #sidebar-tree > \[data-workspace='toggles'\],[^}]*display:\s*block\s*!important;/s,
-    );
-  });
+function mountWorkspace(markup: string): HTMLElement {
+  const style = document.createElement('style');
+  style.textContent = readFileSync(resolve(__dirname, 'app.css'), 'utf-8') + '\n' + css;
+  document.head.appendChild(style);
+  const app = document.createElement('div');
+  app.id = 'app-body';
+  app.innerHTML = markup;
+  document.body.appendChild(app);
+  return app;
+}
 
+describe('workspace.css – document workspace geometry', () => {
   it('uses one resizable right sidebar column for references', () => {
     expect(css).toMatch(
       /#app-body\.right-sidebar-open\s+#workspace-shell\s*\{[^}]*grid-template-columns:\s*0 0 minmax\(0,\s*1fr\) var\(--ui-gap\) var\(--inspector-width\);/s,
@@ -65,12 +69,15 @@ describe('workspace.css – document workspace geometry', () => {
     expect(css).not.toMatch(/#reference-drawer\s*\{/);
   });
 
-  it('pins every workspace surface to its semantic grid column when neighboring panels are hidden', () => {
-    expect(css).toMatch(/#workspace-navigator\s*\{[^}]*grid-column:\s*1;/s);
-    expect(css).toMatch(/#navigator-resizer\s*\{[^}]*grid-column:\s*2;/s);
-    expect(css).toMatch(/#workspace-editor\s*\{[^}]*grid-column:\s*3;/s);
-    expect(css).toMatch(/#inspector-resizer\s*\{[^}]*grid-column:\s*4;/s);
-    expect(css).toMatch(/#right-sidebar\s*\{[^}]*grid-column:\s*5;/s);
+  it('keeps surfaces in their semantic grid columns when neighboring panels are hidden', () => {
+    const ids = ['workspace-navigator', 'navigator-resizer', 'workspace-editor', 'inspector-resizer', 'right-sidebar'];
+    const app = mountWorkspace(`<div id="workspace-shell">${ids.map((id) => `<div id="${id}"></div>`).join('')}</div>`);
+    for (const classes of ['', 'navigator-open', 'right-sidebar-open', 'navigator-open right-sidebar-open']) {
+      app.className = classes;
+      ids.forEach((id, index) =>
+        expect(getComputedStyle(app.querySelector(`#${id}`)!).gridColumn).toBe(String(index + 1)),
+      );
+    }
   });
 
   it('gives the open terminal its full shelf height without a redundant tab row', () => {
@@ -88,9 +95,14 @@ describe('workspace.css – document workspace geometry', () => {
     expect(css).not.toMatch(/#terminal-shelf-launcher\s*\{/);
   });
 
-  it('allows Vue to hide the editor surface while the welcome screen is active', () => {
-    expect(css).toMatch(/#editor-surface\s*\{[^}]*display:\s*flex;/s);
-    expect(css).not.toMatch(/#editor-surface\s*\{[^}]*display:\s*flex\s*!important;/s);
+  it('lets inline visibility hide and restore the editor surface', () => {
+    const app = mountWorkspace('<div id="document-workbench"><div id="editor-surface"></div></div>');
+    const editor = app.querySelector<HTMLElement>('#editor-surface')!;
+    expect(getComputedStyle(editor).display).toBe('flex');
+    editor.style.display = 'none';
+    expect(getComputedStyle(editor).display).toBe('none');
+    editor.style.removeProperty('display');
+    expect(getComputedStyle(editor).display).toBe('flex');
   });
 
   it('uses the unified sidebar as a single overlay on smaller windows', () => {

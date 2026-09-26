@@ -521,7 +521,6 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
 
   type ManageItemsScriptStyleFamily = Extract<ManageItemsFamily, ScriptStyleFamily>;
   type ManageItemsStructuredFamily = Exclude<ManageItemsFamily, 'risup-prompt' | ManageItemsScriptStyleFamily>;
-  type ManageItemsCollectionFamily = Exclude<ManageItemsFamily, 'risup-prompt'>;
 
   interface ManageItemsStructuredContext {
     entries: Array<Record<string, unknown> | string>;
@@ -546,7 +545,7 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
     return isScriptStyleFamily(family);
   }
 
-  function itemCollectionDigestGuard(family: ManageItemsCollectionFamily, entries: unknown[]): FacadeV1Guard {
+  function itemCollectionDigestGuard(entries: unknown[]): FacadeV1Guard {
     return {
       name: 'expected_item_collection_digest',
       value: hashStableValue(entries),
@@ -853,7 +852,7 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
   ): Promise<ManageItemsStructuredPlan | ApiErrorResult> {
     const context = providedContext ?? (await readManageItemsStructuredContext(target, family, operation));
     if (isApiError(context)) return context;
-    const guard = itemCollectionDigestGuard(family, context.entries);
+    const guard = itemCollectionDigestGuard(context.entries);
     const beforeCount = context.entries.length;
     const operations: Array<Record<string, unknown>> = [];
     let result: Record<string, unknown>;
@@ -1075,7 +1074,7 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
     context: ManageItemsScriptStyleContext,
   ): FacadeV1Guard {
     return {
-      ...itemCollectionDigestGuard(family, []),
+      ...itemCollectionDigestGuard([]),
       value: hashStableValue(scriptStyleManageDigestInput(context)),
     };
   }

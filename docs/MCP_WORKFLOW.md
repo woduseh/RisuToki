@@ -44,7 +44,7 @@ node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-wri
 
 The default registered profile is `facade-first` with 14 tools: 12 preferred facades plus `list_skills` and `read_skill`. `load_guidance` remains a legacy compatibility facade in non-default profiles. Use `--tool-profile advanced-full` or `RISUTOKI_MCP_TOOL_PROFILE=advanced-full` when a client needs every granular route.
 
-`session_status` reports `allowWrites`, `userDataPath`, and `runtimeHealth`. Standalone process diagnostics are appended to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` unless `--user-data-dir` changes the location. Diagnostics contain paths, timings, status, response sizes, and error summaries, not prompt or field bodies.
+`list_tool_profiles` reports `allowWrites`, `userDataPath`, and `runtimeHealth` in the default profile. For session and document state, use `inspect_document` with `target: { "kind": "session" }`. The granular `session_status` tool requires a profile that registers it, such as `advanced-full`. Standalone process diagnostics are appended to `~/.risutoki/mcp-standalone/mcp-server.log` (`%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` on Windows) unless `--user-data-dir` changes the location. Diagnostics contain paths, timings, status, response sizes, and error summaries, not prompt or field bodies.
 
 ### Project-folder mode
 

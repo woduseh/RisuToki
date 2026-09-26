@@ -148,7 +148,7 @@ This map is for source navigation. It is not a full API reference.
 ## Editor, layout, and sidebar UI
 
 - `src/lib/workspace-model.ts` — file-type workspace definitions plus navigator and contextual inspector selection contracts
-- `src/lib/workspace-layout-state.ts` — normalized/persisted V2 navigator, inspector, reference-drawer, and terminal-shelf layout state, including one-way legacy-state migration
+- `src/lib/workspace-layout-state.ts` — normalized/persisted V3 navigator, unified right-sidebar, and terminal-shelf layout state, including one-way migration from V2 and legacy layouts
 - `src/lib/tab-manager.ts` — tab lifecycle management
 - `src/lib/indexed-tabs.ts` — indexed tab helpers
 - `src/lib/list-reorder.ts` — shared flat-list reorder helper for structured editors

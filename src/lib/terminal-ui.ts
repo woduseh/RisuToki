@@ -1,56 +1,6 @@
 import { ensureXtermAssets, loadScript } from './script-loader';
 import { getXtermFitAddonUrl, getXtermRuntimeUrl } from './asset-runtime';
 
-export const TERM_THEME_DARK = {
-  background: '#141a31',
-  foreground: '#d8dce8',
-  cursor: '#4a90d9',
-  cursorAccent: '#141a31',
-  selectionBackground: '#4a90d944',
-  selectionForeground: '#f0f2f8',
-  black: '#2e3a56',
-  red: '#ef5350',
-  green: '#66bb6a',
-  yellow: '#ffca28',
-  blue: '#4a90d9',
-  magenta: '#ba68c8',
-  cyan: '#4dd0e1',
-  white: '#d8dce8',
-  brightBlack: '#7a8ba5',
-  brightRed: '#fc96ab',
-  brightGreen: '#81c784',
-  brightYellow: '#ffb342',
-  brightBlue: '#6fb3f2',
-  brightMagenta: '#ce93d8',
-  brightCyan: '#80deea',
-  brightWhite: '#f0f2f8',
-};
-
-export const TERM_THEME_LIGHT = {
-  background: '#ffffff',
-  foreground: '#2a323e',
-  cursor: '#4a8ac6',
-  cursorAccent: '#ffffff',
-  selectionBackground: '#b3d4fc',
-  selectionForeground: '#1a2740',
-  black: '#4b5a6f',
-  red: '#e53935',
-  green: '#2e7d32',
-  yellow: '#e65100',
-  blue: '#3493f9',
-  magenta: '#8e24aa',
-  cyan: '#00838f',
-  white: '#87929e',
-  brightBlack: '#68788f',
-  brightRed: '#fc96ab',
-  brightGreen: '#66bb6a',
-  brightYellow: '#ffb342',
-  brightBlue: '#4a8ac6',
-  brightMagenta: '#ba68c8',
-  brightCyan: '#4dd0e1',
-  brightWhite: '#ffffff',
-};
-
 export interface TerminalTheme {
   [key: string]: string;
 }

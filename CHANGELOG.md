@@ -9,6 +9,14 @@
 
 ---
 
+## [3.9.1] - 2026-09-27
+
+### Changed
+
+- Removed unused terminal palettes and a redundant collection-digest argument; moved five pure test files to Node without changing their test cases.
+- Replaced selected CSS source-shape assertions with cascade checks and removed prose-wording assertions already covered by catalog/reference checks.
+- Corrected default MCP session discovery and V3 workspace documentation; dated the historical Windows environment verification.
+
 ## [3.9.0] - 2026-09-06
 
 ### Added
