@@ -1,3 +1,4 @@
+import { RISUP_PRESET_FIELD_NAMES, projectRisupPresetFields } from './risup-preset-fields';
 import {
   extractPrimaryLuaFromTriggerScripts,
   mergePrimaryLuaIntoTriggerScripts,
@@ -55,86 +56,7 @@ export function serializeForRenderer(data: LoadedDocumentData): RendererDocument
 
   // Include risup preset fields
   if (data._fileType === 'risup') {
-    // Basic
-    result.mainPrompt = data.mainPrompt || '';
-    result.jailbreak = data.jailbreak || '';
-    result.temperature = typeof data.temperature === 'number' ? data.temperature : 80;
-    result.maxContext = typeof data.maxContext === 'number' ? data.maxContext : 4000;
-    result.maxResponse = typeof data.maxResponse === 'number' ? data.maxResponse : 300;
-    result.frequencyPenalty = typeof data.frequencyPenalty === 'number' ? data.frequencyPenalty : 70;
-    result.presencePenalty = typeof data.presencePenalty === 'number' ? data.presencePenalty : 70;
-    result.aiModel = data.aiModel || '';
-    result.subModel = data.subModel || '';
-    result.apiType = data.apiType || '';
-    result.promptPreprocess = !!data.promptPreprocess;
-    result.promptTemplate = data.promptTemplate || '[]';
-    result.presetBias = data.presetBias || '[]';
-    result.formatingOrder = data.formatingOrder || '[]';
-    result.presetImage = data.presetImage || '';
-
-    // Sampling
-    if (data.top_p !== undefined) result.top_p = data.top_p;
-    if (data.top_k !== undefined) result.top_k = data.top_k;
-    if (data.repetition_penalty !== undefined) result.repetition_penalty = data.repetition_penalty;
-    if (data.min_p !== undefined) result.min_p = data.min_p;
-    if (data.top_a !== undefined) result.top_a = data.top_a;
-
-    // Thinking / reasoning
-    if (data.reasonEffort !== undefined) result.reasonEffort = data.reasonEffort;
-    if (data.thinkingTokens !== undefined) result.thinkingTokens = data.thinkingTokens;
-    if (data.thinkingType !== undefined) result.thinkingType = data.thinkingType;
-    if (data.adaptiveThinkingEffort !== undefined) result.adaptiveThinkingEffort = data.adaptiveThinkingEffort;
-
-    // Templates & formatting
-    if (data.useInstructPrompt !== undefined) result.useInstructPrompt = data.useInstructPrompt;
-    if (data.instructChatTemplate !== undefined) result.instructChatTemplate = data.instructChatTemplate;
-    if (data.JinjaTemplate !== undefined) result.JinjaTemplate = data.JinjaTemplate;
-    if (data.customPromptTemplateToggle !== undefined)
-      result.customPromptTemplateToggle = data.customPromptTemplateToggle;
-    if (data.templateDefaultVariables !== undefined) result.templateDefaultVariables = data.templateDefaultVariables;
-    if (data.moduleIntergration !== undefined) result.moduleIntergration = data.moduleIntergration;
-
-    // JSON schema
-    if (data.jsonSchemaEnabled !== undefined) result.jsonSchemaEnabled = data.jsonSchemaEnabled;
-    if (data.jsonSchema !== undefined) result.jsonSchema = data.jsonSchema;
-    if (data.strictJsonSchema !== undefined) result.strictJsonSchema = data.strictJsonSchema;
-    if (data.extractJson !== undefined) result.extractJson = data.extractJson;
-
-    // Group & misc
-    if (data.groupTemplate !== undefined) result.groupTemplate = data.groupTemplate;
-    if (data.groupOtherBotRole !== undefined) result.groupOtherBotRole = data.groupOtherBotRole;
-    if (data.autoSuggestPrompt !== undefined) result.autoSuggestPrompt = data.autoSuggestPrompt;
-    if (data.autoSuggestPrefix !== undefined) result.autoSuggestPrefix = data.autoSuggestPrefix;
-    if (data.autoSuggestClean !== undefined) result.autoSuggestClean = data.autoSuggestClean;
-    if (data.localStopStrings !== undefined) result.localStopStrings = data.localStopStrings;
-    if (data.outputImageModal !== undefined) result.outputImageModal = data.outputImageModal;
-    if (data.verbosity !== undefined) result.verbosity = data.verbosity;
-    if (data.fallbackWhenBlankResponse !== undefined) result.fallbackWhenBlankResponse = data.fallbackWhenBlankResponse;
-    if (data.systemContentReplacement !== undefined) result.systemContentReplacement = data.systemContentReplacement;
-    if (data.systemRoleReplacement !== undefined) result.systemRoleReplacement = data.systemRoleReplacement;
-    if (data.promptSettings !== undefined) result.promptSettings = data.promptSettings;
-    if (data.customAPIFormat !== undefined) result.customAPIFormat = data.customAPIFormat;
-    if (data.openrouterProvider !== undefined) result.openrouterProvider = data.openrouterProvider;
-    if (data.seperateParametersEnabled !== undefined) result.seperateParametersEnabled = data.seperateParametersEnabled;
-    if (data.seperateParameters !== undefined) result.seperateParameters = data.seperateParameters;
-    if (data.fallbackModels !== undefined) result.fallbackModels = data.fallbackModels;
-    if (data.seperateModels !== undefined) result.seperateModels = data.seperateModels;
-    if (data.modelTools !== undefined) result.modelTools = data.modelTools;
-    if (data.customFlags !== undefined) result.customFlags = data.customFlags;
-    if (data.enableCustomFlags !== undefined) result.enableCustomFlags = data.enableCustomFlags;
-    if (data.dynamicOutput !== undefined) result.dynamicOutput = data.dynamicOutput;
-    if (data.deepseekThinkingType !== undefined) result.deepseekThinkingType = data.deepseekThinkingType;
-    if (data.deepseekReasoningEffort !== undefined) result.deepseekReasoningEffort = data.deepseekReasoningEffort;
-    if (data.proxyRequestModel !== undefined) result.proxyRequestModel = data.proxyRequestModel;
-    if (data.openrouterRequestModel !== undefined) result.openrouterRequestModel = data.openrouterRequestModel;
-    if (data.customProxyRequestModel !== undefined) result.customProxyRequestModel = data.customProxyRequestModel;
-    if (data.reverseProxyOobaArgs !== undefined) result.reverseProxyOobaArgs = data.reverseProxyOobaArgs;
-    if (data.koboldURL !== undefined) result.koboldURL = data.koboldURL;
-    if (data.forceReplaceUrl !== undefined) result.forceReplaceUrl = data.forceReplaceUrl;
-    if (data.textgenWebUIStreamURL !== undefined) result.textgenWebUIStreamURL = data.textgenWebUIStreamURL;
-    if (data.textgenWebUIBlockingURL !== undefined) result.textgenWebUIBlockingURL = data.textgenWebUIBlockingURL;
-    if (data.localNetworkMode !== undefined) result.localNetworkMode = data.localNetworkMode;
-    if (data.localNetworkTimeoutSec !== undefined) result.localNetworkTimeoutSec = data.localNetworkTimeoutSec;
+    Object.assign(result, projectRisupPresetFields(data));
   }
   return result;
 }
@@ -184,82 +106,8 @@ export function applyUpdates(data: LoadedDocumentData, fields: RendererDocumentP
     'customModuleToggle',
     'mcpUrl',
   ];
-  // Risup preset fields
-  const risupAllowed = [
-    'mainPrompt',
-    'jailbreak',
-    'temperature',
-    'maxContext',
-    'maxResponse',
-    'frequencyPenalty',
-    'presencePenalty',
-    'aiModel',
-    'subModel',
-    'apiType',
-    'promptPreprocess',
-    'promptTemplate',
-    'presetBias',
-    'formatingOrder',
-    'presetImage',
-    // Sampling
-    'top_p',
-    'top_k',
-    'repetition_penalty',
-    'min_p',
-    'top_a',
-    // Thinking / reasoning
-    'reasonEffort',
-    'thinkingTokens',
-    'thinkingType',
-    'adaptiveThinkingEffort',
-    // Templates & formatting
-    'useInstructPrompt',
-    'instructChatTemplate',
-    'JinjaTemplate',
-    'customPromptTemplateToggle',
-    'templateDefaultVariables',
-    'moduleIntergration',
-    // JSON schema
-    'jsonSchemaEnabled',
-    'jsonSchema',
-    'strictJsonSchema',
-    'extractJson',
-    // Group & misc
-    'groupTemplate',
-    'groupOtherBotRole',
-    'autoSuggestPrompt',
-    'autoSuggestPrefix',
-    'autoSuggestClean',
-    'localStopStrings',
-    'outputImageModal',
-    'verbosity',
-    'fallbackWhenBlankResponse',
-    'systemContentReplacement',
-    'systemRoleReplacement',
-    'promptSettings',
-    'customAPIFormat',
-    'openrouterProvider',
-    'seperateParametersEnabled',
-    'seperateParameters',
-    'fallbackModels',
-    'seperateModels',
-    'modelTools',
-    'customFlags',
-    'enableCustomFlags',
-    'dynamicOutput',
-    'deepseekThinkingType',
-    'deepseekReasoningEffort',
-    'proxyRequestModel',
-    'openrouterRequestModel',
-    'customProxyRequestModel',
-    'reverseProxyOobaArgs',
-    'koboldURL',
-    'forceReplaceUrl',
-    'textgenWebUIStreamURL',
-    'textgenWebUIBlockingURL',
-    'localNetworkMode',
-    'localNetworkTimeoutSec',
-  ];
+  // Format fields are shared; renderer update and MCP visibility policies are not.
+  const risupAllowed: readonly string[] = RISUP_PRESET_FIELD_NAMES;
   for (const fieldName of RISUP_JSON_TEXT_FIELD_NAMES) {
     if (fields[fieldName] !== undefined) {
       const error = validateRisupJsonTextField(fieldName, fields[fieldName]);

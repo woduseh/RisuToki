@@ -118,6 +118,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/trigger-script-model.ts` — trigger-script data model
 - `src/lib/trigger-form-editor.ts` — trigger-script form editing helpers
 - `src/lib/trigger-scripts-runtime.ts` — trigger-script runtime execution
+- `src/lib/risup-preset-fields.ts` — shared preset format field names and renderer defaults, independent of UI and MCP access policies
 - `src/lib/risup-fields.ts` — structured risup field definitions
 - `src/lib/risup-form-editor.ts` — risup form editing
 - `src/lib/risup-prompt-editor.ts` — risup prompt-item editing and focused single-block editor rendering

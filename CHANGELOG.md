@@ -13,6 +13,8 @@
 
 ### Changed
 
+- Centralized preset field names and renderer defaults while retaining separate UI visibility and MCP/renderer update policies.
+
 - Moved review/diagnostic request lifetimes, preview baselines, and shared stale-state coordination into a document workbench controller, keeping widget construction and source navigation in the renderer composition layer.
 
 - Shared typed preview-token creation, expiration, binding checks, and one-shot consumption across edit/items/assets/files without merging their mutation or error contracts.
