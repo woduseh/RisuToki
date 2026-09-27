@@ -18,10 +18,10 @@ const dir = useMcpApiTestDir('metadata-reads');
 const fixtures = createExternalFixtureHelpers(dir);
 
 describe('external asset read projections', () => {
-  it.each(['charx', 'risum'] as const)(
+  it.concurrent.each(['charx', 'risum'] as const)(
     'lists %s in one load without transferring binaries and reads only the selected bytes',
     async (family) => {
-      const big = Buffer.alloc(1024 * 1024, 42);
+      const big = Buffer.alloc(64 * 1024, 42);
       const small = Buffer.from([0, 128, 255]);
       const { filePath } =
         family === 'charx'

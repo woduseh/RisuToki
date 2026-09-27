@@ -10,13 +10,24 @@ describe('workspace sidebar folder visibility', () => {
     document.querySelectorAll('[data-cascade-test]').forEach((element) => element.remove());
   });
 
-  it.each(['character', 'module', 'messages', 'scripts', 'basic', 'model', 'parameters', 'advanced', 'toggles'])(
-    'keeps collapsed children hidden in the %s workspace and follows folder clicks',
-    (workspace) => {
-      const style = document.createElement('style');
-      style.dataset.cascadeTest = '';
-      style.textContent = readFileSync(resolve(__dirname, 'app.css'), 'utf-8') + '\n' + css;
-      document.head.appendChild(style);
+  it('keeps collapsed children hidden and clickable across every document workspace', () => {
+    const workspaces = [
+      'character',
+      'module',
+      'messages',
+      'scripts',
+      'basic',
+      'model',
+      'parameters',
+      'advanced',
+      'toggles',
+    ];
+    const style = document.createElement('style');
+    style.dataset.cascadeTest = '';
+    style.textContent = readFileSync(resolve(__dirname, 'app.css'), 'utf-8') + '\n' + css;
+    document.head.appendChild(style);
+
+    for (const workspace of workspaces) {
       const app = document.createElement('div');
       app.id = 'app-body';
       app.dataset.cascadeTest = '';
@@ -31,17 +42,18 @@ describe('workspace sidebar folder visibility', () => {
       app.appendChild(tree);
       document.body.appendChild(app);
 
-      expect(getComputedStyle(header).display).not.toBe('none');
-      expect(getComputedStyle(children).display).toBe('none');
+      expect(getComputedStyle(header).display, workspace).not.toBe('none');
+      expect(getComputedStyle(children).display, workspace).toBe('none');
       header.click();
-      expect(getComputedStyle(children).display).toBe('block');
+      expect(getComputedStyle(children).display, workspace).toBe('block');
       app.dataset.workspace = 'unrelated';
-      expect(getComputedStyle(children).display).toBe('none');
+      expect(getComputedStyle(children).display, workspace).toBe('none');
       app.dataset.workspace = workspace;
       header.click();
-      expect(getComputedStyle(children).display).toBe('none');
-    },
-  );
+      expect(getComputedStyle(children).display, workspace).toBe('none');
+      app.remove();
+    }
+  });
 });
 
 function mountWorkspace(markup: string): HTMLElement {

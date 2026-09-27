@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { SessionRecoveryManagerDeps } from './session-recovery-manager';
 import { createSessionRecoveryManager } from './session-recovery-manager';

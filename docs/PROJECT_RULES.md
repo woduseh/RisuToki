@@ -36,6 +36,8 @@ If process-tree termination fails or a child reports reserved cleanup exit code 
 
 Static skill checks verify discovery and delivery, not model quality. Live model comparisons are optional experiments described in `test/behavior-evals/README.md`, not a requirement for every wording edit.
 
+Test performance should be improved by reducing fixture cost and duplicated setup before raising global timeouts or worker counts. Vitest already runs test files in parallel by default; use `it.concurrent`/`describe.concurrent` only for cases with isolated state, ports, files, and mocks. Keep integration fixtures only as large as needed to prove the contract being tested.
+
 Default tests and replay use synthetic artifacts; local ignored user artifacts are excluded. `npm run test:corpus` explicitly enables read-only local corpus evaluation (`RISUTOKI_TEST_LOCAL_CORPUS=1`); run it only when that data access is within the task scope. Deterministic replay must pass every scenario; aggregate coverage metrics do not excuse a failed regression.
 
 PR/push CI uses the CI profile on Ubuntu, followed by the Windows build profile. Both jobs retain validation reports and step logs, including failed runs. These are CI coverage, not an instruction to repeat successful local checks.
