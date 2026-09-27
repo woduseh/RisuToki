@@ -130,3 +130,14 @@ npm run validate:full
 이 결과는 이미 열린 문서의 세 MCP HTTP 읽기 경로에 한정돼요.
 MCP stdio 왕복·모델 응답·GUI 입력·파일 열기·저장·다중 클라이언트 처리량의 개선 수치는 없어요.
 캐시나 디스크 I/O 개선을 주장하지 않으며 배포·push·릴리스는 실행하지 않았어요.
+
+## 3.9.2 추가 측정 경로
+
+위 표는 3.6.3의 과거 측정 기록이며 현재 버전 전체의 성능을 뜻하지 않아요. 현재 benchmark는 `--extended --asset-mib=0,1`을 추가하면 로어북 batch, raw 텍스트 surface, private document binding, legacy surface 목록도 함께 측정해요. 전체 legacy surface는 canonical hash 호환성을 유지하므로 바이트 키 순회의 비용이 남아요. 대형 에셋의 일반 preview/apply는 그 경로 대신 바이너리 바이트를 직접 해시하는 private binding을 사용해요.
+
+```powershell
+npx --no-install esbuild test/benchmark-mcp-reads.ts --bundle --platform=node --packages=external --outfile=.build/performance/reads-current.cjs
+node --expose-gc .build/performance/reads-current.cjs --extended --asset-mib=0,1 --samples=3 --iterations=1 --warmup=1 --output=.build/performance/reads-current.json
+```
+
+확장 측정에서는 legacy surface 비용 때문에 에셋 크기를 2MiB 이하로 제한해요. 일반 네 읽기 경로의 기본 조건은 바꾸지 않았어요. 이 benchmark는 이미 열린 문서의 HTTP 경로만 측정하므로, stdio 미리보기·외부 파일 목록·프로젝트 폴더 로딩은 별도 통합 재현으로 검증해야 해요.

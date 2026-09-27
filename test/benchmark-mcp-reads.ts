@@ -19,6 +19,7 @@ const { values } = parseArgs({
     iterations: { type: 'string', default: '5' },
     warmup: { type: 'string', default: '3' },
     'asset-mib': { type: 'string', default: '0,16,64' },
+    extended: { type: 'boolean', default: false },
   },
 });
 const samples = Number(values.samples);
@@ -52,12 +53,25 @@ const card = {
   },
 };
 
-const scenarios = [
+const scenarios: Array<{ name: string; method: 'GET' | 'POST'; path: string; body?: Record<string, unknown> }> = [
   { name: 'batch-read', method: 'POST', path: '/field/batch', body: { fields: ['name', 'description'] } },
   { name: 'field-search', method: 'POST', path: '/field/description/search', body: { query: 'alpha', max_matches: 5 } },
   { name: 'search-all', method: 'POST', path: '/search-all', body: { query: 'alpha', max_matches_total: 20 } },
   { name: 'range-get-control', method: 'GET', path: '/field/description/range?offset=0&length=1024' },
-] as const;
+  ...(values.extended
+    ? [
+        { name: 'lorebook-batch', method: 'POST' as const, path: '/lorebook/batch', body: { indices: [0] } },
+        { name: 'surface-text-read', method: 'POST' as const, path: '/surface/read', body: { path: '/description' } },
+        { name: 'document-binding', method: 'GET' as const, path: '/document/binding' },
+        { name: 'legacy-surfaces', method: 'GET' as const, path: '/surfaces' },
+      ]
+    : []),
+];
+if (values.extended)
+  assert(
+    assetSizes.every((size) => size <= 2),
+    'Use --asset-mib=0,1 or 0,1,2 for full legacy surface measurements.',
+  );
 
 function summarize(numbers: number[]) {
   const sorted = [...numbers].sort((left, right) => left - right);
@@ -117,6 +131,9 @@ async function main() {
         const expected = await request(scenario);
         const firstRequestMs = performance.now() - firstStart;
         const parsed = JSON.parse(expected) as Record<string, unknown>;
+        if (scenario.name === 'document-binding') assert.equal(typeof parsed.document_hash, 'string');
+        if (scenario.name === 'lorebook-batch') assert.equal(parsed.count, 1);
+        if (scenario.name === 'surface-text-read') assert.equal(parsed.value, description);
         if (scenario.name === 'batch-read') assert.equal(parsed.count, 2);
         if (scenario.name === 'field-search') assert.equal(parsed.totalMatches, 256);
         if (scenario.name === 'search-all') assert.equal(parsed.totalMatches, 458);
