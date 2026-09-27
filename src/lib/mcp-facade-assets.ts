@@ -1300,6 +1300,8 @@ export function createFacadeAssetsEngine({
       const summaries = record.assets as ManageAssetsSummary[];
       const touched = `external:${target.file_path}:${family === 'charx' ? 'charx-assets' : 'risum-assets'}`;
       const asset = asRecord(record.asset);
+      if (operation.action === 'read_asset' && !asset)
+        return facadeApiError(502, 'Invalid external asset response', 'Restart both MCP and editor runtimes.');
       return {
         result: {
           action: operation.action,
@@ -1350,22 +1352,6 @@ export function createFacadeAssetsEngine({
           touched: [context.touchedTarget, `${context.touchedTarget}:${summary.index}`],
         };
       }
-      const rawAsset = context.assets[summary.index];
-      const dataSource = context.family === 'charx' ? asRecord(rawAsset)?.data : rawAsset;
-      const bytes = assetBytesFromUnknown(dataSource);
-      return {
-        result: {
-          action: operation.action,
-          family: context.family,
-          asset: {
-            ...summary,
-            base64: bytes.toString('base64'),
-          },
-          asset_collection_digest: collectionGuard.value,
-        },
-        routes: context.routes,
-        touched: [context.touchedTarget, `${context.touchedTarget}:${summary.index}`],
-      };
     }
 
     return facadeApiError(

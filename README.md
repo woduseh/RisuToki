@@ -368,7 +368,7 @@ Useful options:
 | `--user-data-dir` | Override the standalone sidecar state directory                             |
 | `--tool-profile`  | Register `facade-first`, `authoring`, `readonly`, or `advanced-full` tools  |
 
-Use `session_status` to verify the active standalone `allowWrites` and `userDataPath` values. Standalone process, stdio lifecycle, mutating tool, sanitized API request/response, and MCP logging diagnostics are written to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` without field content bodies.
+Use `list_tool_profiles` in the default profile to verify standalone `allowWrites` and `userDataPath`, or `inspect_document` with `target: { "kind": "session" }` for session state. The granular `session_status` tool requires a registering profile such as `advanced-full`. Standalone process, stdio lifecycle, mutating tool, sanitized API request/response, and MCP logging diagnostics are written to `%USERPROFILE%\.risutoki\mcp-standalone\mcp-server.log` without field content bodies.
 
 Environment variable equivalents are `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS` (path-delimited), `RISUTOKI_MCP_ALLOW_WRITES`, `RISUTOKI_MCP_USER_DATA_DIR`, and `RISUTOKI_MCP_TOOL_PROFILE`.
 

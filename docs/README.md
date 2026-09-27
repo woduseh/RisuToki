@@ -39,5 +39,5 @@ This `docs/` directory is the repo-local system of record for agent-readable arc
 - `test/behavior-evals/` holds the live skill-routing cases and recorded runs; it measures which skill a real model engages and is run manually, not by `npm test`. See its README for the runner, cost, and quota policy.
 - `npm run test:mcp:contracts` verifies tools/list and HTTP fingerprints; use `npm run test:mcp:contracts:update` only for an intentional contract change and review its change summary.
 - `guides/` is the default writable guide location for imported/user-created guide files and may be empty in the repo.
-- When both `.ts` and `.js` siblings exist under `src/lib/`, prefer the `.ts` source. The `.js` file is generated output.
+- Edit the TypeScript/Vue sources. JavaScript under `.build/`, renderer `dist/`, and the root MCP bundle are generated outputs.
 - When a `.test.ts` sits next to a module, treat it as the nearest executable behavior spec.

@@ -11,7 +11,7 @@ import type { DiagnosticSource } from '../lib/document-diagnostics';
 import type { McpActivitySource } from '../lib/mcp-activity-types';
 import type { DocumentReviewAssetChange } from '../lib/document-review-types';
 import type { PreviewPanelHandle, PreviewPanelViewState, PreviewSourceTarget } from '../lib/preview-panel';
-import type { RpMode, LorebookEntry, RegexEntry, ReferenceFile, RendererDocumentData } from '../stores/app-store';
+import type { RpMode, ReferenceFile, RendererDocumentData } from '../stores/app-store';
 import {
   createTreeItem,
   createFolderItem,
@@ -54,7 +54,6 @@ import { createExternalTextTabState } from '../lib/external-text-tab';
 import { collectDirtyEditorFields } from '../lib/editor-dirty-fields';
 import { resolveCloseWindowAction } from '../lib/close-window-policy';
 import { TabManager } from '../lib/tab-manager';
-import { planMcpDataUpdate } from '../lib/mcp-data-update';
 import type { PreviewPanelDeps } from '../lib/preview-panel';
 import { reportRuntimeError } from '../lib/runtime-feedback';
 import { ensureWasmoon } from '../lib/script-loader';
@@ -116,11 +115,7 @@ import { runStartupSessionRecovery } from './session-recovery-controller';
 import { createProjectWorkspaceController } from './project-workspace-controller';
 import { handleMcpDataUpdate } from './mcp-update-controller';
 import { createTerminalSessionsController, type TerminalSessionUi } from './terminal-sessions-controller';
-import {
-  stringifyStringArray,
-  buildRefsSidebar as _buildRefsSidebar,
-  openRefTabById as _openRefTabById,
-} from '../lib/sidebar-refs';
+import { buildRefsSidebar as _buildRefsSidebar } from '../lib/sidebar-refs';
 import {
   RISUP_FIELD_GROUPS,
   getVisibleRisupFieldGroups,
@@ -1054,10 +1049,6 @@ async function buildRefsSidebar(): Promise<void> {
   if (!refsEl) return;
   const view = useAppStore().rightSidebarView === 'guides' ? 'guides' : 'files';
   await _buildRefsSidebar(refsEl, getRefsSidebarDeps() as unknown as Parameters<typeof _buildRefsSidebar>[1], view);
-}
-
-function openRefTabById(tabId: string): void {
-  _openRefTabById(tabId, getRefsSidebarDeps());
 }
 
 // ---------------------------------------------------------------------------
@@ -2035,11 +2026,6 @@ async function showImageViewer(tabId: string, assetPath: string): Promise<void> 
 }
 
 // ==================== Fixed Workspace Layout ====================
-
-function refitWorkspace(): void {
-  if (editorInstance) editorInstance.layout();
-  terminalSessions.fit();
-}
 
 function toggleSidebar(): void {
   useAppStore().toggleNavigator();

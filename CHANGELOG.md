@@ -17,6 +17,8 @@
 
 ### Changed
 
+- Corrected default-profile discovery in README, removed unreferenced renderer declarations and redundant digest plumbing, and documented the private query/public hash compatibility boundaries.
+
 - Coalesced renderer asset-count IPC and cached counts until document/asset changes; late responses cannot overwrite the current document or latest text statistics.
 
 - External asset list/read operations now use a single read-only metadata projection and transfer only the selected binary when requested. Mutation loading and collection guards remain separate.

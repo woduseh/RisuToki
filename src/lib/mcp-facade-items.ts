@@ -545,7 +545,7 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
     return isScriptStyleFamily(family);
   }
 
-  function itemCollectionDigestGuard(entries: unknown[]): FacadeV1Guard {
+  function itemCollectionDigestGuard(entries: unknown): FacadeV1Guard {
     return {
       name: 'expected_item_collection_digest',
       value: hashStableValue(entries),
@@ -1069,14 +1069,8 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
     return context.entries;
   }
 
-  function scriptStyleCollectionDigestGuard(
-    family: ManageItemsScriptStyleFamily,
-    context: ManageItemsScriptStyleContext,
-  ): FacadeV1Guard {
-    return {
-      ...itemCollectionDigestGuard([]),
-      value: hashStableValue(scriptStyleManageDigestInput(context)),
-    };
+  function scriptStyleCollectionDigestGuard(context: ManageItemsScriptStyleContext): FacadeV1Guard {
+    return itemCollectionDigestGuard(scriptStyleManageDigestInput(context));
   }
 
   function scriptStyleManageSummary(
@@ -1336,7 +1330,7 @@ export function createFacadeItemsEngine(apiRequest: FacadeApiRequest, scriptStyl
   ): Promise<ManageItemsScriptStylePlan | ApiErrorResult> {
     const context = providedContext ?? (await readManageItemsScriptStyleContext(target, family, operation));
     if (isApiError(context)) return context;
-    const guard = scriptStyleCollectionDigestGuard(family, context);
+    const guard = scriptStyleCollectionDigestGuard(context);
     const beforeCount = context.entries.length;
     let newEntries: ManageItemsScriptStyleEntry[];
     let result: Record<string, unknown>;

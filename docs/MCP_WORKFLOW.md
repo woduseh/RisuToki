@@ -94,3 +94,9 @@ The generated skill catalog is repository-root scoped:
 When the client-visible catalog does not already identify the Skill, use `list_skills` with the current `scopes`, a narrow `query`, and `detail: "summary"`. Existing no-argument calls retain the full compatibility view. Use the returned opaque `next_cursor` for catalog pages; `read_skill` uses its own cursor type with `max_bytes` for UTF-8-safe reference paging, and list/read cursors are intentionally not interchangeable.
 
 Without MCP, read the relevant source skill or reference from the filesystem. Follow the unavailable-MCP preparation and application boundaries in `skills/using-mcp-tools/SKILL.md`; missing connectivity does not change an authoring task into repository development. If the generated catalog is missing, `npm run sync:skills` rebuilds it from the tracked roots.
+
+### Runtime implementation boundaries
+
+Facade preview/apply binds the active document through a private `GET /document/binding` query. It includes ordered text/metadata and full binary contents without enumerating each byte as JSON. This internal fingerprint is not a replacement for the public legacy surface hashes; public surface hashes retain their canonical format. Restart both the editor and MCP process after runtime upgrades.
+
+External asset list/read facades use one private read-only metadata query; only a requested asset is encoded into the response. Writes continue through the existing preview/confirmation and file-conflict guards. HTTP transport preserves split UTF-8 characters and terminates incomplete responses; the request deadline bounds total elapsed time, not just socket inactivity. A dispatched mutation with a lost response still requires inspecting the outcome before retrying.
