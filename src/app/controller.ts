@@ -1,3 +1,4 @@
+import { createDocumentStatsController } from './document-stats-controller';
 import { createDocumentWorkbenchController } from './document-workbench-controller';
 import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections } from '../lib/section-parser';
 import type { Section } from '../lib/section-parser';
@@ -98,7 +99,6 @@ import {
 import { createBackup, formatBackupTime, getBackups, showBackupMenu } from '../lib/backup-store';
 import { initDragDrop } from '../lib/drag-drop-import';
 import { setStatus } from '../lib/status-bar';
-import { formatDocumentStats, summarizeDocumentStats } from '../lib/document-stats';
 import { showHelpPopup } from '../lib/help-popup';
 import { createSidebarActions } from '../lib/sidebar-actions';
 import { initSidebarDnD, destroyAllSortables } from '../lib/sidebar-dnd';
@@ -1266,7 +1266,14 @@ const RISUM_MODULE_SIDEBAR_FIELDS: readonly RisumSidebarField[] = [
   { id: 'customModuleToggle', label: '커스텀 토글', icon: '☑', lang: 'plaintext', kind: 'toggle-template' },
 ] as const;
 
-let documentStatsToken = 0;
+const documentStats = createDocumentStatsController({
+  getInput: () => ({ data: fileData, dirty: tabMgr.dirtyFields.size > 0, activeTab: getActiveTabForStats() }),
+  readAssetCount: async () => {
+    const assets = await window.tokiAPI.getAssetList();
+    return Array.isArray(assets) ? assets.length : 0;
+  },
+  publish: (text) => useAppStore().setDocumentStatsText(text),
+});
 
 function buildSidebar(): void {
   updateDocumentStats();
@@ -2057,30 +2064,7 @@ function getActiveTabForStats(): Pick<Tab, 'getValue'> | null {
 }
 
 function updateDocumentStats(): void {
-  const store = useAppStore();
-  const token = ++documentStatsToken;
-  if (!fileData) {
-    store.setDocumentStatsText('');
-    return;
-  }
-  const stats = summarizeDocumentStats({
-    data: fileData,
-    dirty: tabMgr.dirtyFields.size > 0,
-    activeTab: getActiveTabForStats(),
-  });
-  store.setDocumentStatsText(formatDocumentStats(stats));
-
-  if (fileData._fileType === 'risup') return;
-  void window.tokiAPI
-    .getAssetList()
-    .then((assets) => {
-      if (token !== documentStatsToken) return;
-      stats.assetCount = Array.isArray(assets) ? assets.length : stats.assetCount;
-      store.setDocumentStatsText(formatDocumentStats(stats));
-    })
-    .catch(() => {
-      /* keep the synchronous stats if asset listing fails */
-    });
+  documentStats.update();
 }
 
 function setCurrentFileData(data: RendererDocumentData | null): void {
@@ -3250,6 +3234,7 @@ export async function initMainRenderer(): Promise<void> {
     const updateField = typeof field === 'string' ? field : (field as { field?: string })?.field;
     if (!updateField) return;
     if (updateField === 'assets' || updateField === 'risumAssets') {
+      documentStats.invalidateAssets();
       documentWorkbench.markAssetsChanged();
       tabMgr.markFieldDirty(updateField);
       buildSidebar();
