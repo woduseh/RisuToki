@@ -27,7 +27,7 @@ const definitions = {
   'typecheck-vue': { commands: [['node_modules/vue-tsc/bin/vue-tsc.js', '--noEmit']] },
   'typecheck-electron': { commands: [[tsc, '-p', 'tsconfig.electron.json', '--noEmit']] },
   'typecheck-node': { commands: [[tsc, '-p', 'tsconfig.node-libs.json', '--noEmit']] },
-  unit: { commands: [['node_modules/vitest/vitest.mjs', 'run']] },
+  unit: { commands: [['node_modules/vitest/vitest.mjs', 'run', '--pool=threads']] },
   'tooling-tests': {
     commands: [
       [

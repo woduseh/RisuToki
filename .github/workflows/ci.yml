@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
 
       - name: Install dependencies
@@ -50,7 +50,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
           cache: npm
 
       - name: Install dependencies
@@ -59,7 +59,7 @@ jobs:
           HUSKY: '0'
 
       - name: Validate platform builds
-        run: npm run validate -- --profile windows
+        run: npm run validate:windows
 
       - name: Upload validation reports
         if: always()

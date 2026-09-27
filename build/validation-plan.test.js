@@ -86,7 +86,7 @@ test('focused tests are normalized, deduplicated and forwarded to Vitest only', 
   const plan = createPlan({ tests: [file, file.replaceAll('/', '\\')] });
   assert.deepEqual(plan.focusedTests, [file]);
   assert.deepEqual(plan.steps.find((step) => step.id === 'unit').commands, [
-    ['node_modules/vitest/vitest.mjs', 'run', file],
+    ['node_modules/vitest/vitest.mjs', 'run', '--pool=threads', file],
   ]);
   assert.deepEqual(
     plan.steps.filter((step) => step.id !== 'unit'),

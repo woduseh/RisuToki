@@ -20,7 +20,7 @@ npm run validate -- --test src/lib/mcp-search.test.ts
 npm run --silent validate -- --plan --json
 ```
 
-Choose the checks appropriate to the changed behavior in `docs/PROJECT_RULES.md`. `npm run validate -- --profile mcp` runs MCP integration, measured replay, and contract checks with shared builds. `npm run validate:full` runs the complete validation sequence, including tooling tests, Electron and renderer builds. `npm test` runs the test profile and `npm run build` runs the full profile.
+Choose the checks appropriate to the changed behavior in `docs/PROJECT_RULES.md`. `npm run validate -- --profile mcp` runs MCP integration, measured replay, and contract checks with shared builds. `npm run validate:full` prepares the pinned Electron binary and runs the complete validation sequence, including tooling tests, Electron and renderer builds. `npm test` runs the test profile and `npm run build` runs the full profile.
 
 `npm test` includes the complete Vitest suite and deterministic agent-eval cases. `npm run test:evals` remains a focused static subset; `npm run test:evals:replay` and `npm run test:mcp:contracts` remain available independently. `--test` selection applies only to the quick profile; repeat it to select several unit-test files.
 

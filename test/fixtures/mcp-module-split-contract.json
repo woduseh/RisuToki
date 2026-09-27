@@ -3,18 +3,18 @@
   "toolsList": {
     "facade-first": {
       "toolCount": 14,
-      "rawBytes": 76924,
-      "sha256": "b9bac54d95d293cc0a7d03632f0c09b86dc527480d5e69534b7e5707f95463be"
+      "rawBytes": 76870,
+      "sha256": "13d572fe6e09aa121d5ebfe33e78f69e7f492da5261f19d5e7217239672600d5"
     },
     "authoring": {
       "toolCount": 176,
-      "rawBytes": 274021,
-      "sha256": "a01b5cf7aa50282c35033a78b75046b481c2dcaa2ec7c359817538e747455910"
+      "rawBytes": 273967,
+      "sha256": "14666ffeb74ee4d0715fd8154b423526cdd7c7e73ecbd507bf90df7121ad4160"
     },
     "advanced-full": {
       "toolCount": 204,
-      "rawBytes": 304215,
-      "sha256": "f0a03239669221fdcf8b6199449a354fb7f905851d1c6cc7ab7798d6783bc8ab"
+      "rawBytes": 304161,
+      "sha256": "b381a8bb4f6f3746de06a441e3e2450676aad088bae69c14c40cda967b58e4b8"
     },
     "readonly": {
       "toolCount": 109,

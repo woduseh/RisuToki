@@ -2,10 +2,10 @@
 
 > Desktop editor for RisuAI `.charx` / `.risum` / `.risup` files with an integrated AI CLI terminal
 
-[![Version](https://img.shields.io/badge/version-3.7.0-blue.svg)](https://github.com/woduseh/RisuToki/releases)
+[![Version](https://img.shields.io/badge/version-3.9.3-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
-[![Electron](https://img.shields.io/badge/Electron-40-47848F.svg)](https://www.electronjs.org/)
-[![Node](https://img.shields.io/badge/Node-22.13%2B%20%7C%2024%2B-339933.svg)](https://nodejs.org/)
+[![Electron](https://img.shields.io/badge/Electron-44-47848F.svg)](https://www.electronjs.org/)
+[![Node](https://img.shields.io/badge/Node-26.10%2B-339933.svg)](https://nodejs.org/)
 
 ## What is RisuToki?
 
@@ -48,7 +48,7 @@ Packaged builds check for each newer stable release once. Installer builds ask b
 
 ### From Source (developers)
 
-Node.js 22.13+ or 24+ is required. The repository's `.node-version` pins Node 22.13 as the recommended CI-compatible baseline.
+Node.js 26.10+ is required. The repository's `.node-version` pins Node 26.10 as the tested development and CI baseline.
 
 ```bash
 git clone https://github.com/woduseh/RisuToki.git

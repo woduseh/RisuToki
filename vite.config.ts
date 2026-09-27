@@ -1,5 +1,5 @@
 import { resolve, join, dirname } from 'node:path';
-import { readFileSync, writeFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import vue from '@vitejs/plugin-vue';
@@ -12,8 +12,21 @@ const rootDir = realpathSync(process.cwd());
 const require = createRequire(import.meta.url);
 
 function resolveInstalledAssetPath(packageName: string, assetPath: string): string {
-  const packageJsonPath = require.resolve(`${packageName}/package.json`);
-  return resolve(dirname(packageJsonPath), assetPath);
+  let current = dirname(require.resolve(packageName));
+  while (true) {
+    const packageJsonPath = join(current, 'package.json');
+    if (existsSync(packageJsonPath)) {
+      try {
+        const manifest = JSON.parse(readFileSync(packageJsonPath, 'utf8')) as { name?: string };
+        if (manifest.name === packageName) return resolve(current, assetPath);
+      } catch {
+        // Keep walking; nested package metadata can belong to another package.
+      }
+    }
+    const parent = dirname(current);
+    if (parent === current) throw new Error(`Unable to resolve package root for ${packageName}`);
+    current = parent;
+  }
 }
 
 /**

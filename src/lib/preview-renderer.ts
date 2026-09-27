@@ -16,7 +16,7 @@ function escapeMarkdownHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-const markdown: MarkdownIt = new MarkdownIt({
+const markdown = new MarkdownIt({
   html: true,
   breaks: true,
   linkify: false,

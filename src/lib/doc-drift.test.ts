@@ -458,7 +458,7 @@ describe('canonical architecture and contributor workflow stay current', () => {
     }
     expect(windowsSteps).toEqual(expect.arrayContaining(['electron', 'renderer']));
     expect(ci).toContain('npm run validate:ci');
-    expect(ci).toContain('npm run validate -- --profile windows');
+    expect(ci).toContain('npm run validate:windows');
     expect(contributing).toContain('npm run validate:full');
     expect(contributing).toContain('.build/validation/');
     expect(ci.match(/if: always\(\)/g)).toHaveLength(2);

@@ -17,9 +17,9 @@ Choose local checks by the changed behavior:
 | Quick              | `npm run validate`                      | Lint, typechecks, unit and tooling tests                                             |
 | MCP                | `npm run validate -- --profile mcp`     | Shared build, MCP integration, workflow replay, contracts                            |
 | CI                 | `npm run validate:ci`                   | All tests, lint, typechecks, replay, contracts, renderer build                       |
-| Full               | `npm run validate:full`                 | CI checks plus Electron build                                                        |
-| Windows build      | `npm run validate -- --profile windows` | Tooling tests, Electron and renderer builds                                          |
-| Desktop (optional) | `npm run test:desktop`                  | Shared builds, real Electron editor/API and native module smoke with synthetic files |
+| Full               | `npm run validate:full`                 | CI checks plus Electron build; prepares the Electron binary                                                        |
+| Windows build      | `npm run validate:windows` | Tooling tests, Electron and renderer builds                                          |
+| Desktop (optional) | `npm run test:desktop`                  | Prepares Electron, then runs shared builds and real desktop/native smoke |
 
 `npm test` uses the test profile; `npm run build` uses the full profile. Each profile builds shared prerequisites once. The runner continues independent checks after a failure and skips checks whose prerequisites failed. Exit status determines success. Step logs and `report.json` are stored in `.build/validation/<runId>/`; `.build/validation/latest.json` identifies the latest report. Only one validation run may use a workspace at a time; the runner reports an existing lock instead of deleting it automatically.
 

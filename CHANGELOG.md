@@ -9,6 +9,17 @@
 
 ---
 
+## [3.9.3] - 2026-09-27
+
+### Changed
+
+- Moved the development, CI, and release baseline to Node.js 26.10.x and updated the engine guard, workflow setup, and documentation accordingly.
+- Updated direct runtime and development dependencies to their current compatible releases, including Electron 44, Vite 8, Vitest 5, TypeScript 6, Pinia 4, markdown-it 15, marked 18, Monaco 0.57, msgpackr 2, and jsdom 30. TypeScript 7 remains intentionally deferred because the current typescript-eslint release declares support only below TypeScript 6.1.
+- Modernized Electron TypeScript module resolution and package-root asset discovery for packages that hide package.json through exports.
+- Refreshed the MCP `tools/list` contract fingerprint for the dependency upgrade: tool counts and HTTP contracts are unchanged; `preview_edit` now advertises optional `flags` correctly and uses the equivalent compact JSON Schema union form emitted by the updated schema stack.
+- Refreshed transitive dependency resolutions and the brace-expansion override; `npm audit` reports no known vulnerabilities for the resulting dependency tree.
+- Kept Vitest 5 unit isolation on the worker-thread pool after validating all 177 test files; this avoids the new default fork overhead while preserving per-file isolation. The faster shared-VM pool was rejected because it broke tests that depend on isolated mocks and binary identity.
+
 ## [3.9.2] - 2026-09-27
 
 ### Fixed
