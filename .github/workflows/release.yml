@@ -8,9 +8,6 @@ on:
 permissions:
   contents: write
 
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     runs-on: windows-latest
@@ -43,7 +40,7 @@ jobs:
 
       - name: Upload validation reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: validation-release-windows
           include-hidden-files: true
@@ -74,7 +71,7 @@ jobs:
           }
 
       - name: Upload artifacts to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3.0.3
         with:
           files: |
             release/*.exe

@@ -29,7 +29,7 @@ jobs:
 
       - name: Upload validation reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: validation-ubuntu
           include-hidden-files: true
@@ -63,7 +63,7 @@ jobs:
 
       - name: Upload validation reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: validation-windows
           include-hidden-files: true

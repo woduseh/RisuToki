@@ -9,6 +9,12 @@
 
 ---
 
+## [3.9.4] - 2026-09-27
+
+### Changed
+
+- Updated GitHub Actions artifact upload and release publishing steps to their current Node 24-based releases (`actions/upload-artifact@v7.0.1` and `softprops/action-gh-release@v3.0.3`), removing the temporary JavaScript-action runtime override and the Node 20 deprecation warning.
+
 ## [3.9.3] - 2026-09-27
 
 ### Changed
