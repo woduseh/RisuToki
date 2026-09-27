@@ -17,6 +17,8 @@
 
 ### Changed
 
+- Project-folder loading now feeds the existing CHARX entry reader and RISUM/RISUP normalizers directly, avoiding temporary artifact writes and archive recompression. Export/save recovery and unknown entry/binary preservation remain intact; unnamed module folders use their directory name as the stable fallback.
+
 - Corrected default-profile discovery in README, removed unreferenced renderer declarations and redundant digest plumbing, and documented the private query/public hash compatibility boundaries.
 
 - Coalesced renderer asset-count IPC and cached counts until document/asset changes; late responses cannot overwrite the current document or latest text statistics.

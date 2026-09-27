@@ -6,6 +6,7 @@ import {
   validateCharxCardDocument,
   validateRisupEnvelope,
   validateRisupPresetPayload,
+  validateRisumModulePayload,
 } from './lib/document-validation';
 import {
   validateCharxExportCompatibilityFile,
@@ -610,7 +611,14 @@ export function openCharxCardDocument(cardInput: unknown, assets: CharxAsset[] =
  * Open and parse a .charx file
  */
 export function openCharx(filePath: string): LoadedDocumentData {
-  const { zip, entries } = openZipEntriesWithPreludeSupport(filePath);
+  return openCharxArchive(openZipEntriesWithPreludeSupport(filePath).zip);
+}
+
+/** Shared entry reader for disk archives and uncompressed project-folder entries. */
+export function openCharxArchive(
+  zip: Pick<InstanceType<typeof AdmZip>, 'getEntry' | 'getEntries'>,
+): LoadedDocumentData {
+  const entries = zip.getEntries();
 
   // Parse card.json
   const cardEntry = zip.getEntry('card.json');
@@ -856,13 +864,19 @@ export function openRisum(filePath: string): LoadedDocumentData {
   validateFileSize(filePath);
   const buf: Buffer = fs.readFileSync(filePath);
   const parsed = parseRisum(buf);
-  const mod = ((parsed.module as Record<string, unknown>)?.module as Record<string, unknown>) || parsed.module || {};
+  return openRisumParts(parsed.module, parsed.assets, path.basename(filePath, '.risum'));
+}
+
+/** Normalize the same decoded module and ordered asset bytes used by the binary parser. */
+export function openRisumParts(moduleInput: unknown, assets: Buffer[], fallbackName = 'Module'): LoadedDocumentData {
+  const module = validateRisumModulePayload(moduleInput);
+  const mod = (module.module as Record<string, unknown>) || module;
 
   return {
     _fileType: 'risum',
 
     // Module metadata
-    name: (mod.name as string) || path.basename(filePath, '.risum'),
+    name: (mod.name as string) || fallbackName,
     description: (mod.description as string) || '',
     moduleId: (mod.id as string) || '',
     moduleName: (mod.name as string) || '',
@@ -906,11 +920,11 @@ export function openRisum(filePath: string): LoadedDocumentData {
     // Assets
     assets: [],
     xMeta: {},
-    risumAssets: parsed.assets || [],
+    risumAssets: assets,
     cardAssets: [],
 
     // Preserve original data for save
-    _moduleData: parsed.module,
+    _moduleData: module,
     _risuExt: {},
     _card: { spec: 'chara_card_v3', spec_version: '3.0', data: { extensions: { risuai: {} } } },
     _presetData: null,
@@ -1299,8 +1313,19 @@ export function openRisup(filePath: string): LoadedDocumentData {
     throw new Error(`Failed to decode preset data: ${e instanceof Error ? e.message : String(e)}`);
   }
 
+  return openRisupPresetDocument(preset, compressionMode, validatedEnvelope);
+}
+
+/** Normalize decoded preset content; disk encryption/compression belongs to its source adapter. */
+export function openRisupPresetDocument(
+  presetInput: unknown,
+  compressionMode: RisupCompressionMode = 'gzip',
+  envelope: Record<string, unknown> = {},
+): LoadedDocumentData {
+  if (envelope.presetVersion != null && typeof envelope.presetVersion !== 'number')
+    throw new Error('Invalid .risup file: presetVersion must be a number');
   // Clear sensitive keys for safety
-  const sanitized = { ...preset };
+  const sanitized = { ...validateRisupPresetPayload(presetInput) };
   delete sanitized.openAIKey;
   delete sanitized.proxyKey;
 
@@ -1332,9 +1357,7 @@ export function openRisup(filePath: string): LoadedDocumentData {
     _card: {},
     _moduleData: null,
     _presetData: sanitized,
-    _risupEnvelope: Object.fromEntries(
-      Object.entries(validatedEnvelope).filter(([key]) => key !== 'preset' && key !== 'pres'),
-    ),
+    _risupEnvelope: Object.fromEntries(Object.entries(envelope).filter(([key]) => key !== 'preset' && key !== 'pres')),
     _compressionMode: compressionMode,
   };
 }

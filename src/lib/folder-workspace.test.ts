@@ -567,3 +567,30 @@ describe('folder-workspace', () => {
     expect((reopened._presetData as Record<string, unknown>).mainPrompt).toBeUndefined();
   });
 });
+
+it.each(['charx', 'risum', 'risup'] as const)(
+  'loads %s project data without writing a temporary artifact',
+  (fileType) => {
+    const root = makeTempDir();
+    const source = path.join(root, `source.${fileType}`);
+    const project = path.join(root, 'project');
+    const output = path.join(root, `export.${fileType}`);
+    if (fileType === 'charx') writeFixtureCharx(source);
+    else if (fileType === 'risum') writeFixtureRisum(source);
+    else writeFixtureRisup(source);
+    extractDocumentToProject(source, project);
+    reassembleProjectDocument(project, output);
+    const expected =
+      fileType === 'charx' ? openCharx(output) : fileType === 'risum' ? openRisum(output) : openRisup(output);
+    const write = vi.spyOn(fs, 'writeFileSync');
+    const archiveWrite = vi.spyOn(fs, 'writeSync');
+    const loaded = loadProjectData(project);
+    expect(write).not.toHaveBeenCalled();
+    expect(archiveWrite).not.toHaveBeenCalled();
+    const comparable = (data: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(data).filter(([key]) => !['_projectPath', '_sourceFilePath', '_fileType'].includes(key)),
+      );
+    expect(comparable(loaded)).toEqual(comparable(expected));
+  },
+);

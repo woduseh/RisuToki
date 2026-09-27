@@ -197,7 +197,7 @@ The executable contracts are guarded by taxonomy tests, doc-drift tests, workflo
 
 ### 4.1 Artifact and project-folder I/O
 
-`charx-io.ts` serializes and loads all three supported artifact types. `folder-workspace.ts` maps those artifacts to editable project folders and back. Format-specific model and editor modules preserve document-specific structure while the main state store keeps the active normalized document.
+`charx-io.ts` serializes and loads all three supported artifact types. `folder-workspace.ts` maps those artifacts to editable project folders and back. Folder reads reuse the same decoded-document normalizers and an in-memory CHARX entry view instead of writing/reopening temporary artifacts; export still applies the existing atomic archive writer and save-recovery checks. Format-specific model and editor modules preserve document-specific structure while the main state store keeps the active normalized document.
 
 Protected compatibility fields and deprecated save-time data are handled by explicit field-access and save policies rather than by renderer visibility alone.
 

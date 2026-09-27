@@ -5,6 +5,9 @@ import * as path from 'path';
 import AdmZip from 'adm-zip';
 import {
   openCharx,
+  openCharxArchive,
+  openRisumParts,
+  openRisupPresetDocument,
   openRisum,
   openRisup,
   buildCharxZip,
@@ -577,6 +580,13 @@ export function extractCharxToProject(charxPath: string, projectPath: string): {
 }
 
 export function reassembleProjectCharx(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+  const zip = projectCharxEntries(projectPath);
+  writePathAtomicSync(outputPath, (tempPath) => zip.writeZip(tempPath));
+  return { success: true, outputPath };
+}
+
+/** AdmZip keeps added entries uncompressed until export; loading never writes a temporary ZIP. */
+function projectCharxEntries(projectPath: string): InstanceType<typeof AdmZip> {
   assertProjectRecoveryResolved(projectPath);
   const cardPath = path.join(projectPath, 'card.json');
   if (!fs.existsSync(cardPath)) throw new Error('card.json not found in project folder');
@@ -599,21 +609,29 @@ export function reassembleProjectCharx(projectPath: string, outputPath: string):
   addDirectoryToZip(zip, path.join(projectPath, 'assets'), 'assets');
   addDirectoryToZip(zip, path.join(projectPath, 'x_meta'), 'x_meta');
   addRemainingFiles(zip, projectPath, projectPath);
-  writePathAtomicSync(outputPath, (tempPath) => zip.writeZip(tempPath));
-  return { success: true, outputPath };
+  return zip;
 }
 
-function reassembleProjectRisum(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+function projectRisumParts(projectPath: string): { module: Record<string, unknown>; assets: Buffer[] } {
   assertProjectRecoveryResolved(projectPath);
   const modulePath = path.join(projectPath, 'module.json');
   if (!fs.existsSync(modulePath)) throw new Error('module.json not found in project folder');
-  const moduleJson = readJson(modulePath);
-  stripDeprecatedRisumSaveFields(moduleJson);
-  writeFileAtomicSync(outputPath, buildRisum(moduleJson, readRisumAssets(projectPath)));
+  const module = readJson(modulePath);
+  stripDeprecatedRisumSaveFields(module);
+  return { module, assets: readRisumAssets(projectPath) };
+}
+
+function reassembleProjectRisum(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+  const parts = projectRisumParts(projectPath);
+  writeFileAtomicSync(outputPath, buildRisum(parts.module, parts.assets));
   return { success: true, outputPath };
 }
 
-function reassembleProjectRisup(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+function projectRisupParts(projectPath: string): {
+  preset: Record<string, unknown>;
+  envelope: Record<string, unknown>;
+  compressionMode: RisupCompressionMode;
+} {
   assertProjectRecoveryResolved(projectPath);
   const presetPath = path.join(projectPath, 'preset.json');
   if (!fs.existsSync(presetPath)) throw new Error('preset.json not found in project folder');
@@ -625,7 +643,12 @@ function reassembleProjectRisup(projectPath: string, outputPath: string): { succ
   restoreProjectBinary(document, marker?.risupBinaryPaths || []);
   applyTextFields(projectPath, document.preset, RISUP_EXTRACTABLE_FIELDS);
   stripDeprecatedRisupSaveFields(document.preset);
-  saveRisupPresetPayload(outputPath, document.preset, marker?.compressionMode || 'gzip', document.envelope);
+  return { ...document, compressionMode: marker?.compressionMode || 'gzip' };
+}
+
+function reassembleProjectRisup(projectPath: string, outputPath: string): { success: true; outputPath: string } {
+  const parts = projectRisupParts(projectPath);
+  saveRisupPresetPayload(outputPath, parts.preset, parts.compressionMode, parts.envelope);
   return { success: true, outputPath };
 }
 
@@ -642,24 +665,27 @@ export function reassembleProjectDocument(
 export function loadProjectData(projectPath: string): Record<string, unknown> {
   assertProjectRecoveryResolved(projectPath);
   const fileType = getProjectFileType(projectPath);
-  const tempPath = path.join(os.tmpdir(), `risutoki-project-${crypto.randomUUID()}.${fileType}`);
-  try {
-    reassembleProjectDocument(projectPath, tempPath);
-    const data =
-      fileType === 'risum'
-        ? (openRisum(tempPath) as unknown as Record<string, unknown>)
-        : fileType === 'risup'
-          ? (openRisup(tempPath) as unknown as Record<string, unknown>)
-          : (openCharx(tempPath) as unknown as Record<string, unknown>);
-    data._projectPath = projectPath;
-    data._fileType = fileType;
-    const marker = readProjectMarker(projectPath);
-    if (marker?.sourcePath) data._sourceFilePath = marker.sourcePath;
-    recordProjectBaseline(projectPath, data);
-    return data;
-  } finally {
-    fs.rmSync(tempPath, { force: true });
+  let data: LoadedDocumentData;
+  if (fileType === 'risum') {
+    const parts = projectRisumParts(projectPath);
+    data = openRisumParts(parts.module, parts.assets, path.basename(projectPath));
+  } else if (fileType === 'risup') {
+    const parts = projectRisupParts(projectPath);
+    // Match the envelope defaults applied by the binary writer without encrypting a temp file.
+    data = openRisupPresetDocument(parts.preset, parts.compressionMode, {
+      presetVersion: 2,
+      ...parts.envelope,
+      type: 'preset',
+    });
+  } else {
+    data = openCharxArchive(projectCharxEntries(projectPath));
   }
+  data._projectPath = projectPath;
+  data._fileType = fileType;
+  const marker = readProjectMarker(projectPath);
+  if (marker?.sourcePath) data._sourceFilePath = marker.sourcePath;
+  recordProjectBaseline(projectPath, data);
+  return data;
 }
 
 export function saveProjectData(projectPath: string, data: Record<string, unknown>): void {
