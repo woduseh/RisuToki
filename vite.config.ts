@@ -1,4 +1,4 @@
-import { resolve, join, dirname } from 'node:path';
+import { resolve, join, dirname, relative } from 'node:path';
 import { existsSync, readFileSync, writeFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
@@ -27,6 +27,25 @@ function resolveInstalledAssetPath(packageName: string, assetPath: string): stri
     if (parent === current) throw new Error(`Unable to resolve package root for ${packageName}`);
     current = parent;
   }
+}
+
+function staticCopyStripBase(sourceBase: string): number {
+  const relativeBase = normalizePath(relative(rootDir, sourceBase));
+  if (!relativeBase || relativeBase === '.' || relativeBase === '..' || relativeBase.startsWith('../')) {
+    throw new Error(`Static copy source must be inside the project root: ${sourceBase}`);
+  }
+  return relativeBase.split('/').filter(Boolean).length;
+}
+
+function installedAssetCopyTarget(packageName: string, assetPath: string, dest: string) {
+  const src = resolveInstalledAssetPath(packageName, assetPath);
+  return {
+    src: normalizePath(src),
+    dest,
+    // vite-plugin-static-copy v4 preserves the matched source directory under dest.
+    // Strip the package path while retaining the requested asset's own basename/tree.
+    rename: { stripBase: staticCopyStripBase(dirname(src)) },
+  };
 }
 
 /**
@@ -105,13 +124,18 @@ function vendorScriptIsolationPlugin(): Plugin {
     closeBundle() {
       const outDir = resolve(rootDir, 'dist');
       const monacoDir = join(outDir, 'vendor', 'monaco-editor', 'min', 'vs');
-      try {
-        wrapDir(monacoDir);
-      } catch {
-        // Monaco files may not exist if build target doesn't include them
+      if (!existsSync(join(monacoDir, 'loader.js'))) {
+        throw new Error(`Monaco build assets are missing from ${monacoDir}`);
       }
+      wrapDir(monacoDir);
       for (const [url, sourcePath] of browserGlobalScripts) {
         writeFileSync(join(outDir, url.slice(1)), wrapBrowserVendorScript(readFileSync(sourcePath, 'utf8')));
+      }
+      for (const requiredAsset of [
+        join(outDir, 'vendor', '@xterm', 'xterm', 'css', 'xterm.css'),
+        join(outDir, 'app-assets', 'icon.png'),
+      ]) {
+        if (!existsSync(requiredAsset)) throw new Error(`Required build asset is missing: ${requiredAsset}`);
       }
     },
   };
@@ -125,33 +149,20 @@ export default defineConfig(({ command }) => ({
     vendorScriptIsolationPlugin(),
     viteStaticCopy({
       targets: [
-        {
-          src: normalizePath(resolveInstalledAssetPath('monaco-editor', 'min/vs')),
-          dest: 'vendor/monaco-editor/min',
-        },
-        {
-          src: normalizePath(resolveInstalledAssetPath('@xterm/xterm', 'css/xterm.css')),
-          dest: 'vendor/@xterm/xterm/css',
-        },
-        {
-          src: normalizePath(resolveInstalledAssetPath('@xterm/xterm', 'lib/xterm.js')),
-          dest: 'vendor/@xterm/xterm/lib',
-        },
-        {
-          src: normalizePath(resolveInstalledAssetPath('@xterm/addon-fit', 'lib/addon-fit.js')),
-          dest: 'vendor/@xterm/addon-fit/lib',
-        },
-        {
-          src: normalizePath(resolveInstalledAssetPath('wasmoon', 'dist/index.js')),
-          dest: 'vendor/wasmoon/dist',
-        },
+        installedAssetCopyTarget('monaco-editor', 'min/vs', 'vendor/monaco-editor/min'),
+        installedAssetCopyTarget('@xterm/xterm', 'css/xterm.css', 'vendor/@xterm/xterm/css'),
+        installedAssetCopyTarget('@xterm/xterm', 'lib/xterm.js', 'vendor/@xterm/xterm/lib'),
+        installedAssetCopyTarget('@xterm/addon-fit', 'lib/addon-fit.js', 'vendor/@xterm/addon-fit/lib'),
+        installedAssetCopyTarget('wasmoon', 'dist/index.js', 'vendor/wasmoon/dist'),
         {
           src: 'assets/{icon.png,toki-cute.gif,Usagi_Flap.mp3}',
           dest: 'app-assets',
+          rename: { stripBase: 1 },
         },
         {
           src: 'assets/avatar-*.webp',
           dest: 'app-assets',
+          rename: { stripBase: 1 },
         },
       ],
     }),

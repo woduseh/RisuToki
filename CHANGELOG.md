@@ -11,6 +11,10 @@
 
 ## [3.9.4] - 2026-09-27
 
+### Fixed
+
+- Restored the production static-asset layout after the `vite-plugin-static-copy` 4 upgrade so Monaco, terminal CSS, icons, audio, and avatar assets resolve at their runtime URLs; production builds now fail if required editor assets disappear again.
+
 ### Changed
 
 - Updated GitHub Actions artifact upload and release publishing steps to their current Node 24-based releases (`actions/upload-artifact@v7.0.1` and `softprops/action-gh-release@v3.0.3`), removing the temporary JavaScript-action runtime override and the Node 20 deprecation warning.
