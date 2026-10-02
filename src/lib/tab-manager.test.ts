@@ -223,6 +223,50 @@ describe('TabManager', () => {
     });
   });
 
+  it('labels types and read-only tabs without hiding dirty state', () => {
+    mgr.openTabs = [
+      { ...makeTab('lua'), language: 'lua' },
+      { ...makeTab('image'), language: '_image', setValue: null },
+      { ...makeTab('lore_0'), language: '_loreform' },
+      { ...makeTab('ref_0_lb_0'), language: '_loreform', setValue: null },
+      { ...makeTab('risup_prompt_item_0'), language: '_risupPromptItemForm' },
+    ];
+    mgr.dirtyFields.add('lua');
+    mgr.renderTabs();
+    const tabs = tabBar.querySelectorAll('.editor-tab');
+    expect(tabs[0].textContent).toContain('Lua');
+    expect(tabs[0].querySelector('.modified')).not.toBeNull();
+    expect(tabs[0].querySelector('.tab-activate')?.getAttribute('aria-label')).toContain('저장되지 않음');
+    expect(tabs[1].textContent).toContain('이미지 · 읽기 전용');
+    expect(tabs[2].textContent).toContain('로어북');
+    expect(tabs[3].textContent).toContain('로어북 · 읽기 전용');
+    expect(tabs[4].textContent).toContain('프롬프트');
+    expect(tabs[4].textContent).not.toContain('읽기 전용');
+  });
+
+  it('lists every open item and can return to the active item repeatedly', () => {
+    const select = document.createElement('select');
+    select.id = 'editor-open-items';
+    document.body.appendChild(select);
+    mgr.openTabs = Array.from({ length: 20 }, (_, i) => makeTab(`tab-${i}`, `항목 ${i}`));
+    mgr.activeTabId = 'tab-19';
+    mgr.dirtyFields.add('tab-19');
+    mgr.renderTabs();
+    expect(select.options).toHaveLength(21);
+    expect(select.options[20].text).toContain('✓ 항목 19');
+    expect(select.options[20].text).toContain('저장되지 않음');
+    for (let i = 0; i < 2; i++) {
+      select.value = 'tab-19';
+      select.dispatchEvent(new Event('change'));
+      expect(select.value).toBe('');
+    }
+    expect(cbs.onActivateTab).toHaveBeenCalledTimes(2);
+    expect(cbs.onActivateTab).toHaveBeenCalledWith(mgr.openTabs[19]);
+    mgr.reset();
+    expect(select.disabled).toBe(true);
+    expect(select.options).toHaveLength(1);
+  });
+
   describe('reset', () => {
     it('clears all state', () => {
       mgr.openTabs = [makeTab('a')];

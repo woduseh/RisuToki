@@ -190,6 +190,7 @@ export class TabManager {
     this.dirtyFields.clear();
     this.pendingEditorTabId = null;
     clearAllBackups();
+    this.renderOpenItems();
   }
 
   private rebuildIndex(): void {
@@ -197,7 +198,50 @@ export class TabManager {
     for (const tab of this.openTabs) this.tabIndex.set(tab.id, tab);
   }
 
+  private tabDescription(tab: Tab): string {
+    const types: Record<string, string> = {
+      _loreform: '로어북',
+      _regexform: '정규식',
+      _triggerform: '트리거',
+      _risupform: '프리셋',
+      _risupPromptItemForm: '프롬프트',
+      _toggleform: '토글·변수',
+      _booleanform: '설정',
+      _modulesettingsform: '모듈 설정',
+      _image: '이미지',
+      _preview: '미리보기',
+      lua: 'Lua',
+      css: 'CSS',
+      html: 'HTML',
+      json: 'JSON',
+      markdown: '문서',
+      plaintext: '텍스트',
+    };
+    const type = tab.id.startsWith('risup_prompt') ? '프롬프트' : (types[tab.language] ?? '코드');
+    const readOnly = !tab.setValue;
+    return `${type}${readOnly ? ' · 읽기 전용' : ''}`;
+  }
+
+  private renderOpenItems(): void {
+    const select = document.getElementById('editor-open-items') as HTMLSelectElement | null;
+    if (!select) return;
+    select.replaceChildren(new Option(`열린 항목 (${this.openTabs.length})`, ''));
+    select.disabled = this.openTabs.length === 0;
+    for (const tab of this.openTabs) {
+      const active = tab.id === this.activeTabId ? '✓ ' : '';
+      const dirty = this.dirtyFields.has(tab.id) ? ' · 저장되지 않음' : '';
+      select.add(new Option(`${active}${tab.label} — ${this.tabDescription(tab)}${dirty}`, tab.id));
+    }
+    select.value = '';
+    select.onchange = () => {
+      const tab = this.openTabs.find((item) => item.id === select.value);
+      select.value = '';
+      if (tab) this.callbacks.onActivateTab(tab);
+    };
+  }
+
   renderTabs(): void {
+    this.renderOpenItems();
     const tabBar = document.getElementById(this.tabBarId);
     if (!tabBar) {
       this.callbacks.onTabsRendered?.();
@@ -209,6 +253,10 @@ export class TabManager {
       const tab = this.openTabs[i];
       const el = document.createElement('div');
       el.className = 'editor-tab' + (tab.id === this.activeTabId ? ' active' : '');
+      el.dataset.tabId = tab.id;
+      const description = this.tabDescription(tab);
+      const dirty = this.dirtyFields.has(tab.id) ? ' · 저장되지 않음' : '';
+      el.title = `${tab.label} — ${description}${dirty}`;
 
       // Drag-and-drop reorder
       el.draggable = true;
@@ -235,13 +283,22 @@ export class TabManager {
         }
       });
 
+      const activateButton = document.createElement('button');
+      activateButton.type = 'button';
+      activateButton.className = 'tab-activate';
+      activateButton.setAttribute('aria-label', el.title);
+      activateButton.setAttribute('aria-current', String(tab.id === this.activeTabId));
+      const kind = document.createElement('span');
+      kind.className = 'tab-kind';
+      kind.textContent = description;
+      activateButton.appendChild(kind);
       const labelSpan = document.createElement('span');
       labelSpan.textContent = tab.label;
-      el.appendChild(labelSpan);
+      activateButton.appendChild(labelSpan);
+      el.appendChild(activateButton);
 
       if (this.dirtyFields.has(tab.id)) {
         el.classList.add('is-modified');
-        el.title = `${tab.label} — 저장되지 않음`;
         const dot = document.createElement('span');
         dot.className = 'modified';
         dot.textContent = '●';
@@ -250,7 +307,9 @@ export class TabManager {
         el.appendChild(dot);
       }
 
-      const closeBtn = document.createElement('span');
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.setAttribute('aria-label', `${tab.label} 닫기`);
       closeBtn.className = 'close-btn';
       closeBtn.textContent = '×';
       closeBtn.addEventListener('click', (e) => {

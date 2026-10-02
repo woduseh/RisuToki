@@ -615,6 +615,8 @@ body {
 }
 
 #editor-header {
+  flex: none;
+  min-width: 0;
   display: flex;
   background: var(--bg-tertiary);
   border-bottom: 1px solid var(--border-color);
@@ -647,6 +649,7 @@ body {
 }
 
 .editor-tab {
+  flex: none;
   display: flex;
   align-items: center;
   padding: 5px 14px;
@@ -4110,4 +4113,48 @@ body.dark-mode ::-webkit-scrollbar-thumb:hover {
   margin: 14px 12px 0;
   border: 0;
   border-top: 1px solid var(--text-secondary);
+}
+
+/* Keep the open-items menu available even when the tab strip overflows. */
+#editor-open-items {
+  flex: 0 0 116px;
+  width: 116px;
+  min-width: 0;
+  margin: 4px 6px;
+  padding: 3px 6px;
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font: inherit;
+  font-size: 11px;
+}
+.editor-mode-control {
+  display: flex;
+  flex: none;
+}
+.tab-activate,
+.editor-tab .close-btn {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.tab-activate {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.tab-kind {
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.8;
+}
+.tab-activate:focus-visible,
+.editor-tab .close-btn:focus-visible,
+#editor-open-items:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
