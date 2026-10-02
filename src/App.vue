@@ -427,6 +427,13 @@ function recentName(path: string) {
             </button>
           </div>
         </div>
+        <div v-show="hasEditorContent && !(store.previewFocusMode && workbench.previewOpen)" id="editor-header">
+          <div id="editor-tabs" aria-label="열린 편집 항목"></div>
+          <select id="editor-open-items" aria-label="열린 항목 목록" title="열린 항목 목록" disabled></select>
+          <div v-show="!workbench.reviewOpen && !workbench.diagnosticsOpen" class="editor-mode-control">
+            <button id="editor-mode-toggle" type="button" style="display: none">코드 보기</button>
+          </div>
+        </div>
         <div
           v-show="hasEditorContent"
           id="document-workbench"
@@ -447,10 +454,6 @@ function recentName(path: string) {
             "
             id="editor-surface"
           >
-            <div id="editor-header">
-              <div id="editor-tabs"></div>
-              <button id="editor-mode-toggle" type="button" style="display: none">코드 보기</button>
-            </div>
             <div v-if="store.inspectorContext.kind === 'asset'" id="editor-asset-actions">
               <ContextInspector />
             </div>

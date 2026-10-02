@@ -146,6 +146,7 @@ The layout below describes version 3.7 and later.
 | **Terminal shelf**   | Bottom-anchored terminal with an optional avatar beside it                                                |
 
 - Drag the navigator, right sidebar, or terminal border to resize it; the dimensions persist between launches. Terminal height is capped to preserve editing space in short windows.
+- Working tabs stay visible during review and diagnostics; selecting one returns to its editor. Each tab shows its item type and read-only status where applicable, alongside unsaved marks. Use **열린 항목 목록** to find tabs beyond the visible strip. These are items within the current document, not multiple open documents.
 - Open the properties disclosure above the editor to change the selected item without leaving the content or replacing your reference material.
 - Assets show Rename and Delete directly above the image, without a properties disclosure. The default navigator width is 340px; saved custom widths remain unchanged. Use View → UI 배치 초기화 to apply the new default to an existing layout.
 - Workspace panels use fixed semantic homes and do not support arbitrary panel repositioning. Drag-and-drop inside lorebook, regex, prompt, script, greeting, and asset lists continues to reorder document content.

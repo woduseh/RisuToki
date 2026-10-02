@@ -9,6 +9,12 @@
 
 ---
 
+## [3.10.0] - 2026-10-02
+
+### Added
+
+- Kept working tabs accessible during document review and diagnostics, with item-type/read-only labels and a keyboard-accessible open-items list for overflowing tabs. Existing unsaved indicators, tab closing, and drag reordering remain available within the current document.
+
 ## [3.9.4] - 2026-09-27
 
 ### Fixed
