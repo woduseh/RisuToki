@@ -273,6 +273,9 @@ describe('prepareCopilotSession', () => {
 
     const content1 = (writeAgentsMd1.mock.calls as unknown[][])[0]?.[0];
     const content2 = (writeAgentsMd2.mock.calls as unknown[][])[0]?.[0];
+    expect(writeAgentsMd1).toHaveBeenCalledOnce();
+    expect(writeAgentsMd2).toHaveBeenCalledOnce();
+    expect(content1).toEqual(expect.stringContaining('<risutoki_artifact_metadata>'));
     expect(content1).toBe(content2);
   });
 });

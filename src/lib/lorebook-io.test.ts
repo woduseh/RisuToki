@@ -2,6 +2,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'node:os';
 import {
   parseYamlFrontmatter,
   stringifyYamlFrontmatter,
@@ -18,7 +19,7 @@ import {
   type LorebookEntry,
 } from './lorebook-io';
 
-const TEST_DIR = path.join(__dirname, '..', '..', 'test', '_lorebook-io-tmp');
+let TEST_DIR: string;
 
 /** Create test entries for export/import tests */
 function makeTestEntries(): LorebookEntry[] {
@@ -86,7 +87,7 @@ function makeLegacyFolderEntries(): LorebookEntry[] {
 }
 
 beforeAll(async () => {
-  await fs.promises.mkdir(TEST_DIR, { recursive: true });
+  TEST_DIR = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'risutoki-lorebook-io-'));
 });
 
 afterAll(async () => {
@@ -388,7 +389,13 @@ describe('importFromMarkdown', () => {
     const alice = imported.find((e) => e.comment === 'Alice');
     expect(alice).toBeDefined();
     expect(alice!.data.key).toBe('alice, protagonist');
-    expect(alice!.data.content).toContain('Alice is the main character.');
+    expect(alice!.data).toMatchObject({
+      key: 'alice, protagonist',
+      insertorder: 100,
+      alwaysActive: false,
+      activationPercent: 75,
+      content: 'Alice is the main character.\nShe has blue eyes.',
+    });
     expect(alice!.folderName).toBe('Characters');
   });
 
@@ -413,7 +420,12 @@ describe('importFromJson', () => {
     const bob = imported.find((e) => e.comment === 'Bob');
     expect(bob).toBeDefined();
     expect(bob!.data.key).toBe('bob, sidekick');
-    expect(bob!.data.alwaysActive).toBe(true);
+    expect(bob!.data).toMatchObject({
+      key: 'bob, sidekick',
+      alwaysActive: true,
+      insertorder: 200,
+    });
+    expect(imported.find((entry) => entry.comment === 'Alice')!.data.activationPercent).toBe(75);
     expect(bob!.folderName).toBe('Characters');
   });
 
@@ -566,56 +578,5 @@ describe('resolveImportConflicts', () => {
 
     expect(result.toOverwrite).toHaveLength(1);
     expect(resolveImportedFolderRef(result.toOverwrite[0].data, folderByName)).toBe('');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Roundtrip: MD export → import
-// ---------------------------------------------------------------------------
-
-describe('MD roundtrip', () => {
-  it('should preserve data through export→import cycle', async () => {
-    const dir = path.join(TEST_DIR, 'roundtrip-md');
-    const entries = makeTestEntries();
-    await exportToMarkdown(entries, dir);
-
-    const imported = await importFromMarkdown(dir);
-    expect(imported.length).toBe(3);
-
-    // Verify Alice roundtrip
-    const alice = imported.find((e) => e.comment === 'Alice')!;
-    const origAlice = entries.find((e) => e.comment === 'Alice')!;
-    expect(alice.data.key).toBe(origAlice.key);
-    expect(alice.data.insertorder).toBe(origAlice.insertorder);
-    expect(alice.data.alwaysActive).toBe(origAlice.alwaysActive);
-    expect(alice.data.activationPercent).toBe(origAlice.activationPercent);
-    expect(alice.data.content).toBe(origAlice.content);
-    expect(alice.folderName).toBe('Characters');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Roundtrip: JSON export → import
-// ---------------------------------------------------------------------------
-
-describe('JSON roundtrip', () => {
-  it('should preserve data through export→import cycle', async () => {
-    const dir = path.join(TEST_DIR, 'roundtrip-json');
-    const entries = makeTestEntries();
-    await exportToJson(entries, dir);
-
-    const imported = await importFromJson(path.join(dir, 'lorebook.json'));
-    expect(imported.length).toBe(3);
-
-    // Verify Bob roundtrip
-    const bob = imported.find((e) => e.comment === 'Bob')!;
-    const origBob = entries.find((e) => e.comment === 'Bob')!;
-    expect(bob.data.key).toBe(origBob.key);
-    expect(bob.data.alwaysActive).toBe(origBob.alwaysActive);
-    expect(bob.data.insertorder).toBe(origBob.insertorder);
-    expect(imported.find((e) => e.comment === 'Alice')!.data.activationPercent).toBe(
-      entries.find((e) => e.comment === 'Alice')!.activationPercent,
-    );
-    expect(bob.folderName).toBe('Characters');
   });
 });

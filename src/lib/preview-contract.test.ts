@@ -10,7 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPreviewDebugClipboardText, renderPreviewDebugHtml } from './preview-debug';
 import { createPreviewSession } from './preview-session';
-import type { PreviewLoreDecorators } from './lorebook-decorators';
+import { PreviewEngine as RealPreviewEngine } from './preview-engine';
 import type {
   CreatePreviewSessionOptions,
   PreviewCharData,
@@ -48,32 +48,7 @@ function createRecordingEngine() {
 
     matchLorebook(messages: PreviewMessage[], lore: PreviewLorebookEntry[]): PreviewLoreMatch[] {
       calls.push({ op: 'matchLorebook' });
-      return lore.flatMap((entry, index) => {
-        if (entry.mode === 'folder') return [];
-        const pct = entry.activationPercent as number | undefined | null;
-        if (pct === 0) return [];
-
-        let matched = false;
-        let reason = '';
-
-        if (entry.alwaysActive) {
-          matched = true;
-          reason = '항상 활성';
-        } else {
-          const key = entry.key;
-          if (typeof key === 'string' && key !== '' && messages.some((m) => String(m.content).includes(key))) {
-            matched = true;
-            reason = '키 매칭';
-          }
-        }
-
-        if (!matched) return [];
-        const result: PreviewLoreMatch = { index, reason };
-        if (pct != null && pct > 0 && pct < 100) {
-          result.activationPercent = pct;
-        }
-        return [result];
-      });
+      return RealPreviewEngine.matchLorebook(messages, lore);
     },
 
     onReloadDisplay() {},
@@ -264,30 +239,6 @@ describe('preview pipeline contract: transform order', () => {
     ]);
   });
 
-  it('user role pipeline includes editInput and the complete shared display pipeline', async () => {
-    const engine = createRecordingEngine();
-    const session = makeSession(engine);
-    await session.initialize();
-    engine.calls.length = 0;
-
-    const input = document.createElement('textarea');
-    input.value = 'test';
-    await session.handleSend(input);
-
-    const userCalls = extractTransformCalls(engine.calls).slice(0, 9);
-    expect(userCalls).toEqual([
-      { op: 'processRegex', type: 'editinput' },
-      { op: 'runLuaTrigger', triggerName: 'editInput' },
-      { op: 'risuChatParser', runVar: true },
-      { op: 'processRegex', type: 'editdisplay' },
-      { op: 'risuChatParser', runVar: true },
-      { op: 'runLuaTrigger', triggerName: 'editDisplay' },
-      { op: 'risuChatParser', runVar: false },
-      { op: 'resolveAssetImages' },
-      { op: 'resolveAssetImages' },
-    ]);
-  });
-
   it('handleSend orchestration: user-transform → lua(input) → lua(output) → char-transform → background refresh', async () => {
     const engine = createRecordingEngine();
     const session = makeSession(engine);
@@ -362,7 +313,7 @@ describe('preview pipeline contract: snapshot semantics', () => {
     await session.handleSend(input);
 
     const snap = session.getSnapshot();
-    expect(snap.loreMatches).toEqual([{ index: 0, reason: '키 매칭' }]);
+    expect(snap.loreMatches).toEqual([{ index: 0, reason: 'key: Hi', matchedKeys: ['Hi'] }]);
   });
 
   it('snapshot variables reflect engine state at query time', async () => {
@@ -406,7 +357,7 @@ describe('preview pipeline contract: lorebook activation', () => {
     await session.initialize();
 
     const snap = session.getSnapshot();
-    expect(snap.loreMatches).toEqual([{ index: 0, reason: '키 매칭' }]);
+    expect(snap.loreMatches).toEqual([{ index: 0, reason: 'key: 안녕', matchedKeys: ['안녕'] }]);
   });
 
   it('activates alwaysActive entries regardless of message content', async () => {
@@ -421,7 +372,7 @@ describe('preview pipeline contract: lorebook activation', () => {
     await session.initialize();
 
     const snap = session.getSnapshot();
-    expect(snap.loreMatches).toEqual([{ index: 0, reason: '항상 활성' }]);
+    expect(snap.loreMatches).toEqual([{ index: 0, reason: 'alwaysActive' }]);
   });
 
   it('does not activate entries with empty key and alwaysActive=false', async () => {
@@ -451,10 +402,10 @@ describe('preview pipeline contract: lorebook activation', () => {
     expect(snap.lorebook).toHaveLength(2);
     expect(snap.lorebook[0].mode).toBe('folder');
     // Only the normal entry matches
-    expect(snap.loreMatches).toEqual([{ index: 1, reason: '키 매칭' }]);
+    expect(snap.loreMatches).toEqual([{ index: 1, reason: 'key: Hello', matchedKeys: ['Hello'] }]);
   });
 
-  it('matches lorebook against ALL accumulated messages, not just the latest', async () => {
+  it('passes accumulated messages to the real lorebook matcher', async () => {
     const engine = createRecordingEngine();
     const session = makeSession(engine, {
       firstMessage: 'Welcome',
@@ -487,10 +438,10 @@ describe('preview pipeline contract: lorebook activation', () => {
     await session.initialize();
 
     const snap = session.getSnapshot();
-    expect(snap.loreMatches).toEqual([{ index: 1, reason: '키 매칭' }]);
+    expect(snap.loreMatches).toEqual([{ index: 1, reason: 'key: world', matchedKeys: ['world'] }]);
   });
 
-  it('activationPercent between 1-99 activates with probability annotation for authoring', async () => {
+  it('preserves the real matcher probability annotation and deterministic roll', async () => {
     const engine = createRecordingEngine();
     const session = makeSession(engine, {
       firstMessage: 'Hello world',
@@ -500,7 +451,13 @@ describe('preview pipeline contract: lorebook activation', () => {
 
     const snap = session.getSnapshot();
     expect(snap.loreMatches).toHaveLength(1);
-    expect(snap.loreMatches[0]).toEqual({ index: 0, reason: '키 매칭', activationPercent: 70 });
+    expect(snap.loreMatches[0]).toEqual({
+      index: 0,
+      reason: 'key: Hello',
+      matchedKeys: ['Hello'],
+      activationPercent: 70,
+      probabilityRoll: 0,
+    });
   });
 });
 
@@ -764,103 +721,5 @@ describe('preview pipeline contract: debug snapshot rendering', () => {
     expect(html).toContain('(70%)'); // probability annotation
     expect(html).toContain('⛔ 0%'); // zero percent blocked
     expect(html).toContain('⚫'); // normal inactive with key
-  });
-});
-
-// ── PreviewLoreMatch extended shape contract ────────────────────────
-describe('preview pipeline contract: PreviewLoreMatch extended shape', () => {
-  it('minimal match requires only index and reason', () => {
-    const match: PreviewLoreMatch = { index: 0, reason: '키 매칭' };
-    expect(match).toEqual({ index: 0, reason: '키 매칭' });
-  });
-
-  it('accepts all optional metadata fields', () => {
-    const decorators: PreviewLoreDecorators = {
-      depth: 4,
-      role: 'system',
-      scanDepth: 10,
-      probability: 80,
-      additionalKeys: ['extra'],
-      excludeKeys: ['noMatch'],
-    };
-    const match: PreviewLoreMatch = {
-      index: 3,
-      reason: '키 매칭',
-      activationPercent: 80,
-      decorators,
-      matchedKeys: ['hello', 'world'],
-      excludedKeys: ['secret'],
-      effectiveScanDepth: 10,
-      probabilityRoll: 42,
-      warnings: ['@@probability: value 120 clamped to 100'],
-    };
-
-    expect(match.index).toBe(3);
-    expect(match.reason).toBe('키 매칭');
-    expect(match.activationPercent).toBe(80);
-    expect(match.decorators).toBe(decorators);
-    expect(match.matchedKeys).toEqual(['hello', 'world']);
-    expect(match.excludedKeys).toEqual(['secret']);
-    expect(match.effectiveScanDepth).toBe(10);
-    expect(match.probabilityRoll).toBe(42);
-    expect(match.warnings).toEqual(['@@probability: value 120 clamped to 100']);
-  });
-
-  it('new optional fields default to undefined when omitted', () => {
-    const match: PreviewLoreMatch = { index: 1, reason: '항상 활성' };
-    expect(match.decorators).toBeUndefined();
-    expect(match.matchedKeys).toBeUndefined();
-    expect(match.excludedKeys).toBeUndefined();
-    expect(match.effectiveScanDepth).toBeUndefined();
-    expect(match.probabilityRoll).toBeUndefined();
-    expect(match.warnings).toBeUndefined();
-  });
-
-  it('PreviewSnapshot.loreMatches accepts extended matches', () => {
-    const snapshot: PreviewSnapshot = {
-      messages: [{ role: 'user', content: 'hello' }],
-      luaInitialized: false,
-      variables: {},
-      lorebook: [{ comment: 'entry', key: 'hello', mode: 'normal' }],
-      loreMatches: [
-        {
-          index: 0,
-          reason: '키 매칭',
-          matchedKeys: ['hello'],
-          decorators: { depth: 2 },
-          effectiveScanDepth: 5,
-        },
-      ],
-      scripts: [],
-      defaultVariables: '',
-      luaOutput: [],
-      initState: 'ready',
-      initError: null,
-      runtimeError: null,
-    };
-
-    const match = snapshot.loreMatches[0];
-    expect(match.index).toBe(0);
-    expect(match.matchedKeys).toEqual(['hello']);
-    expect(match.decorators?.depth).toBe(2);
-    expect(match.effectiveScanDepth).toBe(5);
-    // Existing fields still present
-    expect(match.reason).toBe('키 매칭');
-  });
-
-  it('decorators field uses PreviewLoreDecorators type from lorebook-decorators', () => {
-    const decs: PreviewLoreDecorators = {
-      activate: true,
-      matchFullWord: true,
-      position: 'end',
-    };
-    const match: PreviewLoreMatch = {
-      index: 5,
-      reason: '항상 활성',
-      decorators: decs,
-    };
-    expect(match.decorators?.activate).toBe(true);
-    expect(match.decorators?.matchFullWord).toBe(true);
-    expect(match.decorators?.position).toBe('end');
   });
 });

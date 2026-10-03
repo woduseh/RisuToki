@@ -1,9 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { showContextMenu, hideContextMenu } from './context-menu';
-
-beforeEach(() => {
-  // vitest.setup.ts already clears body between tests
-});
 
 describe('showContextMenu', () => {
   it('appends a .ctx-menu element to document.body', () => {

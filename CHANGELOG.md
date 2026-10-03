@@ -9,6 +9,18 @@
 
 ---
 
+## [3.10.1] - 2026-10-03
+
+### Fixed
+
+- Validate trigger-script JSON before applying document field patches so a rejected script update cannot partially change other fields.
+- Wait for native terminal exits before quitting Electron, with a bounded failure path, to avoid a reproduced Windows shutdown crash.
+- Isolate synthetic standalone MCP test fixtures from inherited document, reference, and write-permission settings.
+
+### Changed
+
+- Consolidated duplicated test setup and assertions, removed obsolete proposal/type-only checks, and replaced timing guesses and prepopulated states with deterministic behavior checks. Save/recovery, format compatibility, wire contracts, and platform guards remain covered.
+
 ## [3.10.0] - 2026-10-02
 
 ### Added

@@ -92,6 +92,7 @@ function serializeSession(session: TerminalSession): TerminalSessionInfo {
 
 let sessionCounter = 0;
 const sessions = new Map<string, TerminalSession>();
+const pendingTerminalExits = new Set<Promise<void>>();
 
 function getOrCreateSession(sessionId = DEFAULT_TERMINAL_SESSION_ID, name = 'Shell'): TerminalSession {
   const existing = sessions.get(sessionId);
@@ -140,6 +141,23 @@ export function killTerminal(sessionId?: string): void {
       session.ptyProcess = null;
       session.updatedAt = Date.now();
     }
+  }
+}
+
+export async function shutdownTerminals(): Promise<void> {
+  killTerminal();
+  if (pendingTerminalExits.size === 0) return;
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      Promise.all([...pendingTerminalExits]),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => reject(new Error('Terminal shutdown timed out')), 5000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -229,7 +247,14 @@ export function initTerminalManager(deps: TerminalManagerDeps): void {
             broadcastToAll('terminal-data', data);
           }
         });
+        let resolveExit!: () => void;
+        const exited = new Promise<void>((resolve) => {
+          resolveExit = resolve;
+        });
+        pendingTerminalExits.add(exited);
         processHandle.onExit((event: { exitCode?: number; signal?: number } = {}) => {
+          pendingTerminalExits.delete(exited);
+          resolveExit();
           const exitCode = typeof event.exitCode === 'number' ? event.exitCode : null;
           const signal = typeof event.signal === 'number' ? event.signal : null;
           const wasRequested = !!processHandle.__tokiStopRequested;

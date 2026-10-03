@@ -50,6 +50,16 @@ function makeDeps(overrides: Partial<SessionRecoveryManagerDeps> = {}): SessionR
   };
 }
 
+// Discovery sees the interrupted record on disk even after a decision writes a new
+// record. This ensures dismissal, rather than an empty fixture, hides the candidate.
+function makePendingRecoveryDeps(): SessionRecoveryManagerDeps {
+  return makeDeps({
+    readFileSync: vi.fn((filePath: string) =>
+      JSON.stringify(filePath === RECORD_PATH ? makeRecord() : makeProvenance()),
+    ),
+  });
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────
 
 describe('SessionRecoveryManager', () => {
@@ -618,26 +628,14 @@ describe('SessionRecoveryManager', () => {
       expect(parsed.latestAutosavePath).toBe('C:\\cards\\hero_autosave_20260402.charx');
     });
 
-    it('clears the pending candidate after restore', async () => {
-      deps = makeDeps({
-        openDocument: vi.fn(() => ({ name: 'Hero' })),
-      });
+    it('clears an existing pending candidate after restore', async () => {
+      const manager = createSessionRecoveryManager(makePendingRecoveryDeps());
+      const candidate = await manager.getPendingRecovery();
+      expect(candidate).toMatchObject({ sourceFilePath: SOURCE_PATH, autosavePath: AUTOSAVE_PATH });
 
-      const candidate = {
-        sourceFilePath: SOURCE_PATH,
-        autosavePath: AUTOSAVE_PATH,
-        provenance: makeProvenance(),
-        staleWarning: null,
-        originalMtimeMs: 2000,
-        autosaveMtimeMs: 1000,
-      };
+      await manager.restoreFromRecovery(candidate!);
 
-      const manager = createSessionRecoveryManager(deps);
-      await manager.restoreFromRecovery(candidate);
-
-      // After restoring, getPendingRecovery should return null
-      const afterCandidate = await manager.getPendingRecovery();
-      expect(afterCandidate).toBeNull();
+      expect(await manager.getPendingRecovery()).toBeNull();
     });
 
     it('preserves recovery provenance in manager state', async () => {
@@ -687,25 +685,14 @@ describe('SessionRecoveryManager', () => {
       expect(deps.setCurrentDocument).toHaveBeenCalledWith(SOURCE_PATH, originalData);
     });
 
-    it('clears the pending candidate after opening original', async () => {
-      deps = makeDeps({
-        openDocument: vi.fn(() => ({ name: 'Hero' })),
-      });
+    it('clears an existing pending candidate after opening original', async () => {
+      const manager = createSessionRecoveryManager(makePendingRecoveryDeps());
+      const candidate = await manager.getPendingRecovery();
+      expect(candidate).toMatchObject({ sourceFilePath: SOURCE_PATH, autosavePath: AUTOSAVE_PATH });
 
-      const candidate = {
-        sourceFilePath: SOURCE_PATH,
-        autosavePath: AUTOSAVE_PATH,
-        provenance: makeProvenance(),
-        staleWarning: null,
-        originalMtimeMs: 2000,
-        autosaveMtimeMs: 1000,
-      };
+      await manager.openOriginal(candidate!);
 
-      const manager = createSessionRecoveryManager(deps);
-      await manager.openOriginal(candidate);
-
-      const afterCandidate = await manager.getPendingRecovery();
-      expect(afterCandidate).toBeNull();
+      expect(await manager.getPendingRecovery()).toBeNull();
     });
 
     it('does not preserve recovery provenance', async () => {
@@ -755,8 +742,9 @@ describe('SessionRecoveryManager', () => {
   // ── ignoreRecovery ────────────────────────────────────────────────
 
   describe('ignoreRecovery', () => {
-    it('clears the pending candidate for this launch', async () => {
-      const manager = createSessionRecoveryManager(deps);
+    it('clears an existing pending candidate for this launch', async () => {
+      const manager = createSessionRecoveryManager(makePendingRecoveryDeps());
+      expect(await manager.getPendingRecovery()).toMatchObject({ autosavePath: AUTOSAVE_PATH });
       manager.ignoreRecovery();
 
       const afterCandidate = await manager.getPendingRecovery();

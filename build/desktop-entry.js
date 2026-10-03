@@ -260,12 +260,19 @@ async function smoke() {
     await until(() => evaluate(visibleEditorValue).then((value) => value === text + 'abc'), 'Backspace fixture');
     currentWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
     currentWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
-    await sleep(150);
+    await until(
+      () => evaluate(visibleEditorValue).then((value) => value === text + 'ab'),
+      'one Backspace deleting one ASCII character',
+    );
     assert.equal(await evaluate(visibleEditorValue), text + 'ab', 'One Backspace must delete one ASCII character');
     for (let index = 0; index < 2; index++) {
       currentWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Backspace' });
       currentWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'Backspace' });
-      await sleep(50);
+      const expected = index === 0 ? text + 'a' : text;
+      await until(
+        () => evaluate(visibleEditorValue).then((value) => value === expected),
+        `Backspace ${index + 2} preserving preceding text`,
+      );
     }
     assert.equal(await evaluate(visibleEditorValue), text, 'Repeated Backspace must preserve preceding text');
     await menu('저장');

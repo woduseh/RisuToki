@@ -973,14 +973,6 @@ describe('PreviewEngine CBS minor tags', () => {
     PreviewEngine.resetVars();
   });
 
-  // --- {{isodate}} ---
-  it('isodate returns UTC date in YYYY-MM-DD format', () => {
-    const output = PreviewEngine.risuChatParser('{{isodate}}');
-    const now = new Date();
-    const expected = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}-${String(now.getUTCDate()).padStart(2, '0')}`;
-    expect(output).toBe(expected);
-  });
-
   // --- {{unicodeencode}} ---
   it('unicodeencode returns char code of first character', () => {
     expect(PreviewEngine.risuChatParser('{{unicodeencode::A}}')).toBe('65');

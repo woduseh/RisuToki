@@ -1258,7 +1258,9 @@ describe('MCP API risup prompt stable IDs and warnings', () => {
     ]);
     const currentData: SearchFixture = {
       _fileType: 'risup',
-      promptTemplate: templateWithId,
+      promptTemplate: JSON.stringify([
+        { id: 'previous-id', type: 'plain', type2: 'normal', text: 'Before write', role: 'system' },
+      ]),
       formatingOrder: '[]',
     };
     const api = await startTestApiServer(currentData);
@@ -1276,6 +1278,8 @@ describe('MCP API risup prompt stable IDs and warnings', () => {
       }>(api.port, api.token, '/risup/prompt-item/0');
       expect(readRes.status).toBe(200);
       expect(readRes.data.id).toBe(explicitId);
+      expect(readRes.data.item.text).toBe('With ID');
+      expect(JSON.parse(currentData.promptTemplate as string)).toEqual(JSON.parse(templateWithId));
     } finally {
       await closeServer(api.server);
     }

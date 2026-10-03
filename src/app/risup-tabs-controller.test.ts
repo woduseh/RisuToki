@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import * as risupTabsController from './risup-tabs-controller';
 import {
   backupActiveRisupRestoreDraft,
+  findActiveRisupTab,
+  getRisupSidebarBackupTargets,
+  getRisupSidebarExtraItems,
   restoreRisupTabsControllerBackup,
   type RisupTabLike,
 } from './risup-tabs-controller';
@@ -91,17 +93,6 @@ describe('findActiveRisupTab', () => {
   it('finds the currently active risup form tab from open tabs', () => {
     const activeTab = makeRisupTab('risup_templates', makeRisupFileData());
     const inactiveTab = makeRisupTab('risup_prompts', makeRisupFileData());
-    const findActiveRisupTab = (
-      risupTabsController as {
-        findActiveRisupTab?: (options: { activeTabId: string | null; openTabs: RisupTabLike[] }) => RisupTabLike | null;
-      }
-    ).findActiveRisupTab;
-
-    expect(typeof findActiveRisupTab).toBe('function');
-    if (!findActiveRisupTab) {
-      return;
-    }
-
     expect(
       findActiveRisupTab({
         activeTabId: 'risup_templates',
@@ -327,21 +318,6 @@ describe('restoreRisupTabsControllerBackup — open tab', () => {
 
 describe('getRisupSidebarBackupTargets', () => {
   it('does not expose hidden legacy risup backups from visible group menus', () => {
-    const getRisupSidebarBackupTargets = (
-      risupTabsController as {
-        getRisupSidebarBackupTargets?: (
-          currentGroupId: string,
-          groups: ReadonlyArray<{ id: string; label: string; hidden?: boolean }>,
-          hasBackups: (backupKey: string) => boolean,
-        ) => Array<{ backupKey: string; label: string }>;
-      }
-    ).getRisupSidebarBackupTargets;
-
-    expect(typeof getRisupSidebarBackupTargets).toBe('function');
-    if (!getRisupSidebarBackupTargets) {
-      return;
-    }
-
     expect(
       getRisupSidebarBackupTargets(
         'templates',
@@ -357,23 +333,6 @@ describe('getRisupSidebarBackupTargets', () => {
 
 describe('getRisupSidebarExtraItems', () => {
   it('keeps the top-level risup description editor visible alongside grouped preset fields', () => {
-    const getRisupSidebarExtraItems = (
-      risupTabsController as {
-        getRisupSidebarExtraItems?: () => Array<{
-          field: string;
-          icon: string;
-          id: string;
-          label: string;
-          language: string;
-        }>;
-      }
-    ).getRisupSidebarExtraItems;
-
-    expect(typeof getRisupSidebarExtraItems).toBe('function');
-    if (!getRisupSidebarExtraItems) {
-      return;
-    }
-
     expect(getRisupSidebarExtraItems()).toEqual([
       {
         field: 'description',

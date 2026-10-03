@@ -1,3 +1,4 @@
+import { flushPromises } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   coerceTerminalGeometry,
@@ -37,8 +38,6 @@ describe('terminal-ui helpers', () => {
 });
 
 describe('createInputDispatcher', () => {
-  const flush = () => new Promise<void>((r) => setTimeout(r, 10));
-
   it('forwards data immediately when no gate is active', () => {
     const forwarded: string[] = [];
     const dispatcher = createInputDispatcher((d) => forwarded.push(d));
@@ -60,7 +59,7 @@ describe('createInputDispatcher', () => {
     expect(forwarded).toEqual([]);
 
     resolve();
-    await flush();
+    await flushPromises();
     expect(forwarded).toEqual(['\r']);
   });
 
@@ -79,7 +78,7 @@ describe('createInputDispatcher', () => {
     expect(forwarded).toEqual([]);
 
     resolve();
-    await flush();
+    await flushPromises();
     expect(forwarded).toEqual(['\r', 'n', 'e']);
   });
 
@@ -94,7 +93,7 @@ describe('createInputDispatcher', () => {
 
     dispatcher.dispatch('\r', gate);
     resolve();
-    await flush();
+    await flushPromises();
     expect(forwarded).toEqual(['\r']);
 
     // Subsequent dispatch should be immediate (sync path)
@@ -109,7 +108,7 @@ describe('createInputDispatcher', () => {
     const gate = Promise.reject(new Error('prep failed'));
     dispatcher.dispatch('\r', gate);
 
-    await flush();
+    await flushPromises();
     expect(forwarded).toEqual(['\r']);
   });
 
@@ -130,12 +129,12 @@ describe('createInputDispatcher', () => {
     dispatcher.dispatch('b', gate2);
 
     resolve1();
-    await flush();
+    await flushPromises();
     // only 'a' forwarded; 'b' is still gated behind gate2
     expect(forwarded).toEqual(['a']);
 
     resolve2();
-    await flush();
+    await flushPromises();
     expect(forwarded).toEqual(['a', 'b']);
   });
 });

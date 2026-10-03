@@ -355,21 +355,6 @@ describe('preview-panel', () => {
     replacement.dispose();
     vi.unstubAllGlobals();
   });
-  it('merges partial fileData overrides with preview defaults', () => {
-    const deps = createDeps({
-      fileData: {
-        personality: 'cheerful and curious',
-        scenario: 'a rainy afternoon',
-      },
-    });
-
-    expect(deps.fileData.name).toBe('Toki');
-    expect(deps.fileData.description).toBe('desc');
-    expect(deps.fileData.personality).toBe('cheerful and curious');
-    expect(deps.fileData.scenario).toBe('a rainy afternoon');
-    expect(deps.fileData.firstMessage).toBe('안녕하세요');
-  });
-
   it('mounts the preview workbench directly inside the given editor container', () => {
     const container = document.createElement('div');
     const deps = createDeps();
@@ -565,7 +550,7 @@ describe('preview-panel', () => {
     expect(container.querySelector('.preview-panel')).toBeNull();
   });
 
-  it('toggles debug drawer on debug button click', () => {
+  it('toggles the debug drawer and its button state together', () => {
     const container = document.createElement('div');
     const deps = createDeps();
     const { dispose } = showPreviewPanel(container, deps);
@@ -575,13 +560,16 @@ describe('preview-panel', () => {
 
     const buttons = container.querySelectorAll('.preview-header button');
     const debugBtn = buttons[1] as HTMLButtonElement;
-    expect(debugBtn.textContent).toBe('🔧');
+    expect(debugBtn.getAttribute('aria-label')).toBe('디버그 패널');
+    expect(debugBtn.classList.contains('active')).toBe(false);
 
     debugBtn.click();
     expect(debugDrawer.style.display).toBe('flex');
+    expect(debugBtn.classList.contains('active')).toBe(true);
 
     debugBtn.click();
     expect(debugDrawer.style.display).toBe('none');
+    expect(debugBtn.classList.contains('active')).toBe(false);
 
     dispose();
   });
@@ -639,29 +627,6 @@ describe('preview-panel', () => {
     await vi.waitFor(() => {
       expect(chatInput.style.height).toBe('auto');
     });
-
-    dispose();
-  });
-
-  it('toggles active class on debug button when opening/closing drawer', () => {
-    const container = document.createElement('div');
-    const deps = createDeps();
-    const { dispose } = showPreviewPanel(container, deps);
-
-    const buttons = container.querySelectorAll('.preview-header button');
-    const debugBtn = buttons[1] as HTMLButtonElement;
-    expect(debugBtn.getAttribute('aria-label')).toBe('디버그 패널');
-
-    // Initially not active
-    expect(debugBtn.classList.contains('active')).toBe(false);
-
-    // Open debug drawer — button should gain 'active' class
-    debugBtn.click();
-    expect(debugBtn.classList.contains('active')).toBe(true);
-
-    // Close debug drawer — button should lose 'active' class
-    debugBtn.click();
-    expect(debugBtn.classList.contains('active')).toBe(false);
 
     dispose();
   });

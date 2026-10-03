@@ -330,7 +330,7 @@ describe('batchReplaceBodySchema', () => {
     }
   });
 
-  it('rejects empty replacements array', () => {
+  it('accepts a structurally empty replacements array for caller-side length validation', () => {
     // Empty array is structurally valid in Zod; the caller checks length limits
     const result = validateBody({ replacements: [] }, batchReplaceBodySchema);
     expect(result.success).toBe(true);

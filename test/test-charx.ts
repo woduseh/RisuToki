@@ -737,8 +737,8 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   assert.equal(reopened.mcpUrl || '', '');
 })();
 
-(function testHinanoRegressionUsesAsyncCheatHandlersAndArrayAwareScenarioInjection() {
-  const filePath = path.join(tempDir, 'hinano-regression.charx');
+(function testPreservesMultilineLuaCode() {
+  const filePath = path.join(tempDir, 'multiline-lua.charx');
   const mainCode = [
     'local stats = {{ label = "HP" }}',
     'for _, s in ipairs(stats) do',
@@ -771,7 +771,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
   saveCharx(filePath, {
     spec: 'chara_card_v3',
     specVersion: '3.0',
-    name: 'Hinano Regression',
+    name: 'Multiline Lua',
     description: '',
     personality: '',
     scenario: '',
@@ -796,7 +796,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
     lorebook: [],
     regex: [],
     moduleId: 'module-hinano-regression',
-    moduleName: 'Hinano Regression',
+    moduleName: 'Multiline Lua',
     moduleDescription: '',
     assets: [],
     xMeta: {},
@@ -823,32 +823,7 @@ const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-charx-'));
       ? mainEffect.code
       : '';
 
-  assert.ok(reopenedMainCode.length > 0, 'Hinano regression fixture should expose triggerlua code');
-  assert.match(
-    reopenedMainCode,
-    /_G\["onSet" \.\. s\.label\] = async\(function\(id\)/,
-    'Cheat stat setters should wrap alertInput with async() so :await() resumes correctly',
-  );
-  assert.match(
-    reopenedMainCode,
-    /onTimeskip\s*=\s*async\(function\(id\)/,
-    'Time skip should wrap alertInput with async() so :await() resumes correctly',
-  );
-  assert.match(
-    reopenedMainCode,
-    /local function injectScenarioDirective\(data, directive\)/,
-    'Scenario injection should use a helper that can handle editRequest prompt arrays',
-  );
-  assert.match(
-    reopenedMainCode,
-    /if type\(data\) == "table" then/,
-    'Scenario injection should support editRequest chat arrays directly',
-  );
-  assert.doesNotMatch(
-    reopenedMainCode,
-    /return data \.\. "\\n\\n<scenario_directive>/,
-    'Scenario injection should not concatenate raw strings onto editRequest arrays',
-  );
+  assert.equal(reopenedMainCode, mainCode, 'save/reload must preserve every multiline Lua byte');
 })();
 
 // ---- .risup round-trip test ----
@@ -1108,14 +1083,10 @@ const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
   assert.throws(() => openCharx(filePath), /missing required card\.data object/i);
 })();
 
-(function testOpenRisumInvalidMsgpack() {
-  const filePath = path.join(errorTempDir, 'invalid.risum');
+(function testOpenRisumTruncatedHeader() {
+  const filePath = path.join(errorTempDir, 'truncated-header.risum');
   fs.writeFileSync(filePath, Buffer.from([0xff, 0xfe, 0xfd, 0x00, 0x01]));
-  assert.throws(
-    () => openRisum(filePath),
-    (err: Error) => err instanceof Error,
-    'Opening risum with invalid msgpack should throw',
-  );
+  assert.throws(() => openRisum(filePath), /too small to contain a valid risum header/i);
 })();
 
 (function testOpenRisumRejectsNonObjectMainPayload() {
@@ -1155,15 +1126,10 @@ const errorTempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-error-'));
   );
 })();
 
-(function testOpenRisupTooSmall() {
+(function testOpenRisupTruncatedCompression() {
   const filePath = path.join(errorTempDir, 'tiny.risup');
-  // AES-CBC requires at least 16 bytes (one block); write fewer
   fs.writeFileSync(filePath, Buffer.from([0x01, 0x02, 0x03]));
-  assert.throws(
-    () => openRisup(filePath),
-    (err: Error) => err instanceof Error,
-    'Opening risup file smaller than AES block size should throw',
-  );
+  assert.throws(() => openRisup(filePath), /Failed to decompress \.risup file/i);
 })();
 
 (function testOpenCharxTruncatedZip() {

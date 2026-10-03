@@ -1,11 +1,13 @@
-import { mount } from '@vue/test-utils';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { nextTick } from 'vue';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from './App.vue';
 import { useAppStore } from './stores/app-store';
 import { useWorkbenchStore } from './stores/workbench-store';
 import { registerActions } from './lib/action-registry';
+
+enableAutoUnmount(afterEach);
 
 describe('document workbench shell', () => {
   it('keeps editor and preview session DOM mounted while switching review, preview and focus', async () => {
@@ -44,7 +46,6 @@ describe('document workbench shell', () => {
     await nextTick();
     expect(wrapper.get('#editor-container').element).toBe(editor);
     expect(wrapper.find('#character-preview-dock-container iframe').exists()).toBe(true);
-    wrapper.unmount();
   });
 
   it('exposes bounded keyboard resizing and routes review and preview actions', async () => {
@@ -69,6 +70,5 @@ describe('document workbench shell', () => {
     expect(refresh).toHaveBeenCalledOnce();
     expect(close).toHaveBeenCalledOnce();
     expect(review).toHaveBeenCalledOnce();
-    wrapper.unmount();
   });
 });

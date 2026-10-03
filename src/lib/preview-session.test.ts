@@ -1473,10 +1473,10 @@ describe('preview session: button-driven state parity (Hinano regression)', () =
     expect(snapshot.variables.__action).toBe(JSON.stringify('attack'));
   });
 
-  it('queued scenario: defaultVariables with __-prefixed state are available after init', async () => {
+  it('exposes __-prefixed default state through the real engine and session snapshot', async () => {
     // Some cards pre-seed state via defaultVariables. The __-prefixed vars
     // should be accessible just like regular vars for the request pipeline.
-    const engine = createEngine();
+    const engine = RealPreviewEngine;
     const chatFrame = createChatFrame();
     const session = createPreviewSession({
       engine,
@@ -1496,8 +1496,13 @@ describe('preview session: button-driven state parity (Hinano regression)', () =
 
     await session.initialize();
 
-    // defaultVariables should be set on the engine
-    expect(engine.state.defaultVariables).toBe('__hp = 100\n__status = normal\naffinity = 0');
+    expect(session.getSnapshot().variables).toMatchObject({
+      $__hp: '100',
+      $__status: 'normal',
+      $affinity: '0',
+    });
+    session.dispose();
+    engine.resetVars();
   });
 
   it('switches to an alternate greeting and resets the runtime with that greeting selected', async () => {

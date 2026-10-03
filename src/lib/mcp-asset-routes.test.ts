@@ -19,11 +19,6 @@ interface McpErrorEnvelope {
   details?: unknown;
 }
 
-interface McpRecoveryEnvelope extends McpErrorEnvelope {
-  retryable: boolean;
-  next_actions: string[];
-}
-
 let TEST_PNG: Buffer;
 
 beforeAll(async () => {
@@ -265,6 +260,8 @@ describe('MCP API structured error envelopes — asset routes', () => {
       expect(res.data).toHaveProperty('target', `asset:${assetPath}`);
       expect(res.data).toHaveProperty('error', `에셋 경로 "${assetPath}"가 이미 존재합니다.`);
       expect(res.data).toHaveProperty('suggestion', '다른 파일명이나 폴더를 사용하세요.');
+      expect(res.data.retryable).toBe(true);
+      expect(Array.isArray(res.data.next_actions)).toBe(true);
     } finally {
       await closeServer(api.server);
     }
@@ -466,28 +463,6 @@ describe('MCP API structured error envelopes — risum-asset routes', () => {
           actual_path: 'assets/audio/theme.mp3',
         }),
       );
-    } finally {
-      await closeServer(api.server);
-    }
-  });
-});
-
-describe('MCP error recovery metadata — asset conflicts', () => {
-  it('duplicate asset returns retryable: true', async () => {
-    const assetPath = 'assets/other/image/recovery-dup.png';
-    const fixture: SearchFixture = {
-      ...createSearchFixture(),
-      assets: [{ path: assetPath, data: Buffer.from('existing-asset') }],
-    };
-    const api = await startTestApiServer(fixture);
-    try {
-      const res = await postJson<McpRecoveryEnvelope>(api.port, api.token, '/asset/add', {
-        fileName: 'recovery-dup.png',
-        base64: Buffer.from('new-asset').toString('base64'),
-      });
-      expect(res.status).toBe(409);
-      expect(res.data.retryable).toBe(true);
-      expect(Array.isArray(res.data.next_actions)).toBe(true);
     } finally {
       await closeServer(api.server);
     }

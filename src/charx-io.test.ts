@@ -3,7 +3,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   extractPrimaryLuaFromTriggerScripts,
@@ -11,6 +11,11 @@ import {
   saveRisup,
   type LoadedDocumentData,
 } from './charx-io';
+
+const tempDirectories: string[] = [];
+afterEach(() => {
+  for (const directory of tempDirectories.splice(0)) fs.rmSync(directory, { recursive: true, force: true });
+});
 
 describe('primary Lua trigger synchronization', () => {
   it('updates the Lua effect without overwriting an earlier JavaScript effect', () => {
@@ -67,7 +72,9 @@ describe('primary Lua trigger synchronization', () => {
 
 describe('risup JSON field persistence', () => {
   it('rejects malformed generic JSON fields with field context before writing', () => {
-    const outputPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-json-')), 'bad.risup');
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-risup-json-'));
+    tempDirectories.push(directory);
+    const outputPath = path.join(directory, 'bad.risup');
     const data = {
       _fileType: 'risup',
       name: 'Invalid preset',

@@ -61,6 +61,10 @@ export async function startStandaloneClient(options: StandaloneClientOptions): P
   for (const ref of options.refs ?? []) args.push('--ref', ref);
 
   const env = copyProcessEnv();
+  // Fixture options own document access and write permission; never inherit a user's standalone session.
+  delete env.RISUTOKI_MCP_FILE;
+  delete env.RISUTOKI_MCP_REFS;
+  delete env.RISUTOKI_MCP_ALLOW_WRITES;
   delete env.RISUTOKI_MCP_TOOL_PROFILE;
   if (options.envToolProfile) env.RISUTOKI_MCP_TOOL_PROFILE = options.envToolProfile;
   const client = new Client(

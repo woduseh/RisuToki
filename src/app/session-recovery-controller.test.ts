@@ -1,48 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-
-async function loadSessionRecoveryControllerModule(): Promise<Record<string, unknown>> {
-  const modulePath = './session-recovery-controller.ts';
-  try {
-    return await import(modulePath);
-  } catch {
-    return {};
-  }
-}
+import { runStartupSessionRecovery } from './session-recovery-controller';
 
 describe('session-recovery-controller', () => {
   it('restores a pending session and sets sticky UI provenance', async () => {
-    const mod = await loadSessionRecoveryControllerModule();
-    const runStartupSessionRecovery = mod.runStartupSessionRecovery as
-      | ((deps: {
-          api: {
-            getPendingSessionRecovery: () => Promise<{
-              sourceFilePath: string;
-              autosavePath: string;
-              staleWarning: string | null;
-              provenance: { savedAt: string };
-            } | null>;
-            resolvePendingSessionRecovery: (
-              action: 'restore' | 'open-original' | 'ignore',
-            ) => Promise<{ action: 'restore' | 'open-original'; data: Record<string, unknown> } | null>;
-          };
-          showRecoveryDialog: (summary: {
-            sourceFileName: string;
-            savedAt: string;
-            staleWarning?: string | null;
-          }) => Promise<'restore' | 'open-original' | 'ignore'>;
-          applyRecoveredDocument: (data: Record<string, unknown>) => void;
-          setRestoredSessionLabel: (label: string) => void;
-          showRestoredSessionStatus: (text: string) => void;
-        }) => Promise<void>)
-      | undefined;
-
     const applyRecoveredDocument = vi.fn();
     const setRestoredSessionLabel = vi.fn();
     const showRestoredSessionStatus = vi.fn();
 
-    expect(typeof runStartupSessionRecovery).toBe('function');
-
-    await runStartupSessionRecovery!({
+    await runStartupSessionRecovery({
       api: {
         getPendingSessionRecovery: vi.fn().mockResolvedValue({
           sourceFilePath: 'C:\\cards\\Character.charx',
@@ -69,31 +34,9 @@ describe('session-recovery-controller', () => {
   });
 
   it('does nothing when there is no pending recovery candidate', async () => {
-    const mod = await loadSessionRecoveryControllerModule();
-    const runStartupSessionRecovery = mod.runStartupSessionRecovery as
-      | ((deps: {
-          api: {
-            getPendingSessionRecovery: () => Promise<null>;
-            resolvePendingSessionRecovery: (
-              action: 'restore' | 'open-original' | 'ignore',
-            ) => Promise<{ action: 'restore' | 'open-original'; data: Record<string, unknown> } | null>;
-          };
-          showRecoveryDialog: (summary: {
-            sourceFileName: string;
-            savedAt: string;
-            staleWarning?: string | null;
-          }) => Promise<'restore' | 'open-original' | 'ignore'>;
-          applyRecoveredDocument: (data: Record<string, unknown>) => void;
-          setRestoredSessionLabel: (label: string) => void;
-          showRestoredSessionStatus: (text: string) => void;
-        }) => Promise<void>)
-      | undefined;
-
     const applyRecoveredDocument = vi.fn();
 
-    expect(typeof runStartupSessionRecovery).toBe('function');
-
-    await runStartupSessionRecovery!({
+    await runStartupSessionRecovery({
       api: {
         getPendingSessionRecovery: vi.fn().mockResolvedValue(null),
         resolvePendingSessionRecovery: vi.fn(),
@@ -108,38 +51,11 @@ describe('session-recovery-controller', () => {
   });
 
   it('opens the original document without setting restored-session provenance', async () => {
-    const mod = await loadSessionRecoveryControllerModule();
-    const runStartupSessionRecovery = mod.runStartupSessionRecovery as
-      | ((deps: {
-          api: {
-            getPendingSessionRecovery: () => Promise<{
-              sourceFilePath: string;
-              autosavePath: string;
-              staleWarning: string | null;
-              provenance: { savedAt: string };
-            } | null>;
-            resolvePendingSessionRecovery: (
-              action: 'restore' | 'open-original' | 'ignore',
-            ) => Promise<{ action: 'restore' | 'open-original'; data: Record<string, unknown> } | null>;
-          };
-          showRecoveryDialog: (summary: {
-            sourceFileName: string;
-            savedAt: string;
-            staleWarning?: string | null;
-          }) => Promise<'restore' | 'open-original' | 'ignore'>;
-          applyRecoveredDocument: (data: Record<string, unknown>) => void;
-          setRestoredSessionLabel: (label: string) => void;
-          showRestoredSessionStatus: (text: string) => void;
-        }) => Promise<void>)
-      | undefined;
-
     const applyRecoveredDocument = vi.fn();
     const setRestoredSessionLabel = vi.fn();
     const showRestoredSessionStatus = vi.fn();
 
-    expect(typeof runStartupSessionRecovery).toBe('function');
-
-    await runStartupSessionRecovery!({
+    await runStartupSessionRecovery({
       api: {
         getPendingSessionRecovery: vi.fn().mockResolvedValue({
           sourceFilePath: 'C:\\cards\\Character.charx',
@@ -164,36 +80,9 @@ describe('session-recovery-controller', () => {
   });
 
   it('ignores the pending recovery without applying a document', async () => {
-    const mod = await loadSessionRecoveryControllerModule();
-    const runStartupSessionRecovery = mod.runStartupSessionRecovery as
-      | ((deps: {
-          api: {
-            getPendingSessionRecovery: () => Promise<{
-              sourceFilePath: string;
-              autosavePath: string;
-              staleWarning: string | null;
-              provenance: { savedAt: string };
-            } | null>;
-            resolvePendingSessionRecovery: (
-              action: 'restore' | 'open-original' | 'ignore',
-            ) => Promise<{ action: 'restore' | 'open-original'; data: Record<string, unknown> } | null>;
-          };
-          showRecoveryDialog: (summary: {
-            sourceFileName: string;
-            savedAt: string;
-            staleWarning?: string | null;
-          }) => Promise<'restore' | 'open-original' | 'ignore'>;
-          applyRecoveredDocument: (data: Record<string, unknown>) => void;
-          setRestoredSessionLabel: (label: string) => void;
-          showRestoredSessionStatus: (text: string) => void;
-        }) => Promise<void>)
-      | undefined;
-
     const applyRecoveredDocument = vi.fn();
 
-    expect(typeof runStartupSessionRecovery).toBe('function');
-
-    await runStartupSessionRecovery!({
+    await runStartupSessionRecovery({
       api: {
         getPendingSessionRecovery: vi.fn().mockResolvedValue({
           sourceFilePath: 'C:\\cards\\Character.charx',

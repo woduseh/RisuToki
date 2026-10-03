@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { flushPromises } from '@vue/test-utils';
 
 type IpcHandler = (_event: unknown, ...args: unknown[]) => unknown;
 type IpcListener = (_event: unknown, ...args: unknown[]) => void;
@@ -30,7 +31,6 @@ const mockState = vi.hoisted(() => ({
   handlers: new Map<string, IpcHandler>(),
   listeners: new Map<string, IpcListener>(),
   ptys: [] as FakePtyProcess[],
-  spawn: vi.fn(),
 }));
 
 vi.mock('electron', () => ({
@@ -42,11 +42,6 @@ vi.mock('electron', () => ({
       mockState.listeners.set(channel, listener);
     }),
   },
-}));
-
-vi.mock('node-pty', () => ({
-  default: { spawn: mockState.spawn },
-  spawn: mockState.spawn,
 }));
 
 vi.mock('./terminal-shell', () => ({
@@ -66,11 +61,6 @@ async function initManager() {
   mockState.handlers.clear();
   mockState.listeners.clear();
   mockState.ptys = [];
-  mockState.spawn.mockImplementation(() => {
-    const pty = new FakePtyProcess();
-    mockState.ptys.push(pty);
-    return pty;
-  });
   const broadcastToAll = vi.fn();
   const manager = await import('./terminal-manager');
   manager.initTerminalManager({
@@ -118,6 +108,45 @@ describe('terminal manager sessions', () => {
     await mockState.handlers.get('terminal-stop-session')?.({}, first.id);
 
     expect(broadcastToAll).toHaveBeenCalledWith('terminal-exit-session', first.id);
+  });
+
+  it('waits for all terminal exits, including an already stopped session, before shutdown completes', async () => {
+    const { manager } = await initManager();
+    const first = (await mockState.handlers.get('terminal-new-session')?.({}, 'One')) as { id: string };
+    const second = (await mockState.handlers.get('terminal-new-session')?.({}, 'Two')) as { id: string };
+    await mockState.handlers.get('terminal-start-session')?.({}, first.id, 80, 24);
+    await mockState.handlers.get('terminal-start-session')?.({}, second.id, 80, 24);
+    for (const pty of mockState.ptys) pty.kill.mockImplementation(() => {});
+
+    manager.killTerminal(first.id);
+    let completed = false;
+    const shutdown = manager.shutdownTerminals().then(() => {
+      completed = true;
+    });
+    await flushPromises();
+    expect(completed).toBe(false);
+    mockState.ptys[1].exitHandlers.forEach((handler) => handler({ exitCode: 0 }));
+    await flushPromises();
+    expect(completed).toBe(false);
+    mockState.ptys[0].exitHandlers.forEach((handler) => handler({ exitCode: 0 }));
+    await shutdown;
+    expect(completed).toBe(true);
+    expect(manager.listTerminalSessions().every((session) => !session.running)).toBe(true);
+    for (const pty of mockState.ptys) expect(pty.kill).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects a terminal shutdown that never finishes instead of hanging or reporting success', async () => {
+    const { manager } = await initManager();
+    await mockState.handlers.get('terminal-start')?.({}, 80, 24);
+    mockState.ptys[0].kill.mockImplementation(() => {});
+    vi.useFakeTimers();
+    try {
+      const rejection = expect(manager.shutdownTerminals()).rejects.toThrow('Terminal shutdown timed out');
+      await vi.advanceTimersByTimeAsync(5000);
+      await rejection;
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('keeps legacy single-terminal APIs wired to the default session', async () => {

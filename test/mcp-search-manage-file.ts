@@ -89,6 +89,35 @@ export async function runStandaloneManageFileDogfood(): Promise<void> {
     });
     assert.equal(nestedRecord(snapshots.result, 'snapshot list result').count, 1);
 
+    const editedDescription = 'Changed after snapshot; restoring must recover the original.';
+    const editPreview = await callJson(runtime, 'preview_edit', {
+      target: activeTarget,
+      operations: [
+        {
+          op: 'write_content',
+          selector: { family: 'field', field: 'description' },
+          content: editedDescription,
+        },
+      ],
+    });
+    const editToken = previewToken(editPreview, 'post-snapshot edit preview');
+    await callJson(runtime, 'apply_edit', {
+      target: activeTarget,
+      preview_token: editToken.preview_token,
+      operation_digest: editToken.operation_digest,
+      guard_values: editToken.required_guards,
+    });
+    const editedRead = await callJson(runtime, 'read_content', {
+      target: activeTarget,
+      selectors: [{ family: 'field', field: 'description' }],
+    });
+    const editedItems = nestedArray(nestedRecord(editedRead.result, 'edited read result').items, 'edited items');
+    assert.equal(
+      nestedRecord(nestedRecord(editedItems[0], 'edited field item').data, 'edited field data').content,
+      editedDescription,
+      'the intermediate edit must change the field before snapshot restoration',
+    );
+
     const restorePreview = await callJson(runtime, 'manage_file', {
       target: activeTarget,
       mode: 'preview',
@@ -105,7 +134,11 @@ export async function runStandaloneManageFileDogfood(): Promise<void> {
     });
     assert.ok(routedTools(exportPreview).includes('export_field_to_file'));
     await applyManageFilePreview(runtime, activeTarget, exportPreview);
-    assert.equal(fs.readFileSync(exportPath, 'utf-8'), 'Alpha facade dogfood description.');
+    assert.equal(
+      fs.readFileSync(exportPath, 'utf-8'),
+      'Alpha facade dogfood description.',
+      'restoring the snapshot must recover the original field content in the exported file',
+    );
 
     const lorebookExportDir = path.join(fixture.dir, 'lorebook-export');
     const lorebookExportPreview = await callJson(runtime, 'manage_file', {

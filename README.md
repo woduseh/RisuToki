@@ -236,7 +236,7 @@ Which items appear depends on the file type:
 - If any JSON-backed preset field contains malformed data, saving is blocked and the status bar shows the offending field. Structured fields (`promptTemplate`, `formatingOrder`, `presetBias`, `localStopStrings`) also enforce their expected array/item shapes.
 - MCP `write_field` / `write_field_batch` and autosave share the same risup validation boundary, so malformed JSON/shape is rejected immediately — it never silently persists in memory or in autosave files.
 - `.charx` **Character Info** includes `description`, `globalNote`, `defaultVariables`, `creatorcomment`, and `characterVersion`.
-- `triggerScripts` opens in a **structured trigger form editor** (not raw JSON). If unsupported trigger/effect/condition types are present, saving is blocked.
+- `triggerScripts` opens in a **structured trigger form editor** (not raw JSON). If unsupported trigger/effect/condition types are present, saving is blocked. Malformed trigger-script JSON or a non-array script payload is rejected before any field in the submitted patch changes.
 - `.charx` / `.risum` files with an empty `triggerScripts` array or a lone `triggerlua` wrapper are treated as **Lua mode**. In that case, the trigger item appears dimmed; conversely, when standalone triggers exist, the Lua folder appears dimmed.
 
 #### Lua / CSS Section System

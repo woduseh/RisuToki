@@ -265,8 +265,11 @@ describe('applyUpdates', () => {
 
   it.each(['{broken', '{"effect":[]}'])('rejects invalid script input %s without replacing scripts', (input) => {
     const scripts = [{ type: 'start', effect: [{ type: 'triggerlua', code: 'keep' }] }];
-    const data: Record<string, unknown> = { triggerScripts: scripts, lua: 'keep' };
-    expect(() => applyUpdates(data, { triggerScripts: input })).toThrow();
+    const data: Record<string, unknown> = { name: 'Original', triggerScripts: scripts, lua: 'keep' };
+    expect(() => applyUpdates(data, { name: 'Mutated', triggerScripts: input })).toThrow(
+      /Invalid trigger script JSON|Trigger scripts must be a JSON array/,
+    );
+    expect(data.name).toBe('Original');
     expect(data.triggerScripts).toBe(scripts);
     expect(data.lua).toBe('keep');
   });

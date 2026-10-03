@@ -77,7 +77,7 @@ import {
 } from './src/lib/section-parser';
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './src/lib/session-recovery-main';
 import { createSessionRecoveryManager } from './src/lib/session-recovery-manager';
-import { initTerminalManager, killTerminal } from './src/lib/terminal-manager';
+import { initTerminalManager, shutdownTerminals } from './src/lib/terminal-manager';
 import { initMainUtilityIpc } from './src/lib/main-utility-ipc';
 import { importCharacterCardByPath } from './src/lib/character-card-import';
 import {
@@ -1078,7 +1078,7 @@ app.whenReady().then(() => {
   scheduleAppUpdateCheck();
 });
 
-app.on('window-all-closed', () => {
+app.on('window-all-closed', async () => {
   // Mark clean exit for session recovery
   if (recoveryManager) {
     try {
@@ -1087,7 +1087,13 @@ app.on('window-all-closed', () => {
       console.warn('[main] Failed to mark clean exit:', (e as Error).message);
     }
   }
-  killTerminal();
+  let terminalShutdownFailed = false;
+  try {
+    await shutdownTerminals();
+  } catch (error) {
+    console.error('[main] Failed to shut down terminals:', error);
+    terminalShutdownFailed = true;
+  }
   if (mcpApi) {
     mcpApi.server.close();
     mcpApi = null;
@@ -1100,7 +1106,8 @@ app.on('window-all-closed', () => {
   // Cleanup Codex MCP config
   cleanupCodexMcpConfig();
   cleanupAgentsMd();
-  app.quit();
+  if (terminalShutdownFailed) app.exit(1);
+  else app.quit();
 });
 
 // ---------------------------------------------------------------------------

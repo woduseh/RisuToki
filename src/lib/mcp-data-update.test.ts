@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import * as formEditor from './form-editor';
-import * as mcpDataUpdate from './mcp-data-update';
+import { planMcpDataUpdate, refreshOpenTriggerScriptsTab } from './mcp-data-update';
 import { parseTriggerScriptsText } from './trigger-script-model';
 import { TabManager } from './tab-manager';
-
-const { planMcpDataUpdate } = mcpDataUpdate;
 
 function createTestTabManager() {
   return new TabManager('editor-tabs', {
@@ -87,21 +85,6 @@ describe('MCP data update planner', () => {
       statusMessage: 'AI 어시스턴트가 name 필드를 수정했습니다',
       updateFileLabel: true,
     });
-
-    // Tab ID compatibility: risup_templates must be treated the same as any other risup_ tab
-    expect(
-      planMcpDataUpdate('promptTemplate', [
-        { id: 'risup_templates', getValue: () => ({ promptTemplate: {} }) },
-        { id: 'regex_0', getValue: () => ({}) },
-      ]),
-    ).toEqual({
-      backupTabIds: ['risup_templates'],
-      refreshTabIds: [],
-      refreshIndexedPrefixes: ['risup_'],
-      refreshSidebar: false,
-      statusMessage: 'AI 어시스턴트가 promptTemplate 필드를 수정했습니다',
-      updateFileLabel: false,
-    });
   });
 
   it('backs up and refreshes open trigger form tabs when trigger scripts change', () => {
@@ -118,31 +101,6 @@ describe('MCP data update planner', () => {
   });
 
   it('refreshes open trigger form tabs with the latest triggerScripts text', () => {
-    const openTriggerScriptsFormTab = (
-      formEditor as {
-        openTriggerScriptsFormTab?: (
-          tabMgr: Pick<TabManager, 'openTabs' | 'openTab'>,
-          options: formEditor.TriggerScriptsFormTabOptions,
-        ) => ReturnType<typeof formEditor.createTriggerScriptsFormTab> | null;
-      }
-    ).openTriggerScriptsFormTab;
-    const refreshOpenTriggerScriptsTab = (
-      mcpDataUpdate as {
-        refreshOpenTriggerScriptsTab?: (options: {
-          openTabs: ReturnType<typeof createTestTabManager>['openTabs'];
-          activeTabId: string | null;
-          buildTabState: (
-            tab?: ReturnType<typeof createTestTabManager>['openTabs'][number],
-          ) => ReturnType<typeof formEditor.createTriggerScriptsFormTab> | null;
-          activateTab: (tab: ReturnType<typeof createTestTabManager>['openTabs'][number]) => void;
-        }) => void;
-      }
-    ).refreshOpenTriggerScriptsTab;
-
-    expect(openTriggerScriptsFormTab).toBeTypeOf('function');
-    expect(refreshOpenTriggerScriptsTab).toBeTypeOf('function');
-    if (!openTriggerScriptsFormTab || !refreshOpenTriggerScriptsTab) return;
-
     let rawText = JSON.stringify(
       [
         {
@@ -157,7 +115,7 @@ describe('MCP data update planner', () => {
       2,
     );
     const tabMgr = createTestTabManager();
-    const tab = openTriggerScriptsFormTab(tabMgr, {
+    const tab = formEditor.openTriggerScriptsFormTab(tabMgr, {
       getText: () => rawText,
       setText: (value) => {
         rawText = value;

@@ -3,12 +3,19 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { createPersonaStore } from './persona-store';
 
+const tempRoots: string[] = [];
+
+afterEach(() => {
+  for (const root of tempRoots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
+});
+
 function makeStore() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'risutoki-persona-store-'));
+  tempRoots.push(root);
   const bundledDir = path.join(root, 'bundled');
   const userDir = path.join(root, 'user');
   fs.mkdirSync(bundledDir, { recursive: true });

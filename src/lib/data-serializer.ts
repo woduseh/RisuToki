@@ -114,10 +114,13 @@ export function applyUpdates(data: LoadedDocumentData, fields: RendererDocumentP
       if (error) throw new Error(`Invalid ${fieldName}: ${error}`);
     }
   }
+  // Parse fallible script input before applying any part of the patch.
+  const triggerScripts =
+    fields.triggerScripts !== undefined ? normalizeTriggerScripts(fields.triggerScripts) : undefined;
   for (const key of allowed) {
     if (fields[key] !== undefined) {
       if (key === 'triggerScripts') {
-        data.triggerScripts = normalizeTriggerScripts(fields.triggerScripts);
+        data.triggerScripts = triggerScripts!;
         data.lua = extractPrimaryLuaFromTriggerScripts(data.triggerScripts);
         continue;
       }

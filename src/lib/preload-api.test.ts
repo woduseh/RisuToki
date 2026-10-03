@@ -70,20 +70,13 @@ describe('createTokiApi', () => {
     expect(Object.prototype.hasOwnProperty.call(api, 'onSyncStatus')).toBe(false);
   });
 
-  test('exposes session recovery IPC methods', () => {
-    const ipcRenderer = makeMockIpc();
-    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
-
-    expect(typeof api.getPendingSessionRecovery).toBe('function');
-    expect(typeof api.resolvePendingSessionRecovery).toBe('function');
-  });
-
   test('getPendingSessionRecovery invokes correct IPC channel', async () => {
     const ipcRenderer = makeMockIpc();
-    ipcRenderer.invoke.mockResolvedValue(null);
+    const recovery = { fileName: 'synthetic.charx', action: 'restore' };
+    ipcRenderer.invoke.mockResolvedValue(recovery);
     const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
 
-    await api.getPendingSessionRecovery();
+    await expect(api.getPendingSessionRecovery()).resolves.toBe(recovery);
 
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('get-pending-session-recovery');
   });
@@ -116,17 +109,6 @@ describe('createTokiApi', () => {
     expect(ipcRenderer.invoke).toHaveBeenCalledWith('rename-assets-batch', operations);
   });
 
-  test('exposes MCP session status IPC bridge methods', () => {
-    const ipcRenderer = makeMockIpc();
-    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer) as unknown as {
-      onMcpSessionStatusRequest?: unknown;
-      sendMcpSessionStatusResponse?: unknown;
-    };
-
-    expect(typeof api.onMcpSessionStatusRequest).toBe('function');
-    expect(typeof api.sendMcpSessionStatusResponse).toBe('function');
-  });
-
   test('exposes Antigravity MCP configuration without the retired Gemini bridge', async () => {
     const ipcRenderer = makeMockIpc();
     const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
@@ -139,14 +121,14 @@ describe('createTokiApi', () => {
 
   test('MCP session status bridge uses the correct IPC channels', () => {
     const ipcRenderer = makeMockIpc();
-    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer) as unknown as {
-      onMcpSessionStatusRequest: (cb: (id: number) => void) => void;
-      sendMcpSessionStatusResponse: (id: number, response: Record<string, unknown>) => void;
-    };
-    const callback = () => undefined;
+    const api = createTokiApi(ipcRenderer as unknown as IpcRenderer);
+    const callback = vi.fn();
 
     api.onMcpSessionStatusRequest(callback);
     expect(ipcRenderer.on).toHaveBeenCalledWith('mcp-session-status-request', expect.any(Function));
+    const listener = ipcRenderer.on.mock.calls[0][1];
+    listener({}, 7);
+    expect(callback).toHaveBeenCalledWith(7);
 
     api.sendMcpSessionStatusResponse(7, {
       success: true,

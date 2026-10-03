@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { nextTick } from 'vue';
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
@@ -9,143 +9,133 @@ import { useAppStore } from './stores/app-store';
 import { useWorkbenchStore } from './stores/workbench-store';
 import { useMcpActivityStore } from './stores/mcp-activity-store';
 
+enableAutoUnmount(afterEach);
+
 describe('App shell', () => {
   it('shows diagnostics beside preview and dispatches source and refresh actions with stale guards', async () => {
     const wrapper = mount(App, { attachTo: document.body, global: { plugins: [createPinia()] } });
-    try {
-      const store = useAppStore();
-      const workbench = useWorkbenchStore();
-      const refresh = vi.fn();
-      const open = vi.fn();
-      registerActions({ 'diagnostics-refresh': refresh, 'diagnostics-open-source': open });
-      store.setFileData({ _fileType: 'charx', name: 'Character', _documentId: 'char-1' } as never);
-      store.setActiveTabId('description');
-      workbench.diagnosticsDraft = store.fileData;
-      workbench.diagnosticsCheckedAt = Date.now();
-      workbench.diagnostics = [
-        {
-          id: 'missing-asset',
-          severity: 'warning',
-          code: 'missing-asset',
-          message: '에셋을 찾지 못했어요.',
-          source: { field: 'lorebook', index: 2, line: 3 },
-        },
-      ];
-      workbench.diagnosticsOpen = true;
-      workbench.previewOpen = true;
-      await nextTick();
-      const diagnostics = wrapper.get('.document-diagnostics');
-      expect(diagnostics.isVisible()).toBe(true);
-      expect(wrapper.get('#editor-surface').isVisible()).toBe(false);
-      expect(wrapper.get('#workbench-preview').isVisible()).toBe(true);
-      await diagnostics.get('.diagnostic-title button').trigger('click');
-      expect(open).toHaveBeenCalledWith({ field: 'lorebook', index: 2, line: 3 });
-      await diagnostics.get('.diagnostics-header button').trigger('click');
-      expect(refresh).toHaveBeenCalledOnce();
+    const store = useAppStore();
+    const workbench = useWorkbenchStore();
+    const refresh = vi.fn();
+    const open = vi.fn();
+    registerActions({ 'diagnostics-refresh': refresh, 'diagnostics-open-source': open });
+    store.setFileData({ _fileType: 'charx', name: 'Character', _documentId: 'char-1' } as never);
+    store.setActiveTabId('description');
+    workbench.diagnosticsDraft = store.fileData;
+    workbench.diagnosticsCheckedAt = Date.now();
+    workbench.diagnostics = [
+      {
+        id: 'missing-asset',
+        severity: 'warning',
+        code: 'missing-asset',
+        message: '에셋을 찾지 못했어요.',
+        source: { field: 'lorebook', index: 2, line: 3 },
+      },
+    ];
+    workbench.diagnosticsOpen = true;
+    workbench.previewOpen = true;
+    await nextTick();
+    const diagnostics = wrapper.get('.document-diagnostics');
+    expect(diagnostics.isVisible()).toBe(true);
+    expect(wrapper.get('#editor-surface').isVisible()).toBe(false);
+    expect(wrapper.get('#workbench-preview').isVisible()).toBe(true);
+    await diagnostics.get('.diagnostic-title button').trigger('click');
+    expect(open).toHaveBeenCalledWith({ field: 'lorebook', index: 2, line: 3 });
+    await diagnostics.get('.diagnostics-header button').trigger('click');
+    expect(refresh).toHaveBeenCalledOnce();
 
-      workbench.diagnosticsStale = true;
-      await nextTick();
-      expect(diagnostics.get('.diagnostic-title button').attributes('disabled')).toBeDefined();
-      await diagnostics.get('.diagnostic-title button').trigger('click');
-      expect(open).toHaveBeenCalledOnce();
-      workbench.diagnosticsStale = false;
-      workbench.diagnosticsLoading = true;
-      await nextTick();
-      expect(diagnostics.get('.diagnostics-header button').attributes('disabled')).toBeDefined();
-      expect(diagnostics.get('.diagnostic-title button').attributes('disabled')).toBeDefined();
+    workbench.diagnosticsStale = true;
+    await nextTick();
+    expect(diagnostics.get('.diagnostic-title button').attributes('disabled')).toBeDefined();
+    await diagnostics.get('.diagnostic-title button').trigger('click');
+    expect(open).toHaveBeenCalledOnce();
+    workbench.diagnosticsStale = false;
+    workbench.diagnosticsLoading = true;
+    await nextTick();
+    expect(diagnostics.get('.diagnostics-header button').attributes('disabled')).toBeDefined();
+    expect(diagnostics.get('.diagnostic-title button').attributes('disabled')).toBeDefined();
 
-      store.setPreviewFocusMode(true);
-      await nextTick();
-      expect(diagnostics.isVisible()).toBe(false);
-      expect(wrapper.get('#workbench-preview').isVisible()).toBe(true);
-      store.setPreviewFocusMode(false);
-      workbench.diagnosticsOpen = false;
-      await nextTick();
-      expect(wrapper.get('#editor-surface').isVisible()).toBe(true);
-    } finally {
-      wrapper.unmount();
-    }
+    store.setPreviewFocusMode(true);
+    await nextTick();
+    expect(diagnostics.isVisible()).toBe(false);
+    expect(wrapper.get('#workbench-preview').isVisible()).toBe(true);
+    store.setPreviewFocusMode(false);
+    workbench.diagnosticsOpen = false;
+    await nextTick();
+    expect(wrapper.get('#editor-surface').isVisible()).toBe(true);
   });
 
   it('dispatches the module diagnostics asset action from its configuration overview', async () => {
     const wrapper = mount(App, { global: { plugins: [createPinia()] } });
-    try {
-      const store = useAppStore();
-      const workbench = useWorkbenchStore();
-      const assets = vi.fn();
-      registerActions({ 'diagnostics-open-assets': assets });
-      store.setFileData({
-        _fileType: 'risum',
-        name: 'Module',
-        _documentId: 'module-1',
-        lorebook: [],
-        regex: [],
-      } as never);
-      workbench.diagnosticsDraft = store.fileData;
-      workbench.diagnosticsAssets = { documentId: 'module-1', names: [], entries: [], unresolved: [] };
-      workbench.diagnosticsOpen = true;
-      await nextTick();
-      expect(wrapper.get('.document-diagnostics h2').text()).toBe('모듈 구성·진단');
-      await wrapper.get('.module-counts button').trigger('click');
-      expect(assets).toHaveBeenCalledOnce();
-      workbench.rawDraftWarning = '원본 JSON 오류';
-      await nextTick();
-      expect(wrapper.get('.module-counts button').attributes('disabled')).toBeDefined();
-    } finally {
-      wrapper.unmount();
-    }
+    const store = useAppStore();
+    const workbench = useWorkbenchStore();
+    const assets = vi.fn();
+    registerActions({ 'diagnostics-open-assets': assets });
+    store.setFileData({
+      _fileType: 'risum',
+      name: 'Module',
+      _documentId: 'module-1',
+      lorebook: [],
+      regex: [],
+    } as never);
+    workbench.diagnosticsDraft = store.fileData;
+    workbench.diagnosticsAssets = { documentId: 'module-1', names: [], entries: [], unresolved: [] };
+    workbench.diagnosticsOpen = true;
+    await nextTick();
+    expect(wrapper.get('.document-diagnostics h2').text()).toBe('모듈 구성·진단');
+    await wrapper.get('.module-counts button').trigger('click');
+    expect(assets).toHaveBeenCalledOnce();
+    workbench.rawDraftWarning = '원본 JSON 오류';
+    await nextTick();
+    expect(wrapper.get('.module-counts button').attributes('disabled')).toBeDefined();
   });
 
   it('switches to AI activity and routes current-document source, review, and terminal actions', async () => {
     const wrapper = mount(App, { attachTo: document.body, global: { plugins: [createPinia()] } });
-    try {
-      const store = useAppStore();
-      const workbench = useWorkbenchStore();
-      const activity = useMcpActivityStore();
-      const source = { documentId: 'char-1', field: 'lorebook' };
-      const open = vi.fn();
-      const review = vi.fn();
-      registerActions({ 'activity-open-source': open, 'review-open': review });
-      store.setFileData({ _fileType: 'charx', name: 'Character', _documentId: 'char-1' } as never);
-      workbench.selection = { label: '도입부', field: 'lorebook', index: 2 };
-      activity.entries = [
-        {
-          requestId: 'request-1',
-          sequence: 1,
-          startedAt: Date.now(),
-          method: 'POST',
-          route: '/api/lorebook',
-          category: 'change',
-          status: 'succeeded',
-          target: { kind: 'active', documentId: 'char-1', name: 'Character' },
-          source,
-        },
-      ];
-      store.setRightSidebarView('guides');
-      await nextTick();
-      await wrapper.get('#right-sidebar-guides-tab').trigger('keydown', { key: 'End' });
-      const activityTab = wrapper.get('#right-sidebar-activity-tab');
-      expect(activityTab.attributes('aria-selected')).toBe('true');
-      expect(document.activeElement).toBe(activityTab.element);
-      expect(wrapper.get('#activity-drawer-body').isVisible()).toBe(true);
-      expect(wrapper.get('#reference-drawer-body').isVisible()).toBe(false);
-      expect(wrapper.get('.app-selection').text()).toContain('도입부');
-      const actions = wrapper.findAll('.activity-row-actions button');
-      await actions[0].trigger('click');
-      expect(open).toHaveBeenCalledWith(source);
-      await actions[1].trigger('click');
-      expect(review).toHaveBeenCalledOnce();
-      await wrapper.get('[aria-label="터미널 열기"]').trigger('click');
-      expect(store.activeUtility).toBe('terminal');
+    const store = useAppStore();
+    const workbench = useWorkbenchStore();
+    const activity = useMcpActivityStore();
+    const source = { documentId: 'char-1', field: 'lorebook' };
+    const open = vi.fn();
+    const review = vi.fn();
+    registerActions({ 'activity-open-source': open, 'review-open': review });
+    store.setFileData({ _fileType: 'charx', name: 'Character', _documentId: 'char-1' } as never);
+    workbench.selection = { label: '도입부', field: 'lorebook', index: 2 };
+    activity.entries = [
+      {
+        requestId: 'request-1',
+        sequence: 1,
+        startedAt: Date.now(),
+        method: 'POST',
+        route: '/api/lorebook',
+        category: 'change',
+        status: 'succeeded',
+        target: { kind: 'active', documentId: 'char-1', name: 'Character' },
+        source,
+      },
+    ];
+    store.setRightSidebarView('guides');
+    await nextTick();
+    await wrapper.get('#right-sidebar-guides-tab').trigger('keydown', { key: 'End' });
+    const activityTab = wrapper.get('#right-sidebar-activity-tab');
+    expect(activityTab.attributes('aria-selected')).toBe('true');
+    expect(document.activeElement).toBe(activityTab.element);
+    expect(wrapper.get('#activity-drawer-body').isVisible()).toBe(true);
+    expect(wrapper.get('#reference-drawer-body').isVisible()).toBe(false);
+    expect(wrapper.get('.app-selection').text()).toContain('도입부');
+    const actions = wrapper.findAll('.activity-row-actions button');
+    await actions[0].trigger('click');
+    expect(open).toHaveBeenCalledWith(source);
+    await actions[1].trigger('click');
+    expect(review).toHaveBeenCalledOnce();
+    await wrapper.get('[aria-label="터미널 열기"]').trigger('click');
+    expect(store.activeUtility).toBe('terminal');
 
-      store.setFileData({ _fileType: 'charx', name: 'Other', _documentId: 'char-2' } as never);
-      await nextTick();
-      expect(wrapper.find('.activity-row-actions').exists()).toBe(false);
-      await wrapper.get('#right-sidebar-guides-tab').trigger('click');
-      expect(wrapper.get('#activity-drawer-body').isVisible()).toBe(false);
-    } finally {
-      wrapper.unmount();
-    }
+    store.setFileData({ _fileType: 'charx', name: 'Other', _documentId: 'char-2' } as never);
+    await nextTick();
+    expect(wrapper.find('.activity-row-actions').exists()).toBe(false);
+    await wrapper.get('#right-sidebar-guides-tab').trigger('click');
+    expect(wrapper.get('#activity-drawer-body').isVisible()).toBe(false);
   });
 
   it('offers asset rename and delete immediately and follows the selected asset', async () => {
@@ -171,7 +161,6 @@ describe('App shell', () => {
     store.setActiveTabId('description');
     await nextTick();
     expect(wrapper.find('#editor-asset-actions').exists()).toBe(false);
-    wrapper.unmount();
   });
   it('keeps document navigation in the navigator and exposes save and preview beside the document', async () => {
     const pinia = createPinia();
@@ -193,7 +182,6 @@ describe('App shell', () => {
     await nextTick();
     expect(wrapper.get('#navigator-workspaces').text()).toBe('프롬프트토글·변수정규식');
     expect(wrapper.get('#btn-workspace-preview').attributes('disabled')).toBeDefined();
-    wrapper.unmount();
   });
 
   it('starts compact windows with unobstructed content and lets users dismiss navigation', async () => {
@@ -211,7 +199,6 @@ describe('App shell', () => {
     await nextTick();
     expect(store.navigatorVisible).toBe(false);
     expect(document.activeElement).toBe(wrapper.get('[aria-label="탐색기 전환"]').element);
-    wrapper.unmount();
   });
   beforeEach(() => {
     setActivePinia(createPinia());
@@ -239,70 +226,62 @@ describe('App shell', () => {
   it('opens, navigates, and closes the menu bar from the keyboard with ARIA semantics', async () => {
     const wrapper = mount(MenuBar, { attachTo: document.body });
 
-    try {
-      const menubar = wrapper.get('#menubar');
-      const fileButton = wrapper.get('[data-menu-button="file"]');
+    const menubar = wrapper.get('#menubar');
+    const fileButton = wrapper.get('[data-menu-button="file"]');
 
-      expect(menubar.attributes('role')).toBe('menubar');
-      expect(fileButton.element.tagName).toBe('BUTTON');
-      expect(fileButton.attributes('role')).toBe('menuitem');
-      expect(fileButton.attributes('aria-haspopup')).toBe('menu');
+    expect(menubar.attributes('role')).toBe('menubar');
+    expect(fileButton.element.tagName).toBe('BUTTON');
+    expect(fileButton.attributes('role')).toBe('menuitem');
+    expect(fileButton.attributes('aria-haspopup')).toBe('menu');
 
-      await fileButton.trigger('keydown', { key: 'Enter' });
-      await nextTick();
+    await fileButton.trigger('keydown', { key: 'Enter' });
+    await nextTick();
 
-      expect(fileButton.attributes('aria-expanded')).toBe('true');
-      expect(wrapper.get('#menu-dropdown-file').attributes('role')).toBe('menu');
+    expect(fileButton.attributes('aria-expanded')).toBe('true');
+    expect(wrapper.get('#menu-dropdown-file').attributes('role')).toBe('menu');
 
-      const entries = wrapper.get('#menu-dropdown-file').findAll('[data-menu-entry]');
-      expect(entries.length).toBeGreaterThan(1);
-      expect(document.activeElement).toBe(entries[0].element);
+    const entries = wrapper.get('#menu-dropdown-file').findAll('[data-menu-entry]');
+    expect(entries.length).toBeGreaterThan(1);
+    expect(document.activeElement).toBe(entries[0].element);
 
-      await entries[0].trigger('keydown', { key: 'ArrowDown' });
-      expect(document.activeElement).toBe(entries[1].element);
+    await entries[0].trigger('keydown', { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(entries[1].element);
 
-      await entries[1].trigger('keydown', { key: 'Escape' });
-      await nextTick();
+    await entries[1].trigger('keydown', { key: 'Escape' });
+    await nextTick();
 
-      expect(fileButton.attributes('aria-expanded')).toBe('false');
-      expect(wrapper.find('#menu-dropdown-file').exists()).toBe(false);
-      expect(document.activeElement).toBe(fileButton.element);
-    } finally {
-      wrapper.unmount();
-    }
+    expect(fileButton.attributes('aria-expanded')).toBe('false');
+    expect(wrapper.find('#menu-dropdown-file').exists()).toBe(false);
+    expect(document.activeElement).toBe(fileButton.element);
   });
 
   it('keeps a hover-switched menu open when the click completes the switch', async () => {
     const wrapper = mount(MenuBar, { attachTo: document.body });
 
-    try {
-      const fileButton = wrapper.get('[data-menu-button="file"]');
-      const editButton = wrapper.get('[data-menu-button="edit"]');
-      // Menu order is file, edit, view, terminal — the Edit container is index 1.
-      const editItem = wrapper.findAll('.menu-item')[1];
+    const fileButton = wrapper.get('[data-menu-button="file"]');
+    const editButton = wrapper.get('[data-menu-button="edit"]');
+    // Menu order is file, edit, view, terminal — the Edit container is index 1.
+    const editItem = wrapper.findAll('.menu-item')[1];
 
-      // Open the File menu with a deliberate click.
-      await fileButton.trigger('click');
-      await nextTick();
-      expect(fileButton.attributes('aria-expanded')).toBe('true');
+    // Open the File menu with a deliberate click.
+    await fileButton.trigger('click');
+    await nextTick();
+    expect(fileButton.attributes('aria-expanded')).toBe('true');
 
-      // Moving the pointer onto Edit hover-switches openMenu; the click that
-      // lands on Edit then completes the switch. Previously this immediately
-      // toggled Edit shut, so switching menus required a second click.
-      await editItem.trigger('mouseenter');
-      await editButton.trigger('click');
-      await nextTick();
+    // Moving the pointer onto Edit hover-switches openMenu; the click that
+    // lands on Edit then completes the switch. Previously this immediately
+    // toggled Edit shut, so switching menus required a second click.
+    await editItem.trigger('mouseenter');
+    await editButton.trigger('click');
+    await nextTick();
 
-      expect(editButton.attributes('aria-expanded')).toBe('true');
-      expect(fileButton.attributes('aria-expanded')).toBe('false');
+    expect(editButton.attributes('aria-expanded')).toBe('true');
+    expect(fileButton.attributes('aria-expanded')).toBe('false');
 
-      // Clicking the already-open Edit menu still closes it (toggle preserved).
-      await editButton.trigger('click');
-      await nextTick();
-      expect(editButton.attributes('aria-expanded')).toBe('false');
-    } finally {
-      wrapper.unmount();
-    }
+    // Clicking the already-open Edit menu still closes it (toggle preserved).
+    await editButton.trigger('click');
+    await nextTick();
+    expect(editButton.attributes('aria-expanded')).toBe('false');
   });
 
   it('renders the dark-mode title variant from store', () => {
@@ -390,17 +369,13 @@ describe('App shell', () => {
   it('uses type-neutral export wording for project-folder output', async () => {
     const wrapper = mount(MenuBar, { attachTo: document.body });
 
-    try {
-      await wrapper.get('[data-menu-button="file"]').trigger('click');
-      await nextTick();
+    await wrapper.get('[data-menu-button="file"]').trigger('click');
+    await nextTick();
 
-      expect(wrapper.text()).toContain('파일로 내보내기');
-      expect(wrapper.text()).toContain('프로젝트 폴더 복제');
-      expect(wrapper.text()).not.toContain('CharX로 내보내기');
-      expect(wrapper.text()).not.toContain('CharX로 재조립');
-    } finally {
-      wrapper.unmount();
-    }
+    expect(wrapper.text()).toContain('파일로 내보내기');
+    expect(wrapper.text()).toContain('프로젝트 폴더 복제');
+    expect(wrapper.text()).not.toContain('CharX로 내보내기');
+    expect(wrapper.text()).not.toContain('CharX로 재조립');
   });
 
   it('renders recent items and emits the selected item payload', async () => {
@@ -415,21 +390,17 @@ describe('App shell', () => {
       props: { recentItems: [recentItem] },
     });
 
-    try {
-      await wrapper.get('[data-menu-button="file"]').trigger('click');
-      await nextTick();
+    await wrapper.get('[data-menu-button="file"]').trigger('click');
+    await nextTick();
 
-      expect(wrapper.text()).toContain('최근 항목');
-      expect(wrapper.text()).toContain('[PNG] avatar.png');
+    expect(wrapper.text()).toContain('최근 항목');
+    expect(wrapper.text()).toContain('[PNG] avatar.png');
 
-      const recentButton = wrapper.findAll('.menu-action').find((button) => button.text().includes('avatar.png'));
-      expect(recentButton).toBeTruthy();
-      await recentButton!.trigger('click');
+    const recentButton = wrapper.findAll('.menu-action').find((button) => button.text().includes('avatar.png'));
+    expect(recentButton).toBeTruthy();
+    await recentButton!.trigger('click');
 
-      expect(wrapper.emitted('action')?.at(-1)).toEqual(['open-recent-item', recentItem]);
-    } finally {
-      wrapper.unmount();
-    }
+    expect(wrapper.emitted('action')?.at(-1)).toEqual(['open-recent-item', recentItem]);
   });
 
   it('renders an empty recent items state', async () => {
@@ -438,16 +409,12 @@ describe('App shell', () => {
       props: { recentItems: [] },
     });
 
-    try {
-      await wrapper.get('[data-menu-button="file"]').trigger('click');
-      await nextTick();
+    await wrapper.get('[data-menu-button="file"]').trigger('click');
+    await nextTick();
 
-      expect(wrapper.text()).toContain('최근 항목 없음');
-      const emptyButton = wrapper.findAll('.menu-action').find((button) => button.text().includes('최근 항목 없음'));
-      expect(emptyButton?.attributes('disabled')).toBeDefined();
-    } finally {
-      wrapper.unmount();
-    }
+    expect(wrapper.text()).toContain('최근 항목 없음');
+    const emptyButton = wrapper.findAll('.menu-action').find((button) => button.text().includes('최근 항목 없음'));
+    expect(emptyButton?.attributes('disabled')).toBeDefined();
   });
 
   it('adds aria labels to icon-only shell controls', () => {
@@ -557,7 +524,6 @@ describe('App shell', () => {
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
     expect(store.utilityHeight).toBe(148);
     document.dispatchEvent(new MouseEvent('pointerup'));
-    wrapper.unmount();
   });
 
   it('coalesces rapid pane drag events into one animation-frame layout update', async () => {
@@ -754,10 +720,7 @@ describe('App shell', () => {
     vi.useFakeTimers();
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
-    const store = useAppStore() as ReturnType<typeof useAppStore> & {
-      clearStatus(): void;
-      setStatus(text: string, options?: { kind?: 'info' | 'error'; sticky?: boolean }): void;
-    };
+    const store = useAppStore();
 
     store.setStatus('저장 실패', { kind: 'error', sticky: true });
     await nextTick();
@@ -784,11 +747,7 @@ describe('App shell', () => {
   it('keeps persistent document stats visible beside transient status messages', async () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
-    const store = useAppStore() as ReturnType<typeof useAppStore> & {
-      clearStatus(): void;
-      setDocumentStatsText(text: string): void;
-      setStatus(text: string, options?: { kind?: 'info' | 'error'; sticky?: boolean }): void;
-    };
+    const store = useAppStore();
 
     store.setDocumentStatsText('CHARX · 저장됨 · 로어북 2 · 정규식 1 · 에셋 3 · 탭 10자');
     await nextTick();
@@ -812,13 +771,10 @@ describe('App shell', () => {
   it('renders an additive restored-session badge in the file label', async () => {
     const pinia = createPinia();
     const wrapper = mount(App, { global: { plugins: [pinia] } });
-    const store = useAppStore() as ReturnType<typeof useAppStore> & {
-      setRestoredSessionLabel?: (label: string) => void;
-    };
+    const store = useAppStore();
 
     store.setFileLabel('Character');
-    expect(typeof store.setRestoredSessionLabel).toBe('function');
-    store.setRestoredSessionLabel!('자동복원');
+    store.setRestoredSessionLabel('자동복원');
     await nextTick();
 
     expect(wrapper.get('#file-label').text()).toBe('Character [자동복원]');

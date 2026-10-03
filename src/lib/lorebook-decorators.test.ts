@@ -18,13 +18,6 @@ describe('parseLorebookDecorators', () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it('never mutates the original string', () => {
-    const original = '@@depth 3\nBody text';
-    const frozen = original; // strings are immutable, but verify no side effects
-    parseLorebookDecorators(original);
-    expect(original).toBe(frozen);
-  });
-
   // ── @@depth ──────────────────────────────────────────────────
 
   it('parses @@depth with integer value', () => {

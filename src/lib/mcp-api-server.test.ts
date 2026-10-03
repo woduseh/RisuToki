@@ -46,6 +46,8 @@ describe('MCP API structured error envelopes — global guards', () => {
       expect(res.data).toHaveProperty('status', 401);
       expect(res.data).toHaveProperty('target', 'request:auth');
       expect(res.data).toHaveProperty('error', 'Unauthorized');
+      expect(res.data.retryable).toBe(false);
+      expect(res.data.next_actions).toEqual([]);
       expect(typeof res.data.suggestion).toBe('string');
     } finally {
       await closeServer(api.server);
@@ -61,6 +63,8 @@ describe('MCP API structured error envelopes — global guards', () => {
       expect(res.data).toHaveProperty('status', 400);
       expect(res.data).toHaveProperty('target', 'document:current');
       expect(res.data).toHaveProperty('error', 'No file open');
+      expect(res.data.retryable).toBe(false);
+      expect(res.data.next_actions).toEqual(['open_file', 'list_references', 'session_status']);
       expect(typeof res.data.suggestion).toBe('string');
     } finally {
       await closeServer(api.server);
@@ -540,8 +544,13 @@ describe('MCP API open-file route', () => {
     const firstRequestGate = new Promise<void>((resolve) => {
       releaseFirst = resolve;
     });
+    let markFirstEntered!: () => void;
+    const firstRequestEntered = new Promise<void>((resolve) => {
+      markFirstEntered = resolve;
+    });
     const api = await startTestApiServer(createSearchFixture(), [], undefined, {
       requestRendererOpenFile: async (request) => {
+        markFirstEntered();
         await firstRequestGate;
         return {
           success: true,
@@ -555,7 +564,7 @@ describe('MCP API open-file route', () => {
       const firstRequest = postJson(api.port, api.token, '/open-file', {
         file_path: filePath,
       });
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      await firstRequestEntered;
       const secondRes = await postJson<McpErrorEnvelope>(api.port, api.token, '/open-file', {
         file_path: filePath,
       });
@@ -567,6 +576,7 @@ describe('MCP API open-file route', () => {
       const firstRes = await firstRequest;
       expect(firstRes.status).toBe(200);
     } finally {
+      releaseFirst();
       await closeServer(api.server);
     }
   });
@@ -1832,32 +1842,6 @@ describe('MCP API success response envelope', () => {
       expect(Array.isArray(res.data.next_actions)).toBe(true);
       // summary should NOT be present on errors (success-only field)
       expect(res.data.summary).toBeUndefined();
-    } finally {
-      await closeServer(api.server);
-    }
-  });
-});
-
-describe('MCP error recovery metadata — global guards', () => {
-  it('unauthorized guard returns retryable: false and empty next_actions', async () => {
-    const api = await startTestApiServer(createSearchFixture());
-    try {
-      const res = await getJson<McpRecoveryEnvelope>(api.port, 'wrong-token', '/fields');
-      expect(res.status).toBe(401);
-      expect(res.data.retryable).toBe(false);
-      expect(res.data.next_actions).toEqual([]);
-    } finally {
-      await closeServer(api.server);
-    }
-  });
-
-  it('no-file-open guard returns retryable: false and next_actions with open_file, list_references, session_status', async () => {
-    const api = await startTestApiServer(null);
-    try {
-      const res = await getJson<McpRecoveryEnvelope>(api.port, api.token, '/fields');
-      expect(res.status).toBe(400);
-      expect(res.data.retryable).toBe(false);
-      expect(res.data.next_actions).toEqual(['open_file', 'list_references', 'session_status']);
     } finally {
       await closeServer(api.server);
     }

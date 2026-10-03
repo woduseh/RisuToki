@@ -367,9 +367,9 @@ test('--desktop detects a broken native entry instead of accepting an ancestor i
 
 // These are health assertions, not mocks or assertions that a denied environment
 // is healthy. EPERM/EACCES, failed HTTP, or failed disk access keep this suite red.
-for (const id of ['pipe-spawn', 'loopback-http', 'build-write']) {
-  test(`live environment capability: ${id}`, async (t) => {
-    const report = await doctor({ root: fixture(t) });
+test('live environment capabilities: pipes, loopback and filesystem', async (t) => {
+  const report = await doctor({ root: fixture(t) });
+  for (const id of ['pipe-spawn', 'loopback-http', 'build-write']) {
     const result = check(report, id);
     assert.equal(result.category, 'environment');
     if (id !== 'build-write') {
@@ -382,5 +382,5 @@ for (const id of ['pipe-spawn', 'loopback-http', 'build-write']) {
       assert.equal(result.details.exitCode, 0);
     }
     if (id === 'loopback-http') assert.ok(result.details.port > 0);
-  });
-}
+  }
+});

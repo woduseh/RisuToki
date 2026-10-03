@@ -93,11 +93,7 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('plain');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'plain') {
-      expect(item.type2).toBe('normal');
-      expect(item.text).toBe('hello');
-      expect(item.role).toBe('system');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'plain', type2: 'normal', text: 'hello', role: 'system' });
   });
 
   it('parses jailbreak items', () => {
@@ -105,9 +101,7 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('jailbreak');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'jailbreak') {
-      expect(item.role).toBe('user');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'jailbreak', role: 'user' });
   });
 
   it('parses cot items', () => {
@@ -115,41 +109,31 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('cot');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'cot') {
-      expect(item.type2).toBe('main');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'cot', type2: 'main' });
   });
 
   it('defaults type2 to "normal" when absent on plain item', () => {
     const m = parsePromptTemplate(stringify([{ type: 'plain', text: '', role: 'system' }]));
     const item = m.items[0];
-    if (item.supported && item.type === 'plain') {
-      expect(item.type2).toBe('normal');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'plain', type2: 'normal' });
   });
 
   it('coerces invalid type2 to "normal" on plain item', () => {
     const m = parsePromptTemplate(stringify([{ type: 'plain', type2: 'invalid', text: '', role: 'system' }]));
     const item = m.items[0];
-    if (item.supported && item.type === 'plain') {
-      expect(item.type2).toBe('normal');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'plain', type2: 'normal' });
   });
 
   it('defaults role to "system" when absent on plain item', () => {
     const m = parsePromptTemplate(stringify([{ type: 'plain', type2: 'normal', text: '' }]));
     const item = m.items[0];
-    if (item.supported && item.type === 'plain') {
-      expect(item.role).toBe('system');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'plain', role: 'system' });
   });
 
   it('coerces invalid role to "system" on plain item', () => {
     const m = parsePromptTemplate(stringify([{ type: 'plain', type2: 'normal', text: '', role: 'invalid' }]));
     const item = m.items[0];
-    if (item.supported && item.type === 'plain') {
-      expect(item.role).toBe('system');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'plain', role: 'system' });
   });
 
   it('preserves role:"bot" through parse -> serialize for a plain item without coercion', () => {
@@ -157,9 +141,7 @@ describe('parsePromptTemplate', () => {
     const m = parsePromptTemplate(stringify([input]));
     const item = m.items[0];
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'plain') {
-      expect(item.role).toBe('bot');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'plain', role: 'bot' });
     const result = serializePromptTemplate(m);
     const roundTripped = (JSON.parse(result) as unknown[])[0] as Record<string, unknown>;
     expect(roundTripped['role']).toBe('bot');
@@ -170,44 +152,31 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('chat');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'chat') {
-      expect(item.rangeStart).toBe(0);
-      expect(item.rangeEnd).toBe('end');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'chat', rangeStart: 0, rangeEnd: 'end' });
   });
 
   it('parses chat items with numeric rangeEnd', () => {
     const m = parsePromptTemplate(stringify([CHAT_NUMERIC]));
     const item = m.items[0];
-    if (item.supported && item.type === 'chat') {
-      expect(item.rangeStart).toBe(5);
-      expect(item.rangeEnd).toBe(10);
-    }
+    expect(item).toMatchObject({ supported: true, type: 'chat', rangeStart: 5, rangeEnd: 10 });
   });
 
   it('defaults rangeStart to 0 when absent on chat item', () => {
     const m = parsePromptTemplate(stringify([{ type: 'chat', rangeEnd: 'end' }]));
     const item = m.items[0];
-    if (item.supported && item.type === 'chat') {
-      expect(item.rangeStart).toBe(0);
-    }
+    expect(item).toMatchObject({ supported: true, type: 'chat', rangeStart: 0 });
   });
 
   it('defaults rangeEnd to "end" when absent on chat item', () => {
     const m = parsePromptTemplate(stringify([{ type: 'chat', rangeStart: 0 }]));
     const item = m.items[0];
-    if (item.supported && item.type === 'chat') {
-      expect(item.rangeEnd).toBe('end');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'chat', rangeEnd: 'end' });
   });
 
   it('parses chat items with negative rangeEnd', () => {
     const m = parsePromptTemplate(stringify([CHAT_NEGATIVE_END]));
     const item = m.items[0];
-    if (item.supported && item.type === 'chat') {
-      expect(item.rangeStart).toBe(0);
-      expect(item.rangeEnd).toBe(-2);
-    }
+    expect(item).toMatchObject({ supported: true, type: 'chat', rangeStart: 0, rangeEnd: -2 });
   });
 
   it('parses typed items (persona)', () => {
@@ -215,17 +184,13 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('persona');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'persona') {
-      expect(item.innerFormat).toBeUndefined();
-    }
+    expect(item).toMatchObject({ supported: true, type: 'persona', innerFormat: undefined });
   });
 
   it('parses typed items with innerFormat', () => {
     const m = parsePromptTemplate(stringify([DESCRIPTION_FMT]));
     const item = m.items[0];
-    if (item.supported && item.type === 'description') {
-      expect(item.innerFormat).toBe('Format: {{description}}');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'description', innerFormat: 'Format: {{description}}' });
   });
 
   it('parses authornote items', () => {
@@ -233,18 +198,18 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('authornote');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'authornote') {
-      expect(item.defaultText).toBeUndefined();
-    }
+    expect(item).toMatchObject({ supported: true, type: 'authornote', defaultText: undefined });
   });
 
   it('parses authornote with defaultText and innerFormat', () => {
     const m = parsePromptTemplate(stringify([AUTHORNOTE_DEFAULT]));
     const item = m.items[0];
-    if (item.supported && item.type === 'authornote') {
-      expect(item.defaultText).toBe('default note');
-      expect(item.innerFormat).toBe('[AN: {{an}}]');
-    }
+    expect(item).toMatchObject({
+      supported: true,
+      type: 'authornote',
+      defaultText: 'default note',
+      innerFormat: '[AN: {{an}}]',
+    });
   });
 
   it('parses cache items', () => {
@@ -252,19 +217,13 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('cache');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'cache') {
-      expect(item.name).toBe('ctx');
-      expect(item.depth).toBe(2);
-      expect(item.role).toBe('assistant');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'cache', name: 'ctx', depth: 2, role: 'assistant' });
   });
 
   it('accepts cache role "all"', () => {
     const m = parsePromptTemplate(stringify([CACHE_ALL]));
     const item = m.items[0];
-    if (item.supported && item.type === 'cache') {
-      expect(item.role).toBe('all');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'cache', role: 'all' });
   });
 
   it('parses chatML items', () => {
@@ -272,9 +231,7 @@ describe('parsePromptTemplate', () => {
     const item = m.items[0];
     expect(item.type).toBe('chatML');
     expect(item.supported).toBe(true);
-    if (item.supported && item.type === 'chatML') {
-      expect(item.text).toBe('some content');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'chatML', text: 'some content' });
   });
 
   it('wraps unknown item types as unsupported', () => {
@@ -305,9 +262,7 @@ describe('parsePromptTemplate', () => {
     const withExtra = { ...PLAIN, customExtraField: 'keep me' };
     const m = parsePromptTemplate(stringify([withExtra]));
     const item = m.items[0];
-    if (item.supported) {
-      expect((item.rawValue as Record<string, unknown>)['customExtraField']).toBe('keep me');
-    }
+    expect(item).toMatchObject({ supported: true, rawValue: { customExtraField: 'keep me' } });
   });
 
   it('assigns deterministic ids to supported prompt items that lack them', () => {
@@ -562,12 +517,7 @@ describe('promptTemplate text format', () => {
     expect(parsed.state).toBe('valid');
     expect(parsed.items).toHaveLength(1);
     const item = parsed.items[0];
-    if (item.supported && item.type === 'chat') {
-      expect(item.rangeStart).toBe(0);
-      expect(item.rangeEnd).toBe(-2);
-    } else {
-      throw new Error('Expected a supported chat item');
-    }
+    expect(item).toMatchObject({ supported: true, type: 'chat', rangeStart: 0, rangeEnd: -2 });
   });
 });
 
