@@ -44,6 +44,7 @@ import {
   manageFileBodySchema,
   manageFileOperationSchema,
   manageItemsFamilySchema,
+  manageItemsBodySchema,
   manageItemsOperationSchema,
   type FacadeV1ContentSelector,
   type FacadeV1Guard,
@@ -958,6 +959,31 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
         results.push({ operation: operation.op, selector: operation.selector, data: applied.data });
         if (isNoOpResult(applied.data)) noopCount++;
         else appliedOperations.push(operation);
+        if (
+          entry.target.kind === 'external' &&
+          operation.selector.field &&
+          applied.routes.some((entry) =>
+            ['external_write_field', 'external_replace_in_field', 'external_insert_in_field'].includes(entry.tool),
+          )
+        ) {
+          const fieldHash = recordString(asRecord(applied.data), 'field_hash');
+          const previousHash = operation.guards?.find((guard) => guard.name === 'expected_field_hash')?.value;
+          if (fieldHash && previousHash) {
+            // Only advance a guard from our own successful field result. A new
+            // read here would silently accept an unrelated writer's changes.
+            for (const pending of entry.operations.slice(operationIndex + 1)) {
+              if (pending.selector.field !== operation.selector.field) continue;
+              pending.guards = pending.guards?.map((guard) =>
+                guard.name === 'expected_field_hash' &&
+                guard.payloadPath === '/expected_field_hash' &&
+                guard.sourceResultPath === '/field_hash' &&
+                guard.value === previousHash
+                  ? { ...guard, value: fieldHash }
+                  : guard,
+              );
+            }
+          }
+        }
         routes.push(...applied.routes);
         touchedTargets.push(...applied.touched);
       }
@@ -1022,192 +1048,163 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
       guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
       max_bytes: z.number().int().positive().max(FACADE_V1_LIMITS.maxBytes).optional(),
     },
-    safeToolHandler(
-      'manage_items',
-      async ({ target, family, mode, operation, preview_token, operation_digest, guard_values, max_bytes }) => {
-        cleanupFacadePreviews();
-        if (target.kind !== 'active' && target.kind !== 'external') {
-          return textResult(
-            facadeApiError(
-              400,
-              'manage_items supports only active or external targets',
-              'Use target.kind="active" for the current file or target.kind="external" for an unopened .charx/.risum/.risup file.',
-              { target },
-              ['inspect_document'],
-            ),
-          );
-        }
-        if (mode === 'read') {
-          if (!operation) {
-            return textResult(
-              facadeApiError(400, 'manage_items read mode requires operation', 'Provide a read operation.'),
-            );
-          }
-          const read = await readManageItemsOperation(target, family, operation);
-          if (isApiError(read)) return textResult(read);
-          return textResult(
-            facadeEnvelope(
-              'manage_items',
-              'read-only',
-              target,
-              { ...read.result, routed_legacy: read.routes, touched_targets: read.touched },
-              `Read manage_items ${family} ${operation.action}`,
-              ['manage_items', 'read_content'],
-              {
-                family,
-                routed_tools: read.routes.map((entry) => entry.tool),
-                touched_targets: read.touched,
-              },
-              max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
-            ),
-          );
-        }
-
-        if (mode === 'preview') {
-          if (!operation) {
-            return textResult(
-              facadeApiError(400, 'manage_items preview mode requires operation', 'Provide a mutating operation.'),
-            );
-          }
-          const activeDocument = target.kind === 'active' ? await readActiveDocumentBinding() : undefined;
-          if (isApiError(activeDocument)) return textResult(activeDocument);
-          const preview = await previewManageItemsOperation(target, family, operation);
-          if (isApiError(preview)) return textResult(preview);
-          if (activeDocument) {
-            const conflict = await checkActiveDocumentBinding(activeDocument);
-            if (conflict) return textResult(conflict);
-          }
-          const digest = manageItemsOperationDigest(target, family, operation);
-          const { token, expiresAtMs } = rememberPreview(manageItemsPreviewStore, {
-            activeDocument,
-            operationDigest: digest,
-            target,
-            family,
-            operation,
-            routes: preview.routes,
-            touchedTargets: preview.touched,
-            requiredGuards: preview.requiredGuards,
-          });
-          return textResult(
-            boundFacadePayload(
-              mcpSuccess(
-                {
-                  facade: {
-                    contract: FACADE_V1_CONTRACT_ID,
-                    version: 'v1',
-                    tool: 'manage_items',
-                    mutability: 'preview',
-                    target,
-                    family,
-                    ...(max_bytes ? { max_bytes } : {}),
-                  },
-                  result: {
-                    ...preview.result,
-                    routed_legacy: preview.routes,
-                    touched_targets: preview.touched,
-                    guard_values: preview.requiredGuards,
-                  },
-                  preview: {
-                    preview_token: token,
-                    operation_digest: digest,
-                    expires_at: new Date(expiresAtMs).toISOString(),
-                    required_guards: preview.requiredGuards,
-                  },
-                },
-                {
-                  toolName: 'manage_items',
-                  summary: `Previewed manage_items ${family} ${operation.action}`,
-                  nextActions: ['manage_items', 'read_content', 'validate_content'],
-                  artifacts: {
-                    family,
-                    action: operation.action,
-                    routed_tools: preview.routes.map((entry) => entry.tool),
-                    touched_targets: preview.touched,
-                  },
-                },
-              ),
-              max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
-            ),
-          );
-        }
-
-        if (!preview_token || !operation_digest) {
-          return textResult(
-            facadeApiError(
-              400,
-              'manage_items apply mode requires preview_token and operation_digest',
-              'Run manage_items with mode="preview", then pass the returned preview token and digest.',
-            ),
-          );
-        }
-        if (!guard_values || guard_values.length === 0) {
-          return textResult(
-            facadeApiError(
-              400,
-              'manage_items apply mode requires guard_values',
-              'Pass the required_guards array returned by manage_items preview.',
-            ),
-          );
-        }
-        const consumed = consumePreview(
-          manageItemsPreviewStore,
-          preview_token,
-          operation_digest,
-          target,
-          (entry) => entry.family === family,
+    safeToolHandler('manage_items', async (args) => {
+      cleanupFacadePreviews();
+      const parsed = manageItemsBodySchema.safeParse(args);
+      if (!parsed.success) {
+        return textResult(
+          facadeApiError(
+            400,
+            'Invalid manage_items request',
+            parsed.error.issues.map((issue) => issue.message).join('; '),
+            { issues: parsed.error.issues },
+            ['manage_items'],
+          ),
         );
-        if (consumed.kind === 'missing') {
-          return textResult(
-            facadeApiError(
-              404,
-              'Unknown or expired manage_items preview token',
-              'Preview tokens are one-shot and expire after 10 minutes or a server restart. Check the prior apply result and current target first; use manage_items preview for changes still needed, then apply the new token.',
-            ),
-          );
-        }
-        if (consumed.kind === 'mismatch') {
-          return textResult(
-            facadeApiError(
-              409,
-              'manage_items preview token does not match operation digest, target, or family',
-              'Use the exact operation_digest, target, and family returned by manage_items preview.',
-            ),
-          );
-        }
-        const entry = consumed.entry;
-        if (entry.activeDocument) {
-          const conflict = await checkActiveDocumentBinding(entry.activeDocument);
-          if (conflict) return textResult(conflict);
-        }
-        const applied = await applyManageItemsOperation(target, entry.family, entry.operation, guard_values);
-        if (isApiError(applied)) return textResult(applied);
+      }
+      const { target, family, mode, operation, preview_token, operation_digest, guard_values, max_bytes } = parsed.data;
+      if (mode === 'read') {
+        const read = await readManageItemsOperation(target, family, operation);
+        if (isApiError(read)) return textResult(read);
         return textResult(
           facadeEnvelope(
             'manage_items',
-            'mutating',
+            'read-only',
             target,
+            { ...read.result, routed_legacy: read.routes, touched_targets: read.touched },
+            `Read manage_items ${family} ${operation.action}`,
+            ['manage_items', 'read_content'],
             {
-              ...applied.result,
-              routed_legacy: applied.routes,
-              touched_targets: applied.touched,
-              family: entry.family,
-              guard_values,
-              preview_token,
-              operation_digest,
-            },
-            `Applied manage_items ${entry.family} ${entry.operation.action}`,
-            ['read_content', 'validate_content', 'manage_items'],
-            {
-              family: entry.family,
-              action: entry.operation.action,
-              routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
-              touched_targets: applied.touched,
+              family,
+              routed_tools: read.routes.map((entry) => entry.tool),
+              touched_targets: read.touched,
             },
             max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
           ),
         );
-      },
-    ),
+      }
+
+      if (mode === 'preview') {
+        const activeDocument = target.kind === 'active' ? await readActiveDocumentBinding() : undefined;
+        if (isApiError(activeDocument)) return textResult(activeDocument);
+        const preview = await previewManageItemsOperation(target, family, operation);
+        if (isApiError(preview)) return textResult(preview);
+        if (activeDocument) {
+          const conflict = await checkActiveDocumentBinding(activeDocument);
+          if (conflict) return textResult(conflict);
+        }
+        const digest = manageItemsOperationDigest(target, family, operation);
+        const { token, expiresAtMs } = rememberPreview(manageItemsPreviewStore, {
+          activeDocument,
+          operationDigest: digest,
+          target,
+          family,
+          operation,
+          routes: preview.routes,
+          touchedTargets: preview.touched,
+          requiredGuards: preview.requiredGuards,
+        });
+        return textResult(
+          boundFacadePayload(
+            mcpSuccess(
+              {
+                facade: {
+                  contract: FACADE_V1_CONTRACT_ID,
+                  version: 'v1',
+                  tool: 'manage_items',
+                  mutability: 'preview',
+                  target,
+                  family,
+                  ...(max_bytes ? { max_bytes } : {}),
+                },
+                result: {
+                  ...preview.result,
+                  routed_legacy: preview.routes,
+                  touched_targets: preview.touched,
+                  guard_values: preview.requiredGuards,
+                },
+                preview: {
+                  preview_token: token,
+                  operation_digest: digest,
+                  expires_at: new Date(expiresAtMs).toISOString(),
+                  required_guards: preview.requiredGuards,
+                },
+              },
+              {
+                toolName: 'manage_items',
+                summary: `Previewed manage_items ${family} ${operation.action}`,
+                nextActions: ['manage_items', 'read_content', 'validate_content'],
+                artifacts: {
+                  family,
+                  action: operation.action,
+                  routed_tools: preview.routes.map((entry) => entry.tool),
+                  touched_targets: preview.touched,
+                },
+              },
+            ),
+            max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
+          ),
+        );
+      }
+
+      const consumed = consumePreview(
+        manageItemsPreviewStore,
+        preview_token,
+        operation_digest,
+        target,
+        (entry) => entry.family === family,
+      );
+      if (consumed.kind === 'missing') {
+        return textResult(
+          facadeApiError(
+            404,
+            'Unknown or expired manage_items preview token',
+            'Preview tokens are one-shot and expire after 10 minutes or a server restart. Check the prior apply result and current target first; use manage_items preview for changes still needed, then apply the new token.',
+          ),
+        );
+      }
+      if (consumed.kind === 'mismatch') {
+        return textResult(
+          facadeApiError(
+            409,
+            'manage_items preview token does not match operation digest, target, or family',
+            'Use the exact operation_digest, target, and family returned by manage_items preview.',
+          ),
+        );
+      }
+      const entry = consumed.entry;
+      if (entry.activeDocument) {
+        const conflict = await checkActiveDocumentBinding(entry.activeDocument);
+        if (conflict) return textResult(conflict);
+      }
+      const applied = await applyManageItemsOperation(target, entry.family, entry.operation, guard_values);
+      if (isApiError(applied)) return textResult(applied);
+      return textResult(
+        facadeEnvelope(
+          'manage_items',
+          'mutating',
+          target,
+          {
+            ...applied.result,
+            routed_legacy: applied.routes,
+            touched_targets: applied.touched,
+            family: entry.family,
+            guard_values,
+            preview_token,
+            operation_digest,
+          },
+          `Applied manage_items ${entry.family} ${entry.operation.action}`,
+          ['read_content', 'validate_content', 'manage_items'],
+          {
+            family: entry.family,
+            action: entry.operation.action,
+            routed_tools: applied.routes.map((routeEntry) => routeEntry.tool),
+            touched_targets: applied.touched,
+          },
+          max_bytes ?? DEFAULT_FACADE_READ_MAX_BYTES,
+        ),
+      );
+    }),
   );
 
   server.tool(
@@ -1257,7 +1254,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
         const requestedFamily = body.asset_family ?? 'auto';
 
         if (body.mode === 'read') {
-          const read = await readManageAssetsOperation(body.target, requestedFamily, body.operation!);
+          const read = await readManageAssetsOperation(body.target, requestedFamily, body.operation);
           if (isApiError(read)) return textResult(read);
           return textResult(
             facadeEnvelope(
@@ -1265,7 +1262,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
               'read-only',
               body.target,
               { ...read.result, routed_legacy: read.routes, touched_targets: read.touched },
-              `Read manage_assets ${read.result.family ?? requestedFamily} ${body.operation!.action}`,
+              `Read manage_assets ${read.result.family ?? requestedFamily} ${body.operation.action}`,
               ['manage_assets', 'read_content'],
               {
                 family: read.result.family ?? requestedFamily,
@@ -1280,19 +1277,19 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
         if (body.mode === 'preview') {
           const activeDocument = body.target.kind === 'active' ? await readActiveDocumentBinding() : undefined;
           if (isApiError(activeDocument)) return textResult(activeDocument);
-          const preview = await previewManageAssetsOperation(body.target, requestedFamily, body.operation!);
+          const preview = await previewManageAssetsOperation(body.target, requestedFamily, body.operation);
           if (isApiError(preview)) return textResult(preview);
           if (activeDocument) {
             const conflict = await checkActiveDocumentBinding(activeDocument);
             if (conflict) return textResult(conflict);
           }
-          const digest = manageAssetsOperationDigest(body.target, requestedFamily, body.operation!);
+          const digest = manageAssetsOperationDigest(body.target, requestedFamily, body.operation);
           const { token, expiresAtMs } = rememberPreview(manageAssetsPreviewStore, {
             activeDocument,
             operationDigest: digest,
             target: body.target,
             assetFamily: requestedFamily,
-            operation: body.operation!,
+            operation: body.operation,
             routes: preview.routes,
             touchedTargets: preview.touched,
             requiredGuards: preview.requiredGuards,
@@ -1325,11 +1322,11 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
                 },
                 {
                   toolName: 'manage_assets',
-                  summary: `Previewed manage_assets ${preview.result.family ?? requestedFamily} ${body.operation!.action}`,
+                  summary: `Previewed manage_assets ${preview.result.family ?? requestedFamily} ${body.operation.action}`,
                   nextActions: ['manage_assets', 'read_content', 'validate_content'],
                   artifacts: {
                     family: preview.result.family ?? requestedFamily,
-                    action: body.operation!.action,
+                    action: body.operation.action,
                     routed_tools: preview.routes.map((entry) => entry.tool),
                     touched_targets: preview.touched,
                   },
@@ -1342,8 +1339,8 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
 
         const consumed = consumePreview(
           manageAssetsPreviewStore,
-          body.preview_token!,
-          body.operation_digest!,
+          body.preview_token,
+          body.operation_digest,
           body.target,
           (entry) => entry.assetFamily === requestedFamily,
         );
@@ -1450,7 +1447,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
         const body = parsed.data;
 
         if (body.mode === 'read') {
-          const read = await readManageFileOperation(body.target, body.operation!);
+          const read = await readManageFileOperation(body.target, body.operation);
           if (isApiError(read)) return textResult(read);
           return textResult(
             facadeEnvelope(
@@ -1458,10 +1455,10 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
               'read-only',
               body.target,
               { ...read.result, routed_legacy: read.routes, touched_targets: read.touched },
-              `Read manage_file ${body.operation!.action}`,
+              `Read manage_file ${body.operation.action}`,
               ['manage_file', 'inspect_document'],
               {
-                action: body.operation!.action,
+                action: body.operation.action,
                 routed_tools: read.routes.map((entry) => entry.tool),
                 touched_targets: read.touched,
               },
@@ -1473,22 +1470,22 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
         if (body.mode === 'preview') {
           const activeDocument =
             (body.target.kind === 'active' || body.target.kind === 'session') &&
-            !['open_file', 'create_document'].includes(body.operation!.action)
+            !['open_file', 'create_document'].includes(body.operation.action)
               ? await readActiveDocumentBinding()
               : undefined;
           if (isApiError(activeDocument)) return textResult(activeDocument);
-          const preview = await previewManageFileOperation(body.target, body.operation!);
+          const preview = await previewManageFileOperation(body.target, body.operation);
           if (isApiError(preview)) return textResult(preview);
           if (activeDocument) {
             const conflict = await checkActiveDocumentBinding(activeDocument);
             if (conflict) return textResult(conflict);
           }
-          const digest = manageFileOperationDigest(body.target, body.operation!);
+          const digest = manageFileOperationDigest(body.target, body.operation);
           const { token, expiresAtMs } = rememberPreview(manageFilePreviewStore, {
             activeDocument,
             operationDigest: digest,
             target: body.target,
-            operation: body.operation!,
+            operation: body.operation,
             routes: preview.routes,
             touchedTargets: preview.touched,
             requiredGuards: preview.requiredGuards,
@@ -1520,10 +1517,10 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
                 },
                 {
                   toolName: 'manage_file',
-                  summary: `Previewed manage_file ${body.operation!.action}`,
+                  summary: `Previewed manage_file ${body.operation.action}`,
                   nextActions: ['manage_file', 'inspect_document'],
                   artifacts: {
-                    action: body.operation!.action,
+                    action: body.operation.action,
                     routed_tools: preview.routes.map((entry) => entry.tool),
                     touched_targets: preview.touched,
                   },
@@ -1534,12 +1531,7 @@ export function registerFacadeTools(server: McpToolServer, deps: FacadeToolRegis
           );
         }
 
-        const consumed = consumePreview(
-          manageFilePreviewStore,
-          body.preview_token!,
-          body.operation_digest!,
-          body.target,
-        );
+        const consumed = consumePreview(manageFilePreviewStore, body.preview_token, body.operation_digest, body.target);
         if (consumed.kind === 'missing') {
           return textResult(
             facadeApiError(

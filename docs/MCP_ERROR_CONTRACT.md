@@ -32,6 +32,7 @@ Notes:
 - `details` should carry small machine-readable facts, not large payloads
 - Stale-index conflicts return `409` with family-specific `details.expected_*` / `details.actual_*` fields (for example `expected_comment`, `expected_preview`, or `expected_type`), so the caller can refresh the relevant list route deterministically before retrying
 - Surface patch hash conflicts return `409` with `details.expected_hash` / `details.actual_hash`; refresh with `list_surfaces`, `read_surface`, or `external_read_surface` before retrying
+- External field edit previews bind the original field with `expected_field_hash`. If that field changes before apply or during confirmation, the write returns `409`; inspect the latest content and create a new preview. Unrelated field changes do not invalidate this field guard.
 - Invalid JSON-backed `.risup` fields use the field-specific message format `Invalid <field>: <reason>` and reject the whole submitted mutation before data is changed
 - Surface patch arrays follow RFC 6902 for supported operations: `add` inserts at an existing boundary or appends with `-`, while `replace` and `remove` require an existing index
 - `mcpError()` broadcasts failure status to the renderer UI

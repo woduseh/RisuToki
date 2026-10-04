@@ -338,6 +338,39 @@ async function smoke() {
     // Credentials stay in process memory and the disposable home, never the report.
     result.apiPort = info.port;
   });
+  await check('cancel-project-replacement', async () => {
+    const draft = `${text} — unsaved project-switch draft`;
+    await evaluate(() => {
+      document.querySelector('#editor-container textarea.inputarea:not([readonly])').focus();
+    });
+    currentWindow.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'End', modifiers: ['control'] });
+    currentWindow.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'End', modifiers: ['control'] });
+    await until(
+      () => evaluate((length) => window.monaco.editor.getEditors()
+        .some((editor) => editor.hasTextFocus() && editor.getPosition()?.column === length + 1), text.length),
+      'draft insertion at the end of the description',
+    );
+    await currentWindow.webContents.insertText(' — unsaved project-switch draft');
+    await until(() => evaluate(visibleEditorValue).then((value) => value === draft), 'unsaved project-switch draft');
+    for (const label of ['프로젝트 폴더 열기', '파일을 프로젝트 폴더로 추출']) {
+      await menu(label);
+      await until(
+        () => evaluate(() => {
+          const cancel = [...document.querySelectorAll('.settings-popup button')]
+            .find((button) => button.textContent === '취소');
+          if (!cancel) return false;
+          cancel.click();
+          return true;
+        }),
+        `cancel ${label}`,
+      );
+      assert.equal(await evaluate(visibleEditorValue), draft, 'Cancelled project replacement must preserve the draft');
+      assert.equal(await evaluate(() => window.tokiAPI.getFilePath()), saved);
+      assert.equal(openCharx(saved).description, text, 'Cancellation must not implicitly save the draft');
+    }
+    await menu('저장');
+    await until(() => openCharx(saved).description === draft, 'preserved draft can still be saved');
+  });
   await check('native-image', async () => {
     const sharp = require('sharp');
     const png = await sharp({ create: { width: 3, height: 2, channels: 4, background: '#ff4000' } })

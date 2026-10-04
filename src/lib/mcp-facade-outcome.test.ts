@@ -18,13 +18,14 @@ const noOp = {
   retryable: false,
   retry_mode: 'never',
   matchCount: 0,
+  field_hash: 'synthetic-field-hash',
   message: 'No matching text',
 };
 
 function createOutcomeHarness(responses: Record<string, unknown>[]) {
   const handlers = new Map<string, Handler>();
   const apiRequest = vi.fn(async (_method: string, _route: string, body?: Record<string, unknown>) =>
-    body?.dry_run ? { dryRun: true, matchCount: 1 } : responses.shift(),
+    body?.dry_run ? { dryRun: true, matchCount: 1, field_hash: 'synthetic-field-hash' } : responses.shift(),
   );
   const content = createFacadeContentEngine({
     apiRequest,

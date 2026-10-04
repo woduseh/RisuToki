@@ -9,6 +9,21 @@
 
 ---
 
+## [3.10.2] - 2026-10-04
+
+### Fixed
+
+- Route facade and granular project extraction/reassembly through the runtime write gate, with source/output conflict checks after confirmation and lint enforcement against direct MCP file writes.
+- Preserve unsaved drafts when opening or extracting projects, and retain the current project context when opening a recent file is cancelled.
+- Exercise project-open/extract cancellation with a real unsaved renderer draft in the isolated desktop smoke.
+- Bind external field edit previews to the original field contents so later changes are rejected instead of overwritten.
+- Update recovery records inside Save As completion for UI and MCP callers alike.
+- Refresh RISUP group and prompt-item tabs by string identity, keeping numeric index remapping restricted to indexed collections.
+
+### Changed
+
+- Represent parsed manage-items/assets/file requests with mode-specific required fields, sharing validation across their handlers.
+
 ## [3.10.1] - 2026-10-03
 
 ### Fixed

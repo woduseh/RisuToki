@@ -39,6 +39,7 @@ node toki-mcp-server.js --standalone [--file <path>] [--ref <path>] [--allow-wri
 - `--file` loads an active `.charx`, `.risum`, or `.risup` document.
 - Repeated `--ref` options load read-only references.
 - Without `--allow-writes`, mutation requests stop at the write gate.
+- Project extraction and reassembly use the same write gate in both facade and granular tools; their source and output are checked again after approval.
 - `--user-data-dir` changes the standalone sidecar and diagnostics directory.
 - `RISUTOKI_MCP_FILE`, `RISUTOKI_MCP_REFS`, `RISUTOKI_MCP_ALLOW_WRITES`, `RISUTOKI_MCP_USER_DATA_DIR`, and `RISUTOKI_MCP_TOOL_PROFILE` are the environment-variable equivalents.
 

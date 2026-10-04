@@ -65,8 +65,8 @@ describe('MCP data update planner', () => {
       ]),
     ).toEqual({
       backupTabIds: ['risup_templates'],
-      refreshTabIds: [],
-      refreshIndexedPrefixes: ['risup_'],
+      refreshTabIds: ['risup_templates'],
+      refreshIndexedPrefixes: [],
       refreshSidebar: false,
       statusMessage: 'AI 어시스턴트가 promptTemplate 필드를 수정했습니다',
       updateFileLabel: false,
@@ -79,8 +79,8 @@ describe('MCP data update planner', () => {
       ]),
     ).toEqual({
       backupTabIds: ['risup_basic'],
-      refreshTabIds: [],
-      refreshIndexedPrefixes: ['risup_'],
+      refreshTabIds: ['risup_basic'],
+      refreshIndexedPrefixes: [],
       refreshSidebar: false,
       statusMessage: 'AI 어시스턴트가 name 필드를 수정했습니다',
       updateFileLabel: true,

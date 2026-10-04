@@ -259,6 +259,28 @@ export async function handleExternalRoute(
     parseBody,
   } = routeDeps;
 
+  function checkFieldHash(body: JsonBody, fieldName: string, actualHash: string, action: string): boolean {
+    if (body.expected_field_hash === undefined) return true;
+    if (typeof body.expected_field_hash !== 'string') {
+      mcpError(res, 400, {
+        action,
+        target: `external:field:${fieldName}`,
+        message: 'expected_field_hash must be a string',
+        suggestion: 'Pass the field hash returned by the preview.',
+      });
+      return false;
+    }
+    if (body.expected_field_hash === actualHash) return true;
+    mcpError(res, 409, {
+      action,
+      target: `external:field:${fieldName}`,
+      message: 'The external field changed since preview',
+      suggestion: 'Read the current field and create a fresh preview.',
+      details: { expected_field_hash: body.expected_field_hash, actual_field_hash: actualHash },
+    });
+    return false;
+  }
+
   async function dispatch(): Promise<void | false> {
     if (getStructuredReadRoute(req.method, parts) === 'external-assets-read') {
       const probe = await readProbeDocumentRequest(
@@ -627,6 +649,8 @@ export async function handleExternalRoute(
       }
 
       const oldSize = getExternalFieldMeasure(probe.data, fieldName, deps);
+      const fieldHash = hashSurface(probe.data[fieldName]);
+      if (!checkFieldHash(probe.body, fieldName, fieldHash, 'external write field')) return;
       const applied = applyExternalFieldMutation(
         probe.data,
         fieldName,
@@ -674,6 +698,7 @@ export async function handleExternalRoute(
             file_type: probe.fileType,
             field: fieldName,
             oldSize,
+            field_hash: hashSurface(probe.data[fieldName]),
             newSize: applied.size,
           },
           {
@@ -921,6 +946,8 @@ export async function handleExternalRoute(
       const release = await acquireFieldMutex(`external:${probe.filePath}:${fieldName}`);
       try {
         const content = normalizeLF(String(probe.data[fieldName] ?? ''));
+        const fieldHash = hashSurface(probe.data[fieldName]);
+        if (!checkFieldHash(probe.body, fieldName, fieldHash, 'external replace in field')) return;
         const findStr = normalizeLF(parsed.find);
         const replaceStr = parsed.replace !== undefined ? normalizeLF(parsed.replace) : '';
         const useRegex = !!parsed.regex;
@@ -969,6 +996,7 @@ export async function handleExternalRoute(
             },
             {
               matchCount: 0,
+              field_hash: fieldHash,
               ...(dryRun ? { dryRun: true } : {}),
             },
           );
@@ -991,6 +1019,7 @@ export async function handleExternalRoute(
               dryRun: true,
               file_path: probe.filePath,
               field: fieldName,
+              field_hash: fieldHash,
               matchCount,
               fieldLength: content.length,
               previews,
@@ -1036,6 +1065,7 @@ export async function handleExternalRoute(
             field: fieldName,
             matchCount,
             oldSize: content.length,
+            field_hash: hashSurface(probe.data[fieldName]),
             newSize: newContent.length,
           },
           {
@@ -1120,6 +1150,8 @@ export async function handleExternalRoute(
       const release = await acquireFieldMutex(`external:${probe.filePath}:${fieldName}`);
       try {
         const oldContent = normalizeLF(String(probe.data[fieldName] ?? ''));
+        const fieldHash = hashSurface(probe.data[fieldName]);
+        if (!checkFieldHash(probe.body, fieldName, fieldHash, 'external insert in field')) return;
         const position = parsed.position || 'end';
         const insertContent = normalizeLF(parsed.content);
         let newContent: string;
@@ -1189,6 +1221,7 @@ export async function handleExternalRoute(
             field: fieldName,
             position,
             oldSize: oldContent.length,
+            field_hash: hashSurface(probe.data[fieldName]),
             newSize: newContent.length,
           },
           {

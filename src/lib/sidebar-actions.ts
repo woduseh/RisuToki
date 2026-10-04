@@ -1,5 +1,5 @@
 import type { Section } from './section-parser';
-import type { Tab } from './tab-manager';
+import type { Tab, TabManager } from './tab-manager';
 import {
   canonicalizeLorebookFolderRefs,
   getFolderRef,
@@ -35,8 +35,8 @@ export interface SidebarActionDeps {
   ) => void;
   closeTab: (id: string) => void;
   markFieldDirty: (field: string) => void;
-  shiftIndexedTabsAfterRemoval: (prefix: string, removedIndices: number[], buildTabState: TabStateFn) => void;
-  refreshIndexedTabs: (prefix: string, buildTabState: TabStateFn) => void;
+  shiftIndexedTabsAfterRemoval: TabManager['shiftIndexedTabsAfterRemoval'];
+  refreshIndexedTabs: TabManager['refreshIndexedTabs'];
 
   buildLorebookTabState: TabStateFn;
   buildRegexTabState: TabStateFn;

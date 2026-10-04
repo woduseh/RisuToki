@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { markRecoveryDocumentActiveForPath, syncRecoveryAfterExplicitSave } from './session-recovery-main';
+import { createSessionRecoveryManager } from './session-recovery-manager';
+import { getAutosaveSidecarPath } from './session-recovery';
 
 describe('session-recovery-main', () => {
   it.each([
@@ -48,5 +50,44 @@ describe('session-recovery-main', () => {
     await syncRecoveryAfterExplicitSave(null, { success: true, path: 'C:\\cards\\saved.charx' });
 
     expect(recoveryManager.markDocumentActive).not.toHaveBeenCalled();
+  });
+
+  it('makes the first saved document recoverable after a later autosave without a prior active-file record', async () => {
+    const sourcePath = 'C:\\cards\\saved.risum';
+    const autosavePath = 'C:\\cards\\saved_autosave.risum';
+    const sidecarPath = getAutosaveSidecarPath(autosavePath);
+    const files = new Map<string, string>([
+      [sourcePath, 'source'],
+      [autosavePath, 'autosave'],
+      [
+        sidecarPath,
+        JSON.stringify({
+          sourceFilePath: sourcePath,
+          sourceFileType: 'risum',
+          autosavePath,
+          savedAt: '2026-10-04T00:00:00.000Z',
+          dirtyFields: ['description'],
+          appVersion: 'test',
+        }),
+      ],
+    ]);
+    const deps = {
+      readFileSync: (filePath: string) => files.get(filePath)!,
+      writeFileSync: (filePath: string, content: string) => {
+        files.set(filePath, content);
+      },
+      existsSync: (filePath: string) => files.has(filePath),
+      statSync: () => ({ mtimeMs: 1000 }),
+      userDataPath: 'C:\\user-data',
+      openDocument: vi.fn(() => ({})),
+      setCurrentDocument: vi.fn(),
+    };
+    const manager = createSessionRecoveryManager(deps);
+
+    await syncRecoveryAfterExplicitSave(manager, { success: true, path: sourcePath });
+    await manager.updateAutosavePaths(autosavePath, sidecarPath);
+
+    const nextRun = createSessionRecoveryManager(deps);
+    expect(await nextRun.getPendingRecovery()).toMatchObject({ sourceFilePath: sourcePath, autosavePath });
   });
 });

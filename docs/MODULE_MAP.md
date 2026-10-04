@@ -50,6 +50,8 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-section-routes.ts` — active-document Lua and CSS section list, CRUD, batch, and text-edit routes
 - `src/lib/mcp-reference-routes.ts` — loaded-reference inventory, field, lorebook, regex, greeting, trigger, section, and RISUP read routes
 - `src/lib/mcp-external-routes.ts` — unopened-document inspection, field read/write/search, surface patch, and UI open-file routes
+- `src/lib/mcp-project-routes.ts` — approved project extract/reassemble writes with source/output conflict checks
+- `src/lib/mcp-file-state.ts` — shared on-disk file/tree fingerprints for facade previews and project writes
 - `src/lib/mcp-surface-fingerprint.ts` — streamed legacy-compatible surface hashes and private binary-aware document bindings
 - `src/lib/mcp-read-routes.ts` — shared structured-read dispatch matching and read-only snapshot classification
 - `src/lib/mcp-field-routes.ts` — active-document field CRUD, batch, search, range, snapshot, statistics, and session-status routes

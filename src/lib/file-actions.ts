@@ -12,7 +12,7 @@ type MonacoEditor = any;
 
 export interface FileActionDeps {
   getFileData: () => RendererDocumentData | null;
-  setFileData: (data: RendererDocumentData) => void;
+  setFileData: (data: RendererDocumentData, projectPath?: string) => void;
   getEditorInstance: () => MonacoEditor | null;
   setEditorInstance: (instance: null) => void;
   disposeEditorSurfaces: () => void;
@@ -33,15 +33,22 @@ export interface OpenPathOptions {
 }
 
 type OpenFileResult =
-  | { success: true; data: RendererDocumentData; path?: string; sourceFormat?: string; imported?: boolean }
-  | { success: false; canceled: true }
-  | { success: false; canceled?: false; error: string };
+  | {
+      success: true;
+      data: RendererDocumentData;
+      path?: string;
+      projectPath?: string;
+      sourceFormat?: string;
+      imported?: boolean;
+    }
+  | { success: false; canceled?: boolean; error?: string };
 
 type OpenDocumentLoaderResult = RendererDocumentData | OpenFileResult | null;
 
 export interface OpenedDocumentResult {
   data: RendererDocumentData;
   path?: string;
+  projectPath?: string;
   sourceFormat?: string;
   imported?: boolean;
 }
@@ -98,9 +105,10 @@ function getSaveValidationMessage(fileData: RendererDocumentData, tabMgr: TabMan
   return getTriggerDraftValidationMessage(tabMgr);
 }
 
-function applyLoadedDocument(deps: FileActionDeps, data: RendererDocumentData): void {
+function applyLoadedDocument(deps: FileActionDeps, data: RendererDocumentData, projectPath?: string): void {
   const store = useAppStore();
-  deps.setFileData(data);
+  if (projectPath !== undefined) deps.setFileData(data, projectPath);
+  else deps.setFileData(data);
   resetEditorUI(deps);
   store.clearRestoredSessionState();
   store.setFileLabel(`${data.name || 'Untitled'}`);
@@ -143,7 +151,8 @@ async function confirmDocumentReplacement(
   return true;
 }
 
-async function openDocumentWithLoader(
+/** Returns null on replacement/dialog cancellation; load failures reject without replacing the draft. */
+export async function openDocumentWithLoader(
   deps: FileActionDeps,
   targetLabel: string,
   loader: () => Promise<OpenDocumentLoaderResult>,
@@ -156,18 +165,19 @@ async function openDocumentWithLoader(
     const result = await loader();
     const data = isOpenFileResult(result) ? (result.success ? result.data : null) : result;
     if (isOpenFileResult(result) && !result.success && !result.canceled) {
-      throw new Error(result.error);
+      throw new Error(result.error || '알 수 없는 오류');
     }
     if (!data) {
       deps.setStatus('준비');
       return null;
     }
-    applyLoadedDocument(deps, data);
+    applyLoadedDocument(deps, data, isOpenFileResult(result) && result.success ? result.projectPath : undefined);
     deps.setStatus(`파일 열림: ${data.name}`);
     if (isOpenFileResult(result) && result.success) {
       return {
         data,
         path: result.path,
+        projectPath: result.projectPath,
         sourceFormat: result.sourceFormat,
         imported: result.imported,
       };

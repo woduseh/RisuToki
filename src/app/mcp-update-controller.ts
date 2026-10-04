@@ -11,7 +11,7 @@ interface EditorSurface {
 type IndexedTabBuilder = (index: number, tab: Tab) => Partial<Tab> | null;
 
 export interface McpUpdateControllerDeps {
-  tabManager: Pick<TabManager, 'activeTabId' | 'markFieldDirty' | 'openTabs' | 'refreshIndexedTabs'>;
+  tabManager: Pick<TabManager, 'activeTabId' | 'markFieldDirty' | 'openTabs' | 'refreshIndexedTabs' | 'refreshTabs'>;
   getFileData: () => RendererDocumentData | null;
   getEditor: () => EditorSurface | null;
   formTabTypes: ReadonlySet<string>;
@@ -22,6 +22,7 @@ export interface McpUpdateControllerDeps {
   buildLuaSectionTabState: IndexedTabBuilder;
   buildCssSectionTabState: IndexedTabBuilder;
   buildRisupTabState: (field: string, tab: Tab) => Partial<Tab> | null;
+  buildRisupPromptItemTabState: (itemId: string, tab: Tab) => Partial<Tab> | null;
   applyTriggerScriptsUpdate: (value: unknown) => McpDataUpdatePlan;
   mergeLuaIntoTriggerScripts: (triggerScripts: string, lua: string) => string;
   updateLuaSections: (lua: string) => void;
@@ -90,11 +91,19 @@ export function handleMcpDataUpdate(deps: McpUpdateControllerDeps, field: string
         deps.tabManager.refreshIndexedTabs(prefix, deps.buildLuaSectionTabState);
       } else if (prefix === 'css_s') {
         deps.tabManager.refreshIndexedTabs(prefix, deps.buildCssSectionTabState);
-      } else if (prefix === 'risup_') {
-        deps.tabManager.refreshIndexedTabs(prefix, (_index, tab) =>
-          deps.buildRisupTabState(tab.id.replace('risup_', ''), tab),
-        );
       }
+    }
+    if (updatePlan.refreshTabIds.some((tabId) => tabId.startsWith('risup_'))) {
+      deps.tabManager.refreshTabs(
+        (tab) => updatePlan.refreshTabIds.includes(tab.id),
+        (tab) =>
+          tab.id.startsWith('risup_prompt_item_')
+            ? deps.buildRisupPromptItemTabState(
+                String(tab._promptItemId || tab.id.slice('risup_prompt_item_'.length)),
+                tab,
+              )
+            : deps.buildRisupTabState(tab.id.slice('risup_'.length), tab),
+      );
     }
 
     const editor = deps.getEditor();

@@ -1472,6 +1472,9 @@ async function saveCurrentFileAs(updatedFields: RendererDocumentPatch): Promise<
       reassembleProjectDocument(mainState.currentProjectPath, result.filePath);
       mainState.currentFilePath = result.filePath;
       mainState.setCurrentFileBaseline(captureFileBaseline(result.filePath));
+      await syncRecoveryAfterExplicitSave(recoveryManager, { success: true, path: result.filePath }).catch((e) =>
+        console.warn('[main] recovery sync after save error:', e),
+      );
       return { success: true, path: result.filePath };
     }
 
@@ -1514,7 +1517,10 @@ async function saveCurrentFileAs(updatedFields: RendererDocumentPatch): Promise<
     mainState.setCurrentDocument(result.filePath, mainState.currentData!);
     mainState.setCurrentFileBaseline(captureFileBaseline(result.filePath));
     mainWindow!.setTitle(`RisuToki - ${path.basename(mainState.currentFilePath!)}`);
-    return { success: true, path: mainState.currentFilePath! };
+    await syncRecoveryAfterExplicitSave(recoveryManager, { success: true, path: result.filePath }).catch((e) =>
+      console.warn('[main] recovery sync after save error:', e),
+    );
+    return { success: true, path: result.filePath };
   } catch (error) {
     return { success: false, error: (error as Error).message };
   }
@@ -1530,11 +1536,7 @@ ipcMain.handle('save-file', async (_event, updatedFields: RendererDocumentPatch)
     }
 
     if (!mainState.currentFilePath) {
-      const result = await saveCurrentFileAs(updatedFields);
-      syncRecoveryAfterExplicitSave(recoveryManager, result).catch((e) =>
-        console.warn('[main] recovery sync after save error:', e),
-      );
-      return result;
+      return saveCurrentFileAs(updatedFields);
     }
 
     assertFileUnchanged(mainState.currentFilePath, mainState.currentFileBaseline);
@@ -1561,11 +1563,7 @@ ipcMain.handle('save-file', async (_event, updatedFields: RendererDocumentPatch)
 // Save As
 ipcMain.handle('save-file-as', async (_event, updatedFields: RendererDocumentPatch) => {
   if (!mainState.currentData) return { success: false, error: 'No file open' };
-  const result = await saveCurrentFileAs(updatedFields);
-  syncRecoveryAfterExplicitSave(recoveryManager, result).catch((e) =>
-    console.warn('[main] recovery sync after save error:', e),
-  );
-  return result;
+  return saveCurrentFileAs(updatedFields);
 });
 
 // Get current file path (for terminal context)

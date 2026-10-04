@@ -1,4 +1,5 @@
 import * as http from 'http';
+import { fingerprintSurface } from './mcp-surface-fingerprint';
 
 import {
   collectFormatingOrderWarnings,
@@ -108,10 +109,14 @@ export async function handleProbeRoute(
       return true;
     }
     const probePayload = buildFieldReadResponsePayload(probe.data, fieldName, deps);
-    deps.jsonResSuccess(res, probePayload, {
-      toolName: 'probe_field',
-      summary: `Probed field "${fieldName}" from external file`,
-    });
+    deps.jsonResSuccess(
+      res,
+      { ...probePayload, field_hash: fingerprintSurface(probe.data[fieldName]).hash },
+      {
+        toolName: 'probe_field',
+        summary: `Probed field "${fieldName}" from external file`,
+      },
+    );
     return true;
   }
 

@@ -109,6 +109,7 @@ import {
   handleOpenPath as _handleOpenPath,
   handleSave as _handleSave,
   handleSaveAs as _handleSaveAs,
+  openDocumentWithLoader,
 } from '../lib/file-actions';
 import type { FileActionDeps } from '../lib/file-actions';
 import { runStartupSessionRecovery } from './session-recovery-controller';
@@ -948,10 +949,14 @@ function setRisupPromptTemplate(value: string): void {
   fileData.promptTemplate = value;
   tabMgr.markFieldDirty('promptTemplate');
   tabMgr.markDirtyForTabId('risup_prompt');
-  tabMgr.refreshIndexedTabs('risup_prompt_item_', (_index, tab) =>
-    buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
+  tabMgr.refreshTabs(
+    (tab) => tab.id.startsWith('risup_prompt_item_'),
+    (tab) => buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
   );
-  tabMgr.refreshIndexedTabs('risup_', (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
+  tabMgr.refreshTabs(
+    (tab) => tab.id.startsWith('risup_') && !tab.id.startsWith('risup_prompt_item_'),
+    (tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab),
+  );
   renderPromptManagerPanel();
 }
 
@@ -2084,7 +2089,9 @@ function applyLoadedDocument(data: RendererDocumentData): void {
 /** @type {import('../lib/file-actions').FileActionDeps} */
 const fileActionDeps: FileActionDeps = {
   getFileData: () => fileData,
-  setFileData: (d) => {
+  setFileData: (d, projectPath) => {
+    projectWorkspace.clearRawSyncState();
+    setCurrentProjectPath(projectPath || null);
     setCurrentFileData(d);
   },
   getEditorInstance: () => editorInstance,
@@ -2112,35 +2119,33 @@ async function handleOpen(): Promise<void> {
 }
 
 async function handleExtractDocumentProject(): Promise<void> {
-  const result = await window.tokiAPI.extractDocumentToProject();
-  if (!result.success) {
-    if (!result.canceled) setStatus(`프로젝트 추출 실패: ${result.error || '알 수 없는 오류'}`);
-    return;
+  try {
+    const result = await openDocumentWithLoader(fileActionDeps, '프로젝트 추출', () =>
+      window.tokiAPI.extractDocumentToProject(),
+    );
+    if (!result) return;
+    rememberRecentProject(result.projectPath);
+    useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
+    await window.tokiAPI.watchProjectFolder();
+    setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
+  } catch (error) {
+    setStatus(`프로젝트 추출 실패: ${(error as Error).message}`);
   }
-  setCurrentFileData(result.data);
-  setCurrentProjectPath(result.projectPath || null);
-  rememberRecentProject(result.projectPath);
-  useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
-  resetDocumentWorkspace();
-  buildSidebar();
-  await window.tokiAPI.watchProjectFolder();
-  setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
 }
 
 async function handleOpenProjectFolder(): Promise<void> {
-  const result = await window.tokiAPI.openProjectFolder();
-  if (!result.success) {
-    if (!result.canceled) setStatus(`프로젝트 열기 실패: ${result.error || '알 수 없는 오류'}`);
-    return;
+  try {
+    const result = await openDocumentWithLoader(fileActionDeps, '프로젝트 폴더 열기', () =>
+      window.tokiAPI.openProjectFolder(),
+    );
+    if (!result) return;
+    rememberRecentProject(result.projectPath);
+    useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
+    await window.tokiAPI.watchProjectFolder();
+    setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
+  } catch (error) {
+    setStatus(`프로젝트 열기 실패: ${(error as Error).message}`);
   }
-  setCurrentFileData(result.data);
-  setCurrentProjectPath(result.projectPath || null);
-  rememberRecentProject(result.projectPath);
-  useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
-  resetDocumentWorkspace();
-  buildSidebar();
-  await window.tokiAPI.watchProjectFolder();
-  setStatus(`프로젝트 폴더 열림: 구조화 편집을 기본으로 사용합니다. (${result.projectPath})`);
 }
 
 async function handleCloneProjectFolder(): Promise<void> {
@@ -2173,22 +2178,19 @@ async function handleOpenRecentItem(payload?: unknown): Promise<void> {
   if (!item?.path) return;
   try {
     if (item.kind === 'project') {
-      const result = await window.tokiAPI.openProjectFolderPath(item.path);
-      if (!result.success) {
-        throw new Error(result.error || '알 수 없는 오류');
-      }
-      setCurrentFileData(result.data);
-      setCurrentProjectPath(result.projectPath || null);
+      const result = await openDocumentWithLoader(fileActionDeps, item.path, () =>
+        window.tokiAPI.openProjectFolderPath(item.path),
+      );
+      if (!result) return;
       useAppStore().setFileLabel(`${fileData?.name || 'Untitled'} · 프로젝트 폴더`);
-      resetDocumentWorkspace();
-      buildSidebar();
       await window.tokiAPI.watchProjectFolder();
       rememberRecentProject(result.projectPath || item.path);
       setStatus(`최근 프로젝트 열림: ${result.projectPath || item.path}`);
       return;
     }
 
-    await _handleOpenPath(fileActionDeps, item.path, { targetLabel: item.path });
+    const result = await _handleOpenPath(fileActionDeps, item.path, { targetLabel: item.path });
+    if (!result) return;
     setCurrentProjectPath(null);
     rememberRecentFile(item.path, item.sourceFormat);
     setStatus(`최근 파일 열림: ${item.path}`);
@@ -2460,6 +2462,7 @@ function applyDocumentFieldUpdate(field: string, value: unknown): void {
       buildLuaSectionTabState,
       buildCssSectionTabState,
       buildRisupTabState,
+      buildRisupPromptItemTabState,
       applyTriggerScriptsUpdate: (nextValue) =>
         applyTriggerScriptsControllerMcpUpdate({
           tabMgr,
@@ -2672,8 +2675,9 @@ async function restoreReviewChange(change: ReviewChange): Promise<void> {
   const reviewOpen = workbench.reviewOpen;
   for (const [field, value] of Object.entries(patch)) applyDocumentFieldUpdate(field, value);
   tabMgr.refreshIndexedTabs('altGreet_', buildAltGreetTabState);
-  tabMgr.refreshIndexedTabs('risup_prompt_item_', (_index, tab) =>
-    buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
+  tabMgr.refreshTabs(
+    (tab) => tab.id.startsWith('risup_prompt_item_'),
+    (tab) => buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
   );
   const activeTab = tabMgr.openTabs.find((tab) => tab.id === tabMgr.activeTabId);
   if (activeTab) createOrSwitchEditor(activeTab);
@@ -2874,7 +2878,10 @@ export async function initMainRenderer(): Promise<void> {
       target.name = name.trim();
       useAppStore().setFileLabel(target.name);
       tabMgr.markFieldDirty('name');
-      tabMgr.refreshIndexedTabs('risup_', (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
+      tabMgr.refreshTabs(
+        (tab) => tab.id.startsWith('risup_') && !tab.id.startsWith('risup_prompt_item_'),
+        (tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab),
+      );
       setStatus('프리셋 이름을 변경했습니다.');
     },
     'risup-description': () => {
@@ -2943,10 +2950,15 @@ export async function initMainRenderer(): Promise<void> {
       if (change.field === 'lorebook') tabMgr.refreshIndexedTabs('lore_', buildLorebookTabState);
       if (change.field === 'regex') tabMgr.refreshIndexedTabs('regex_', buildRegexTabState);
       if (change.field === 'promptTemplate') {
-        tabMgr.refreshIndexedTabs('risup_prompt_item_', (_index, tab) =>
-          buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
+        tabMgr.refreshTabs(
+          (tab) => tab.id.startsWith('risup_prompt_item_'),
+          (tab) =>
+            buildRisupPromptItemTabState(String(tab._promptItemId || tab.id.replace('risup_prompt_item_', '')), tab),
         );
-        tabMgr.refreshIndexedTabs('risup_', (_index, tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab));
+        tabMgr.refreshTabs(
+          (tab) => tab.id.startsWith('risup_') && !tab.id.startsWith('risup_prompt_item_'),
+          (tab) => buildRisupTabState(tab.id.replace('risup_', ''), tab),
+        );
       }
       buildSidebar();
       renderPromptManagerPanel();

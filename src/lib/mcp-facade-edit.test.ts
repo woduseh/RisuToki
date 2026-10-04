@@ -6,17 +6,29 @@ import { closeServer, createExternalFixtureHelpers, postJson, startTestApiServer
 import { useMcpApiTestDir } from './mcp-api-vitest-helpers';
 import { createFacadeEditEngine, type FacadeEditEngineDeps } from './mcp-facade-edit';
 import { facadeApiError, isApiError } from './mcp-facade-runtime';
+import { facadePreviewStore } from './mcp-facade-runtime';
+import { createFacadeContentEngine, type FacadeContentEngineDeps } from './mcp-facade-content';
+import { createFacadeScriptStyleEngine } from './mcp-facade-script-style';
+import { registerFacadeTools, type FacadeToolRegistrationDeps } from './mcp-tool-register-facade';
+import type { McpToolResult, McpToolServer } from './mcp-tool-registration';
 import { facadeV1EditOperationSchema, type FacadeV1EditOperation, type FacadeV1Target } from './mcp-request-schemas';
 
 const TEST_DIR = useMcpApiTestDir('facade-field-replace');
 const { createExternalCharxFixture } = createExternalFixtureHelpers(TEST_DIR);
 
 function createEditEngine(apiRequest: FacadeEditEngineDeps['apiRequest']) {
+  const scriptStyle = createFacadeScriptStyleEngine(apiRequest);
+  const content = createFacadeContentEngine({
+    apiRequest,
+    items: {},
+    danbooru: {},
+    scriptStyle,
+  } as unknown as FacadeContentEngineDeps);
   return createFacadeEditEngine({
     apiRequest,
-    content: {},
+    content,
     items: {},
-    scriptStyle: { isScriptStyleFamily: () => false },
+    scriptStyle,
   } as unknown as FacadeEditEngineDeps);
 }
 
@@ -97,6 +109,149 @@ describe('ID-based edit previews', () => {
       expect(engine.apiRequest).toHaveBeenCalledTimes(1);
     }
   });
+});
+
+describe('external field preview source guards', () => {
+  it.each(['write_content', 'insert_text', 'replace_text'] as const)(
+    'rejects a stale %s preview without overwriting the newer field',
+    async (op) => {
+      const { filePath } = createExternalCharxFixture({ description: 'original text' });
+      const confirm = vi.fn(async () => true);
+      const api = await startTestApiServer(null, [], undefined, {
+        userDataPath: TEST_DIR,
+        askRendererConfirm: confirm,
+      });
+      try {
+        const engine = createEditEngine(async (_method, routePath, body) => {
+          const response = await postJson<Record<string, unknown>>(api.port, api.token, routePath, body);
+          return response.status < 400
+            ? response.data
+            : facadeApiError(response.status, 'Field request failed', 'Preview again.');
+        });
+        const target = { kind: 'external' as const, file_path: filePath };
+        const operation = facadeV1EditOperationSchema.parse({
+          op,
+          selector: { family: 'field', field: 'description' },
+          ...(op === 'replace_text' ? { find: 'original', replace: 'replacement' } : { content: 'replacement' }),
+        });
+        const preview = await engine.previewFacadeOperation(target, operation);
+        if (isApiError(preview)) throw new Error(String(preview.error));
+        expect(preview.requiredGuards).toEqual([
+          expect.objectContaining({ name: 'expected_field_hash', payloadPath: '/expected_field_hash' }),
+        ]);
+        // Legacy granular requests remain optional-guard compatible.
+        expect(
+          (
+            await postJson(api.port, api.token, '/external/field/description', {
+              file_path: filePath,
+              content: 'newer writer content',
+            })
+          ).status,
+        ).toBe(200);
+        confirm.mockClear();
+        const result = await engine.applyFacadeOperation(target, operation, preview.requiredGuards);
+        expect(result).toMatchObject({ __apiError: true, status: 409 });
+        expect(openCharx(filePath).description).toBe('newer writer content');
+        expect(confirm).not.toHaveBeenCalled();
+      } finally {
+        await closeServer(api.server);
+      }
+    },
+  );
+
+  it.each([false, true])(
+    'keeps same-field and distinct-field batches guarded (intervening writer=%s)',
+    async (intervene) => {
+      const { filePath } = createExternalCharxFixture({
+        description: 'original text',
+        creatorcomment: 'original comment',
+      });
+      const api = await startTestApiServer(null, [], undefined, { userDataPath: TEST_DIR });
+      const handlers = new Map<string, (args: Record<string, unknown>) => Promise<McpToolResult>>();
+      let firstMutation = true;
+      try {
+        const apiRequest: FacadeEditEngineDeps['apiRequest'] = async (_method, routePath, body) => {
+          const response = await postJson<Record<string, unknown>>(api.port, api.token, routePath, body);
+          if (intervene && firstMutation && body?.expected_field_hash) {
+            firstMutation = false;
+            await postJson(api.port, api.token, '/external/field/description', {
+              file_path: filePath,
+              content: 'intervening writer',
+            });
+          }
+          return response.status < 400
+            ? response.data
+            : facadeApiError(response.status, 'Field request failed', 'Preview again.');
+        };
+        const scriptStyle = createFacadeScriptStyleEngine(apiRequest);
+        const content = createFacadeContentEngine({
+          apiRequest,
+          items: {},
+          danbooru: {},
+          scriptStyle,
+        } as unknown as FacadeContentEngineDeps);
+        const edit = createFacadeEditEngine({
+          apiRequest,
+          content,
+          items: {},
+          scriptStyle,
+        } as unknown as FacadeEditEngineDeps);
+        registerFacadeTools(
+          {
+            tool: (
+              name: string,
+              _description: string,
+              _schema: unknown,
+              handler: (args: Record<string, unknown>) => Promise<McpToolResult>,
+            ) => handlers.set(name, handler),
+          } as unknown as McpToolServer,
+          {
+            apiRequest,
+            content,
+            edit,
+            scriptStyle,
+            items: {},
+            assets: {},
+            files: {},
+            safeToolHandler: (_name: string, handler: unknown) => handler,
+            textResult: (data: unknown) => ({ content: [{ type: 'text', text: JSON.stringify(data) }] }),
+          } as unknown as FacadeToolRegistrationDeps,
+        );
+        const call = async (name: string, args: Record<string, unknown>) => {
+          const result = await handlers.get(name)!(args);
+          return JSON.parse((result.content[0] as { text: string }).text);
+        };
+        const target = { kind: 'external', file_path: filePath };
+        const preview = await call('preview_edit', {
+          target,
+          operations: [
+            {
+              op: 'replace_text',
+              selector: { family: 'field', field: 'description' },
+              find: 'original',
+              replace: 'first',
+            },
+            { op: 'write_content', selector: { family: 'field', field: 'creatorcomment' }, content: 'new comment' },
+            { op: 'insert_text', selector: { family: 'field', field: 'description' }, content: 'last' },
+          ],
+        });
+        const result = await call('apply_edit', {
+          target,
+          preview_token: preview.preview.preview_token,
+          operation_digest: preview.preview.operation_digest,
+          guard_values: preview.result.guard_values,
+        });
+        expect(openCharx(filePath).creatorcomment).toBe('new comment');
+        expect(openCharx(filePath).description).toBe(intervene ? 'intervening writer' : 'first text\nlast');
+        if (intervene)
+          expect(result).toMatchObject({ status: 409, code: 'partial_apply', details: { applied_count: 2 } });
+        else expect(result.result.applied_count).toBe(3);
+      } finally {
+        facadePreviewStore.clear();
+        await closeServer(api.server);
+      }
+    },
+  );
 });
 
 const regexReplacement = {

@@ -1,14 +1,9 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { captureFileBaseline, FileConflictError } from './file-baseline';
+import { filePathState, filePathStateDigest, projectTreeDigest, projectTreeDigestOrMissing } from './mcp-file-state';
 import { checkNewArtifactPath } from './mcp-document-create';
 
-import {
-  extractDocumentToProject,
-  getProjectFileType,
-  listProjectTree,
-  reassembleProjectDocument,
-} from './folder-workspace';
+import { getProjectFileType, listProjectTree } from './folder-workspace';
 import { planLorebookExport } from './lorebook-io';
 import {
   asRecord,
@@ -47,84 +42,11 @@ export function createFacadeFilesEngine({
   readActiveLorebookCollection,
   summarizeProjectTree,
 }: FacadeFilesEngineDeps) {
-  interface ManageFilePathState {
-    path: string;
-    exists: boolean;
-    kind: 'file' | 'directory' | 'other' | 'missing';
-    size: number | null;
-    mtimeMs: number | null;
-  }
-
   interface ManageFilePlan {
     result: Record<string, unknown>;
     routes: FacadeRoute[];
     touched: string[];
     requiredGuards: FacadeV1Guard[];
-  }
-
-  function filePathState(filePath: string): ManageFilePathState {
-    const resolved = path.resolve(filePath);
-    try {
-      const stat = fs.statSync(resolved);
-      return {
-        path: resolved,
-        exists: true,
-        kind: stat.isFile() ? 'file' : stat.isDirectory() ? 'directory' : 'other',
-        size: stat.size,
-        mtimeMs: stat.mtimeMs,
-      };
-    } catch {
-      return { path: resolved, exists: false, kind: 'missing', size: null, mtimeMs: null };
-    }
-  }
-
-  function fileContentHash(filePath: string): string {
-    const baseline = captureFileBaseline(filePath);
-    if (!baseline) throw new FileConflictError(`Cannot read file baseline: ${filePath}`);
-    return baseline.sha256;
-  }
-
-  function filePathStateDigest(filePath: string): string {
-    const state = filePathState(filePath);
-    return hashStableValue({
-      path: state.path,
-      exists: state.exists,
-      kind: state.kind,
-      size: state.size,
-      mtimeMs: state.mtimeMs,
-      sha256: state.kind === 'file' ? fileContentHash(state.path) : undefined,
-      treeDigest: state.kind === 'directory' ? projectTreeDigest(state.path) : undefined,
-    });
-  }
-
-  function projectTreeDigest(projectPath: string): string {
-    const resolved = path.resolve(projectPath);
-    const entries: Array<Record<string, unknown>> = [];
-    const walk = (dirPath: string) => {
-      for (const entry of fs.readdirSync(dirPath, { withFileTypes: true })) {
-        if (entry.name.startsWith('.') && entry.name !== '.risutoki') continue;
-        const fullPath = path.join(dirPath, entry.name);
-        const relativePath = path.relative(resolved, fullPath).replace(/\\/g, '/');
-        const stat = fs.statSync(fullPath);
-        entries.push({
-          relativePath,
-          kind: entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other',
-          size: entry.isFile() ? stat.size : null,
-          sha256: entry.isFile() ? fileContentHash(fullPath) : undefined,
-          mtimeMs: stat.mtimeMs,
-        });
-        if (entry.isDirectory()) walk(fullPath);
-      }
-    };
-    walk(resolved);
-    entries.sort((a, b) => String(a.relativePath).localeCompare(String(b.relativePath)));
-    return hashStableValue(entries);
-  }
-
-  function projectTreeDigestOrMissing(projectPath: string): string {
-    const state = filePathState(projectPath);
-    if (!state.exists || state.kind !== 'directory') return filePathStateDigest(projectPath);
-    return projectTreeDigest(projectPath);
   }
 
   function manageFileGuard(
@@ -612,7 +534,7 @@ export function createFacadeFilesEngine({
           output_state: filePathState(projectPath),
           output_state_digest: filePathStateDigest(projectPath),
         },
-        routes: [route('extract_charx_to_project_folder', 'POST', 'extractDocumentToProject')],
+        routes: [route('extract_charx_to_project_folder', 'POST', '/project/extract')],
         touched: [`external:${filePath}`, `project:${projectPath}`],
         requiredGuards: [
           externalPathStateGuard('expected_file_state_digest', filePath, '/result/file_state_digest'),
@@ -639,7 +561,7 @@ export function createFacadeFilesEngine({
           output_state: filePathState(outputPath),
           output_state_digest: filePathStateDigest(outputPath),
         },
-        routes: [route('reassemble_project_folder_to_charx', 'POST', 'reassembleProjectDocument')],
+        routes: [route('reassemble_project_folder_to_charx', 'POST', '/project/reassemble')],
         touched: [`project:${projectPath}`, `external:${outputPath}`],
         requiredGuards: [
           projectDigestGuard(projectPath),
@@ -847,7 +769,13 @@ export function createFacadeFilesEngine({
       const filePath = manageFileTargetPath(target, operation.file_path, operation.action);
       if (isApiError(filePath)) return filePath;
       const projectPath = path.resolve(operation.project_path || defaultProjectFolderForDocument(filePath));
-      extractDocumentToProject(filePath, projectPath);
+      const applied = await apiRequest('POST', '/project/extract', {
+        source_path: filePath,
+        output_path: projectPath,
+        expected_source_digest: guardValue(guardValues, 'expected_file_state_digest'),
+        expected_output_digest: guardValue(guardValues, 'expected_output_state_digest'),
+      });
+      if (isApiError(applied)) return applied;
       const treeSummary = summarizeProjectTree(projectPath);
       const fileType = path.extname(filePath).toLowerCase().replace('.', '');
       return {
@@ -870,7 +798,13 @@ export function createFacadeFilesEngine({
       if (isApiError(projectPath)) return projectPath;
       const outputPath = path.resolve(operation.output_path);
       const projectFileType = getProjectFileType(projectPath);
-      reassembleProjectDocument(projectPath, outputPath);
+      const applied = await apiRequest('POST', '/project/reassemble', {
+        source_path: projectPath,
+        output_path: outputPath,
+        expected_source_digest: guardValue(guardValues, 'expected_project_tree_digest'),
+        expected_output_digest: guardValue(guardValues, 'expected_output_state_digest'),
+      });
+      if (isApiError(applied)) return applied;
       const stat = fs.statSync(outputPath);
       return {
         result: {

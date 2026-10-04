@@ -825,29 +825,39 @@ export const manageItemsOperationSchema = z.discriminatedUnion('action', [
 ]);
 export type ManageItemsOperation = z.infer<typeof manageItemsOperationSchema>;
 
-export const manageItemsBodySchema = z
-  .object({
-    target: facadeV1TargetSchema,
-    family: manageItemsFamilySchema,
-    mode: z.enum(['read', 'preview', 'apply']),
-    operation: manageItemsOperationSchema.optional(),
+// Public SDK registration keeps its flat input shape. Parsed requests encode
+// the mode requirements so validated callers need no non-null assertions.
+function manageModeRequestSchema<TShape extends z.ZodRawShape, TOperation extends z.ZodTypeAny>(
+  shape: TShape,
+  operation: TOperation,
+) {
+  const optionalLease = {
     preview_token: facadeV1PreviewTokenSchema.optional(),
     operation_digest: z.string().min(16).optional(),
     guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
+  };
+  return z.discriminatedUnion('mode', [
+    z.object({ ...shape, ...optionalLease, mode: z.literal('read'), operation }),
+    z.object({ ...shape, ...optionalLease, mode: z.literal('preview'), operation }),
+    z.object({
+      ...shape,
+      mode: z.literal('apply'),
+      operation: operation.optional(),
+      preview_token: facadeV1PreviewTokenSchema,
+      operation_digest: z.string().min(16),
+      guard_values: z.array(facadeV1GuardSchema).min(1).max(FACADE_V1_LIMITS.maxBatchItems),
+    }),
+  ]);
+}
+
+export const manageItemsBodySchema = manageModeRequestSchema(
+  {
+    target: facadeV1TargetSchema,
+    family: manageItemsFamilySchema,
     max_bytes: facadeMaxBytesSchema,
-  })
-  .refine((d) => (d.mode === 'apply' ? d.preview_token !== undefined && d.operation_digest !== undefined : true), {
-    message: 'apply mode requires preview_token and operation_digest',
-    path: ['preview_token'],
-  })
-  .refine((d) => (d.mode === 'apply' ? d.guard_values !== undefined && d.guard_values.length > 0 : true), {
-    message: 'apply mode requires guard_values',
-    path: ['guard_values'],
-  })
-  .refine((d) => (d.mode === 'read' || d.mode === 'preview' ? d.operation !== undefined : true), {
-    message: 'read/preview mode requires operation',
-    path: ['operation'],
-  })
+  },
+  manageItemsOperationSchema,
+)
   .refine((d) => d.target.kind === 'active' || d.target.kind === 'external', {
     message: 'manage_items supports only active or external targets',
     path: ['target', 'kind'],
@@ -950,29 +960,14 @@ export const manageAssetsOperationSchema = z.discriminatedUnion('action', [
 ]);
 export type ManageAssetsOperation = z.infer<typeof manageAssetsOperationSchema>;
 
-export const manageAssetsBodySchema = z
-  .object({
+export const manageAssetsBodySchema = manageModeRequestSchema(
+  {
     target: facadeV1TargetSchema,
     asset_family: manageAssetsFamilySchema.optional(),
-    mode: z.enum(['read', 'preview', 'apply']),
-    operation: manageAssetsOperationSchema.optional(),
-    preview_token: facadeV1PreviewTokenSchema.optional(),
-    operation_digest: z.string().min(16).optional(),
-    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
     max_bytes: facadeMaxBytesSchema,
-  })
-  .refine((d) => (d.mode === 'apply' ? d.preview_token !== undefined && d.operation_digest !== undefined : true), {
-    message: 'apply mode requires preview_token and operation_digest',
-    path: ['preview_token'],
-  })
-  .refine((d) => (d.mode === 'apply' ? d.guard_values !== undefined && d.guard_values.length > 0 : true), {
-    message: 'apply mode requires guard_values',
-    path: ['guard_values'],
-  })
-  .refine((d) => (d.mode === 'read' || d.mode === 'preview' ? d.operation !== undefined : true), {
-    message: 'read/preview mode requires operation',
-    path: ['operation'],
-  })
+  },
+  manageAssetsOperationSchema,
+)
   .refine((d) => d.target.kind === 'active' || d.target.kind === 'external', {
     message: 'manage_assets supports only active or external targets',
     path: ['target', 'kind'],
@@ -1082,28 +1077,13 @@ export const manageFileOperationSchema = z.discriminatedUnion('action', [
 ]);
 export type ManageFileOperation = z.infer<typeof manageFileOperationSchema>;
 
-export const manageFileBodySchema = z
-  .object({
+export const manageFileBodySchema = manageModeRequestSchema(
+  {
     target: facadeV1TargetSchema,
-    mode: z.enum(['read', 'preview', 'apply']),
-    operation: manageFileOperationSchema.optional(),
-    preview_token: facadeV1PreviewTokenSchema.optional(),
-    operation_digest: z.string().min(16).optional(),
-    guard_values: z.array(facadeV1GuardSchema).max(FACADE_V1_LIMITS.maxBatchItems).optional(),
     max_bytes: facadeMaxBytesSchema,
-  })
-  .refine((d) => (d.mode === 'apply' ? d.preview_token !== undefined && d.operation_digest !== undefined : true), {
-    message: 'apply mode requires preview_token and operation_digest',
-    path: ['preview_token'],
-  })
-  .refine((d) => (d.mode === 'apply' ? d.guard_values !== undefined && d.guard_values.length > 0 : true), {
-    message: 'apply mode requires guard_values',
-    path: ['guard_values'],
-  })
-  .refine((d) => (d.mode === 'read' || d.mode === 'preview' ? d.operation !== undefined : true), {
-    message: 'read/preview mode requires operation',
-    path: ['operation'],
-  })
+  },
+  manageFileOperationSchema,
+)
   .refine((d) => d.target.kind === 'active' || d.target.kind === 'external' || d.target.kind === 'session', {
     message: 'manage_file supports active, external, or session targets',
     path: ['target', 'kind'],

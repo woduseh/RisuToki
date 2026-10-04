@@ -2,8 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { z } from 'zod';
 
-import { extractDocumentToProject, getProjectFileType, reassembleProjectDocument } from './folder-workspace';
-import { API_ERROR_KEY } from './mcp-facade-runtime';
+import { getProjectFileType } from './folder-workspace';
+import { API_ERROR_KEY, isApiError } from './mcp-facade-runtime';
 import { mcpSuccess } from './mcp-response-envelope';
 import { MCP_TOOL_DESCRIPTIONS } from './mcp-tool-descriptions';
 import type { McpToolRegistrationDeps, McpToolServer, SafeToolHandler } from './mcp-tool-registration';
@@ -551,7 +551,11 @@ export function registerReferenceTools(server: McpToolServer, deps: ReferenceToo
         });
       }
       const targetPath = path.resolve(project_path || defaultProjectFolderForDocument(sourcePath));
-      extractDocumentToProject(sourcePath, targetPath);
+      const applied = await apiRequest('POST', '/project/extract', {
+        source_path: sourcePath,
+        output_path: targetPath,
+      });
+      if (isApiError(applied)) return textResult(applied);
       const treeSummary = summarizeProjectTree(targetPath);
       const sourceType = sourceExt.slice(1);
       return textResult(
@@ -602,7 +606,11 @@ export function registerReferenceTools(server: McpToolServer, deps: ReferenceToo
         });
       }
       const projectFileType = getProjectFileType(projectPath);
-      reassembleProjectDocument(projectPath, outputPath);
+      const applied = await apiRequest('POST', '/project/reassemble', {
+        source_path: projectPath,
+        output_path: outputPath,
+      });
+      if (isApiError(applied)) return textResult(applied);
       const stat = fs.statSync(outputPath);
       return textResult(
         mcpSuccess(

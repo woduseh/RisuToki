@@ -3,6 +3,8 @@ export type IndexedTab = {
   [key: string]: unknown;
 };
 
+export type IndexedTabPrefix = 'lore_' | 'regex_' | 'lua_s' | 'css_s' | 'altGreet_';
+
 export function createRemovalIndexResolver(removedIndices: number[]) {
   const removed = [...new Set(removedIndices)]
     .filter((index) => Number.isInteger(index) && index >= 0)
@@ -25,7 +27,7 @@ interface RemapIndexedTabsOptions<TTab extends IndexedTab> {
   tabs: TTab[];
   dirtyIds: Set<string>;
   activeTabId: string | null;
-  prefix: string;
+  prefix: IndexedTabPrefix;
   resolveIndex: (oldIndex: number) => number | null;
   buildTabState: (index: number, tab: TTab) => Partial<TTab> | null;
 }
@@ -36,7 +38,7 @@ export function remapIndexedTabs<TTab extends IndexedTab>({
   activeTabId,
   prefix,
   resolveIndex,
-  buildTabState
+  buildTabState,
 }: RemapIndexedTabsOptions<TTab>) {
   const nextTabs: TTab[] = [];
   const nextDirtyIds = new Set<string>();
@@ -78,6 +80,6 @@ export function remapIndexedTabs<TTab extends IndexedTab>({
   return {
     tabs: nextTabs,
     dirtyIds: nextDirtyIds,
-    activeTabId: nextActiveTabId
+    activeTabId: nextActiveTabId,
   };
 }

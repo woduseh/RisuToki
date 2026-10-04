@@ -1,6 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
-import { handleNew, handleOpen, handleSave, handleSaveAs } from './file-actions';
+import {
+  handleNew,
+  handleOpen,
+  handleOpenPath,
+  handleSave,
+  handleSaveAs,
+  openDocumentWithLoader,
+} from './file-actions';
 import type { FileActionDeps } from './file-actions';
 import { TabManager } from './tab-manager';
 import { parseTriggerScriptsText } from './trigger-script-model';
@@ -95,6 +102,107 @@ describe('file-actions', () => {
     await saving;
     expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
     expect(cleanupAutosave).not.toHaveBeenCalled();
+  });
+
+  describe('project document replacement', () => {
+    it('keeps the current draft and project context when replacement is declined', async () => {
+      const draft = makeRendererDocument({ description: 'unsaved draft' });
+      let activeDocument = draft;
+      let projectPath: string | null = 'current/project';
+      const loader = vi.fn();
+      const deps = makeDeps({
+        getFileData: () => activeDocument,
+        setFileData: vi.fn((data: RendererDocumentData, nextProjectPath?: string) => {
+          activeDocument = data;
+          projectPath = nextProjectPath ?? null;
+        }),
+        hasUnsavedChanges: () => true,
+      });
+      deps.tabMgr.dirtyFields.add('description');
+
+      expect(await openDocumentWithLoader(deps, '프로젝트 폴더 열기', loader)).toBeNull();
+
+      expect(loader).not.toHaveBeenCalled();
+      expect(activeDocument).toBe(draft);
+      expect(projectPath).toBe('current/project');
+      expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
+    });
+
+    it('keeps the current document when save-before-project-replacement does not finish', async () => {
+      const loader = vi.fn();
+      const deps = makeDeps({
+        hasUnsavedChanges: () => true,
+        requestDocumentReplacement: async () => CLOSE_CHOICE_SAVE_AND_CLOSE,
+      });
+      deps.tabMgr.dirtyFields.add('description');
+
+      expect(await openDocumentWithLoader(deps, '프로젝트 폴더 열기', loader)).toBeNull();
+
+      expect(deps.saveCurrentDocument).toHaveBeenCalledOnce();
+      expect(loader).not.toHaveBeenCalled();
+      expect(deps.setFileData).not.toHaveBeenCalled();
+      expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
+    });
+
+    it('activates the loaded document and its project together after saving the current draft', async () => {
+      const loaded = makeRendererDocument({ name: 'Project' });
+      let activeDocument = makeRendererDocument({ description: 'unsaved draft' });
+      let projectPath: string | null = 'current/project';
+      const deps = makeDeps({
+        getFileData: () => activeDocument,
+        setFileData: (data, nextProjectPath) => {
+          activeDocument = data;
+          projectPath = nextProjectPath ?? null;
+        },
+        hasUnsavedChanges: () => true,
+        requestDocumentReplacement: async () => CLOSE_CHOICE_SAVE_AND_CLOSE,
+        saveCurrentDocument: async () => {
+          deps.tabMgr.dirtyFields.clear();
+        },
+        buildSidebar: vi.fn(() => {
+          expect(activeDocument).toBe(loaded);
+          expect(projectPath).toBe('next/project');
+        }),
+      });
+      deps.tabMgr.dirtyFields.add('description');
+      useAppStore().setRestoredSessionLabel('자동복원');
+      const loader = vi.fn(async () => {
+        expect(deps.tabMgr.dirtyFields.size).toBe(0);
+        return { success: true as const, data: loaded, projectPath: 'next/project' };
+      });
+
+      const result = await openDocumentWithLoader(deps, '프로젝트 폴더 열기', loader);
+
+      expect(result).toMatchObject({ data: loaded, projectPath: 'next/project' });
+      expect(deps.buildSidebar).toHaveBeenCalledOnce();
+      expect(useAppStore().restoredSessionLabel).toBe('');
+    });
+
+    it('distinguishes a cancelled project dialog from a failed load without replacing the draft', async () => {
+      const deps = makeDeps();
+      const canceled = await openDocumentWithLoader(deps, '프로젝트 폴더 열기', async () => ({
+        success: false,
+        canceled: true,
+      }));
+      expect(canceled).toBeNull();
+      await expect(
+        openDocumentWithLoader(deps, '프로젝트 폴더 열기', async () => ({ success: false, error: 'invalid project' })),
+      ).rejects.toThrow('invalid project');
+      expect(deps.setFileData).not.toHaveBeenCalled();
+    });
+  });
+
+  it('returns cancellation for a declined recent-file open without replacing the current project', async () => {
+    const openFilePath = vi.fn();
+    installTokiAPI({ openFilePath });
+    const deps = makeDeps({ hasUnsavedChanges: () => true });
+    deps.tabMgr.dirtyFields.add('description');
+
+    expect(await handleOpenPath(deps, 'recent.charx')).toBeNull();
+
+    expect(openFilePath).not.toHaveBeenCalled();
+    expect(deps.setFileData).not.toHaveBeenCalled();
+    expect(deps.tabMgr.dirtyFields.has('description')).toBe(true);
   });
 
   describe('handleNew', () => {

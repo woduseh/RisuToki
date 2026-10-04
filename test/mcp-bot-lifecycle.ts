@@ -17,6 +17,8 @@ export async function runBotLifecycle(api: { port: number; token: string }) {
     env: buildChildEnv(api.port, api.token, 'facade-first'),
     stderr: 'pipe',
   });
+  const appStderr: string[] = [];
+  transport.stderr?.on('data', (chunk) => appStderr.push(String(chunk)));
   const standalone = await startStandaloneClient({ userDataDir: path.join(directory, 'user'), allowWrites: true });
   try {
     await app.connect(transport);
@@ -75,6 +77,11 @@ export async function runBotLifecycle(api: { port: number; token: string }) {
       });
       assert.match(JSON.stringify(read), /patient/);
     }
+  } catch (error) {
+    throw new Error(
+      `${error instanceof Error ? error.message : String(error)}\nApp MCP stderr:\n${appStderr.join('')}\nStandalone MCP stderr:\n${standalone.stderrChunks.join('')}`,
+      { cause: error },
+    );
   } finally {
     await app.close();
     await standalone.close();

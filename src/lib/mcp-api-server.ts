@@ -13,6 +13,7 @@ import * as lorebookIo from './lorebook-io';
 import { handleAssetRoute } from './mcp-asset-routes';
 import { handleCbsRoute } from './mcp-cbs-routes';
 import { handleProbeRoute } from './mcp-probe-routes';
+import { handleProjectRoute } from './mcp-project-routes';
 import { handleStructuredItemRoute } from './mcp-structured-item-routes';
 import { handleSectionRoute } from './mcp-section-routes';
 import { handleRisupPromptRoute } from './mcp-risup-prompt-routes';
@@ -500,6 +501,17 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       });
 
     try {
+      if (
+        await handleProjectRoute(req, res, parts, {
+          askRendererConfirm: deps.askRendererConfirm,
+          broadcastMcpStatus: deps.broadcastMcpStatus,
+          parseBody,
+          mcpError,
+          jsonResSuccess,
+        })
+      )
+        return;
+
       if (
         await handleProbeRoute(req, res, parts, url, {
           parseLuaSections: deps.parseLuaSections,

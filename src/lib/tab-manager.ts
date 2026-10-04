@@ -1,5 +1,5 @@
 import { createRemovalIndexResolver, remapIndexedTabs } from './indexed-tabs';
-import type { IndexedTab } from './indexed-tabs';
+import type { IndexedTab, IndexedTabPrefix } from './indexed-tabs';
 import { clearBackups, clearAllBackups } from './backup-store';
 
 export interface Tab {
@@ -144,7 +144,7 @@ export class TabManager {
   }
 
   applyIndexedTabRemap(
-    prefix: string,
+    prefix: IndexedTabPrefix,
     resolveIndex: (oldIndex: number) => number | null,
     buildTabState: (index: number, tab: Tab) => Partial<Tab> | null,
   ): void {
@@ -171,12 +171,54 @@ export class TabManager {
     this.renderTabs();
   }
 
-  refreshIndexedTabs(prefix: string, buildTabState: (index: number, tab: Tab) => Partial<Tab> | null): void {
+  refreshTabs(matches: (tab: Tab) => boolean, buildTabState: (tab: Tab) => Partial<Tab> | null): void {
+    const previousActiveIndex = this.openTabs.findIndex((tab) => tab.id === this.activeTabId);
+    const nextTabs: Tab[] = [];
+    for (const tab of this.openTabs) {
+      if (!matches(tab)) {
+        nextTabs.push(tab);
+        continue;
+      }
+      const nextState = buildTabState(tab);
+      if (nextState) {
+        Object.assign(tab, nextState, { id: tab.id });
+        nextTabs.push(tab);
+      } else {
+        this.dirtyFields.delete(tab.id);
+        if (this.pendingEditorTabId === tab.id) this.pendingEditorTabId = null;
+        if (this.activeTabId === tab.id) this.activeTabId = null;
+        tab.getValue = () => null;
+        tab.setValue = null;
+        tab._lastValue = null;
+      }
+    }
+    this.openTabs = nextTabs;
+    this.rebuildIndex();
+
+    if (previousActiveIndex >= 0 && this.activeTabId === null) {
+      this.callbacks.onDisposeFormEditors();
+      const nextActiveTab = this.openTabs[Math.max(0, Math.min(previousActiveIndex - 1, this.openTabs.length - 1))];
+      if (nextActiveTab) {
+        this.callbacks.onActivateTab(nextActiveTab);
+        this.activeTabId = nextActiveTab.id;
+        return;
+      }
+      this.callbacks.onClearEditor();
+    }
+    const activeTab = this.activeTabId ? this.tabIndex.get(this.activeTabId) : null;
+    if (activeTab && matches(activeTab) && this.callbacks.isFormTabType(activeTab.language)) {
+      this.callbacks.onActivateTab(activeTab);
+      return;
+    }
+    this.renderTabs();
+  }
+
+  refreshIndexedTabs(prefix: IndexedTabPrefix, buildTabState: (index: number, tab: Tab) => Partial<Tab> | null): void {
     this.applyIndexedTabRemap(prefix, (index) => index, buildTabState);
   }
 
   shiftIndexedTabsAfterRemoval(
-    prefix: string,
+    prefix: IndexedTabPrefix,
     removedIndices: number[],
     buildTabState: (index: number, tab: Tab) => Partial<Tab> | null,
   ): void {

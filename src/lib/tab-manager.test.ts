@@ -321,6 +321,94 @@ describe('TabManager', () => {
     });
   });
 
+  describe('refreshTabs', () => {
+    it.each(['alpha-uuid', '7-part-uuid'])(
+      'refreshes string ID %s and the active form without touching other tab families',
+      (itemId) => {
+        const group = mgr.openTab('risup_basic', 'Basic', '_risupform', () => 'group', null);
+        const prompt = mgr.openTab(
+          `risup_prompt_item_${itemId}`,
+          'Old label',
+          '_risupPromptItemForm',
+          () => 'old',
+          null,
+        );
+        mgr.activeTabId = prompt.id;
+        mgr.dirtyFields.add(prompt.id);
+        mgr.dirtyFields.add('promptTemplate');
+        cbs.isFormTabType = (language) => language === '_risupPromptItemForm';
+        vi.mocked(cbs.onActivateTab).mockClear();
+
+        mgr.refreshTabs(
+          (tab) => tab.id.startsWith('risup_prompt_item_'),
+          () => ({
+            label: 'Renamed prompt',
+            getValue: () => 'updated prompt',
+          }),
+        );
+
+        expect(mgr.findTab(prompt.id)).toBe(prompt);
+        expect(prompt.label).toBe('Renamed prompt');
+        expect(prompt.getValue()).toBe('updated prompt');
+        expect(mgr.findTab(group.id)).toBe(group);
+        expect(group.label).toBe('Basic');
+        expect([...mgr.dirtyFields]).toEqual([prompt.id, 'promptTemplate']);
+        expect(mgr.activeTabId).toBe(prompt.id);
+        expect(cbs.onActivateTab).toHaveBeenCalledExactlyOnceWith(prompt);
+      },
+    );
+
+    it('removes deleted prompt tabs and selects a surviving tab after clearing their editor state', () => {
+      const group = mgr.openTab('risup_basic', 'Basic', '_risupform', () => 'group', null);
+      const removed = mgr.openTab(
+        'risup_prompt_item_deleted-uuid',
+        'Deleted',
+        '_risupPromptItemForm',
+        () => 'deleted',
+        vi.fn(),
+      );
+      mgr.activeTabId = removed.id;
+      mgr.pendingEditorTabId = removed.id;
+      mgr.dirtyFields.add(removed.id);
+      mgr.dirtyFields.add('promptTemplate');
+      cbs.onActivateTab = vi.fn(() => {
+        // Activation must not save the removed editor's content into the fallback tab.
+        expect(mgr.activeTabId).toBeNull();
+      });
+
+      mgr.refreshTabs(
+        (tab) => tab.id.startsWith('risup_prompt_item_'),
+        () => null,
+      );
+
+      expect(mgr.openTabs).toEqual([group]);
+      expect(mgr.findTab(removed.id)).toBeUndefined();
+      expect(mgr.dirtyFields.has(removed.id)).toBe(false);
+      expect(mgr.dirtyFields.has('promptTemplate')).toBe(true);
+      expect(mgr.pendingEditorTabId).toBeNull();
+      expect(mgr.activeTabId).toBe(group.id);
+      expect(removed.getValue()).toBeNull();
+      expect(removed.setValue).toBeNull();
+      expect(cbs.onDisposeFormEditors).toHaveBeenCalledOnce();
+      expect(cbs.onActivateTab).toHaveBeenCalledExactlyOnceWith(group);
+    });
+
+    it('clears the editor when its last string ID tab no longer exists', () => {
+      const prompt = mgr.openTab('risup_prompt_item_alpha', 'Prompt', '_risupPromptItemForm', () => '', null);
+      mgr.activeTabId = prompt.id;
+
+      mgr.refreshTabs(
+        (tab) => tab.id === prompt.id,
+        () => null,
+      );
+
+      expect(mgr.openTabs).toEqual([]);
+      expect(mgr.activeTabId).toBeNull();
+      expect(cbs.onDisposeFormEditors).toHaveBeenCalledOnce();
+      expect(cbs.onClearEditor).toHaveBeenCalledOnce();
+    });
+  });
+
   describe('findTab', () => {
     it('returns tab by id', () => {
       mgr.openTab('x', 'x', 'plaintext', () => '', vi.fn());

@@ -77,6 +77,31 @@ export default [
     },
   },
   {
+    files: ['toki-mcp-server.ts', 'src/lib/mcp-facade-*.ts', 'src/lib/mcp-tool-register-*.ts'],
+    ignores: ['**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/folder-workspace'],
+              importNames: [
+                'extractDocumentToProject',
+                'extractCharxToProject',
+                'reassembleProjectDocument',
+                'reassembleProjectCharx',
+                'saveProjectData',
+                'writeProjectFile',
+              ],
+              message: 'MCP file writes must use the approved HTTP mutation routes.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
     files: ['src/lib/terminal-chat.ts'],
     rules: {
       'no-control-regex': 'off',

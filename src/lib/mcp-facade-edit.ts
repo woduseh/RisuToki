@@ -20,6 +20,7 @@ import {
   route,
   selectorTarget,
   stringGuardValue,
+  stringGuardValueAtPath,
   type ApiErrorResult,
   type FacadeRoute,
 } from './mcp-facade-runtime';
@@ -79,6 +80,16 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
     readExternalSurfaceValue,
     rewriteOperationBatchContent,
   } = scriptStyle;
+
+  function externalFieldGuards(operation: FacadeV1EditOperation, data: unknown): FacadeV1Guard[] | ApiErrorResult {
+    const hash = recordString(asRecord(data), 'field_hash');
+    if (!hash) return facadeApiError(409, 'External field hash is unavailable', 'Read the field and preview again.');
+    const conflict = guardConflict(operation.guards, 'expected_field_hash', hash, selectorTarget(operation.selector));
+    if (conflict) return conflict;
+    return mergeGuards(operation.guards, [
+      buildGuard('expected_field_hash', hash, '/expected_field_hash', ['read_content', 'preview_edit'], '/field_hash'),
+    ]);
+  }
 
   function findIndexedRecord(value: unknown, index: number, depth = 0): Record<string, unknown> | undefined {
     if (depth > 5) return undefined;
@@ -1729,16 +1740,17 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
         flags: operation.flags,
         dry_run: true,
       });
-      return isApiError(data)
-        ? data
-        : {
-            data,
-            routes: [
-              route(target.kind === 'external' ? 'external_replace_in_field' : 'replace_in_field', 'POST', fieldRoute),
-            ],
-            touched,
-            requiredGuards: operation.guards ?? [],
-          };
+      if (isApiError(data)) return data;
+      const fieldGuards = target.kind === 'external' ? externalFieldGuards(operation, data) : (operation.guards ?? []);
+      if (isApiError(fieldGuards)) return fieldGuards;
+      return {
+        data,
+        routes: [
+          route(target.kind === 'external' ? 'external_replace_in_field' : 'replace_in_field', 'POST', fieldRoute),
+        ],
+        touched,
+        requiredGuards: fieldGuards,
+      };
     }
 
     if (operation.op === 'insert_text' && operation.selector.field) {
@@ -1762,6 +1774,9 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
       }
       const inserted = insertSpecFromOperation(oldContent, operation);
       if (isApiError(inserted)) return inserted;
+      const fieldGuards =
+        target.kind === 'external' ? externalFieldGuards(operation, read.data) : (operation.guards ?? []);
+      if (isApiError(fieldGuards)) return fieldGuards;
       const fieldRoute =
         target.kind === 'external'
           ? `/external/field/${encodeURIComponent(operation.selector.field)}/insert`
@@ -1781,7 +1796,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
           route(target.kind === 'external' ? 'external_insert_in_field' : 'insert_in_field', 'POST', fieldRoute),
         ],
         touched,
-        requiredGuards: operation.guards ?? [],
+        requiredGuards: fieldGuards,
       };
     }
 
@@ -1797,6 +1812,9 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
         );
       }
       const oldContent = (read.data as Record<string, unknown>).content;
+      const fieldGuards =
+        target.kind === 'external' ? externalFieldGuards(operation, read.data) : (operation.guards ?? []);
+      if (isApiError(fieldGuards)) return fieldGuards;
       return {
         data: {
           dryRun: true,
@@ -1816,7 +1834,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
           ),
         ],
         touched,
-        requiredGuards: operation.guards ?? [],
+        requiredGuards: fieldGuards,
       };
     }
 
@@ -2548,6 +2566,25 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
       );
     }
 
+    // Structured and script selectors have already dispatched above. Their
+    // selector.field describes an item property, not a top-level document field.
+    let expectedFieldHash: string | undefined;
+    if (
+      target.kind === 'external' &&
+      operation.selector.field &&
+      ['replace_text', 'insert_text', 'write_content'].includes(operation.op)
+    ) {
+      const guardPath = '/expected_field_hash';
+      // The captured per-operation guard owns the preview source; a flattened
+      // batch guard array may contain several fields and cannot override it.
+      expectedFieldHash =
+        stringGuardValueAtPath(operation.guards, 'expected_field_hash', guardPath) ??
+        stringGuardValueAtPath(guards, 'expected_field_hash', guardPath);
+      if (!expectedFieldHash) {
+        return facadeApiError(400, 'External field edits require the preview field hash', 'Create a fresh preview.');
+      }
+    }
+
     if (operation.op === 'replace_text' && operation.selector.field) {
       const fieldRoute =
         target.kind === 'external'
@@ -2559,6 +2596,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
         replace: typeof operation.replace === 'string' ? operation.replace : '',
         regex: operation.regex,
         flags: operation.flags,
+        ...(target.kind === 'external' ? { expected_field_hash: expectedFieldHash } : {}),
       });
       return isApiError(data)
         ? data
@@ -2582,6 +2620,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
         content: insertContent,
         position: operation.position ?? recordString(asRecord(operation.content), 'position'),
         anchor: operation.anchor ?? recordString(asRecord(operation.content), 'anchor'),
+        ...(target.kind === 'external' ? { expected_field_hash: expectedFieldHash } : {}),
       });
       return isApiError(data)
         ? data
@@ -2601,6 +2640,7 @@ export function createFacadeEditEngine({ apiRequest, content, items, scriptStyle
       const data = await apiRequest('POST', fieldRoute, {
         ...(target.kind === 'external' ? { file_path: target.file_path } : {}),
         content: operation.content,
+        ...(target.kind === 'external' ? { expected_field_hash: expectedFieldHash } : {}),
       });
       return isApiError(data)
         ? data

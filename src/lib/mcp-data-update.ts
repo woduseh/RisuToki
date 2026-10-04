@@ -1,4 +1,5 @@
 import { isRisupEditableFieldId } from './risup-fields';
+import type { IndexedTabPrefix } from './indexed-tabs';
 
 export interface McpUpdateTabLike {
   getValue?: () => unknown;
@@ -8,7 +9,7 @@ export interface McpUpdateTabLike {
 export interface McpDataUpdatePlan {
   backupTabIds: string[];
   refreshTabIds: string[];
-  refreshIndexedPrefixes: string[];
+  refreshIndexedPrefixes: IndexedTabPrefix[];
   refreshSidebar: boolean;
   statusMessage: string;
   updateFileLabel: boolean;
@@ -91,7 +92,7 @@ export function planMcpDataUpdate(field: string, openTabs: McpUpdateTabLike[]): 
     };
   }
 
-  const refreshIndexedPrefixes: string[] = [];
+  const refreshIndexedPrefixes: IndexedTabPrefix[] = [];
   const refreshTabIds: string[] = [];
   let refreshSidebar = false;
   const hasOpenRisupTabs = openTabs.some((tab) => tab.id.startsWith('risup_') && tab.getValue);
@@ -104,7 +105,7 @@ export function planMcpDataUpdate(field: string, openTabs: McpUpdateTabLike[]): 
     refreshSidebar = true;
   }
   if (isRisupEditableFieldId(field) && hasOpenRisupTabs) {
-    refreshIndexedPrefixes.push('risup_');
+    refreshTabIds.push(...openTabs.filter((tab) => tab.id.startsWith('risup_')).map((tab) => tab.id));
   }
   if (field === 'triggerScripts' && openTabs.some((tab) => tab.id === 'triggerScripts' && tab.getValue)) {
     refreshTabIds.push('triggerScripts');
