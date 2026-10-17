@@ -221,11 +221,6 @@ export const TOOL_META_KEYS = {
   modes: 'risutoki/modes',
 } as const;
 
-export const TOOL_MUTATION_META_KEYS = {
-  requiresConfirmation: TOOL_META_KEYS.requiresConfirmation,
-  supportsDryRun: TOOL_META_KEYS.supportsDryRun,
-} as const;
-
 export const NO_CONFIRMATION_TOOL_NAMES = ['open_file', 'save_current_file', 'snapshot_field', 'preview_edit'] as const;
 
 export const DRY_RUN_TOOL_NAMES = [

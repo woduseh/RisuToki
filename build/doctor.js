@@ -685,4 +685,4 @@ if (require.main === module) {
     });
 }
 
-module.exports = { doctor, run: doctor, main, parseArgs, satisfiesVersion, PROBE_TIMEOUT_MS };
+module.exports = { doctor, main, parseArgs, satisfiesVersion, PROBE_TIMEOUT_MS };

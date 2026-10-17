@@ -98,6 +98,19 @@ for (const condition of ['missing-report', 'empty-checks', 'nonzero-exit']) {
       fs.writeFileSync(path.join(root, file), 'test build placeholder');
     }
     fs.mkdirSync(path.join(root, 'build'));
+    const checks =
+      condition === 'nonzero-exit'
+        ? [
+            'renderer-ready',
+            'create-edit-save',
+            'reopen-saved-file',
+            'invalid-file',
+            'authenticated-api',
+            'native-image',
+            'native-terminal',
+            'clean-close',
+          ].map((name) => ({ name }))
+        : [];
     // Test the launcher using a real Node child. This fixture is not an Electron integration pass.
     fs.writeFileSync(
       path.join(root, 'build', 'desktop-entry.js'),
@@ -106,7 +119,7 @@ for (const condition of ['missing-report', 'empty-checks', 'nonzero-exit']) {
       const path = require('node:path');
       console.log('PASS (synthetic child output, not evidence of success)');
       if (${JSON.stringify(condition)} !== 'missing-report') {
-        fs.writeFileSync(path.join(process.env.RISUTOKI_DESKTOP_RUN_DIR, 'app-result.json'), JSON.stringify({ status: 'passed', shutdown: 'closed', checks: [] }));
+        fs.writeFileSync(path.join(process.env.RISUTOKI_DESKTOP_RUN_DIR, 'app-result.json'), JSON.stringify({ status: 'passed', shutdown: 'closed', checks: ${JSON.stringify(checks)} }));
       }
       process.exit(${condition === 'nonzero-exit' ? 7 : 0});
     `,
@@ -115,6 +128,7 @@ for (const condition of ['missing-report', 'empty-checks', 'nonzero-exit']) {
     assert.equal(report.status, 'failed');
     assert.equal(report.cleaned, true);
     assert.equal(report.outcome.exitCode, condition === 'nonzero-exit' ? 7 : 0);
+    if (condition === 'nonzero-exit') assert.match(report.error, /exit=7/);
     const directory = path.join(root, '.build', 'desktop', fs.readdirSync(path.join(root, '.build', 'desktop'))[0]);
     assert.equal(fs.existsSync(path.join(directory, 'data')), false);
     assert.match(fs.readFileSync(path.join(directory, 'process.log'), 'utf8'), /PASS \(synthetic/);

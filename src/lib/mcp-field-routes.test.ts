@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   closeServer,
   createLegacyTestApiServer,
@@ -14,6 +14,93 @@ import { expectMcpNoOpEnvelope, useMcpApiTestDir } from './mcp-api-vitest-helper
 
 const TEST_DIR = useMcpApiTestDir('field-routes');
 const startTestApiServer = createLegacyTestApiServer(TEST_DIR);
+
+describe('MCP single-field scalar writes', () => {
+  it.each([
+    { fileType: 'risum', field: 'hideIcon', initial: true, content: false, type: 'boolean', oldSize: 4, size: 5 },
+    { fileType: 'risum', field: 'hideIcon', initial: false, content: true, type: 'boolean', oldSize: 5, size: 4 },
+    { fileType: 'risup', field: 'temperature', initial: 0, content: 0.7, type: 'number', oldSize: 1, size: 3 },
+    { fileType: 'risup', field: 'temperature', initial: 0.7, content: 0, type: 'number', oldSize: 3, size: 1 },
+  ])('writes $fileType $field=$content with scalar type and sizes intact', async (testCase) => {
+    const { fileType, field, initial, content, type, oldSize, size } = testCase;
+    const fixture: SearchFixture = { _fileType: fileType, [field]: initial };
+    const confirm = vi.fn(async () => true);
+    const broadcast = vi.fn();
+    const api = await startTestApiServer(fixture, [], undefined, {
+      askRendererConfirm: confirm,
+      broadcastToAll: broadcast,
+    });
+    try {
+      const response = await postJson<Record<string, unknown>>(api.port, api.token, `/field/${field}`, { content });
+      expect(response.status).toBe(200);
+      expect(response.data).toMatchObject({
+        success: true,
+        field,
+        size,
+        artifacts: { fieldName: field, oldSize, newSize: size },
+      });
+      expect(fixture[field]).toBe(content);
+      expect(confirm).toHaveBeenCalledExactlyOnceWith(
+        'MCP 수정 요청',
+        expect.stringContaining(`현재 크기: ${oldSize}자 → 새 크기: ${size}자`),
+      );
+      expect(broadcast).toHaveBeenCalledWith('data-updated', field, content);
+      const read = await getJson<Record<string, unknown>>(api.port, api.token, `/field/${field}`);
+      expect(read.status).toBe(200);
+      expect(read.data).toMatchObject({ field, content, type });
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it.each([
+    { fileType: 'risum', field: 'hideIcon', initial: true, invalid: 'false', type: 'boolean' },
+    { fileType: 'risum', field: 'hideIcon', initial: true, invalid: 0, type: 'boolean' },
+    { fileType: 'risup', field: 'temperature', initial: 0.7, invalid: 'not a number', type: 'number' },
+    { fileType: 'risup', field: 'temperature', initial: 0.7, invalid: false, type: 'number' },
+  ])('rejects $fileType $field=$invalid without confirmation or mutation', async (testCase) => {
+    const { fileType, field, initial, invalid, type } = testCase;
+    const fixture: SearchFixture = { _fileType: fileType, [field]: initial };
+    const confirm = vi.fn(async () => true);
+    const broadcast = vi.fn();
+    const api = await startTestApiServer(fixture, [], undefined, {
+      askRendererConfirm: confirm,
+      broadcastToAll: broadcast,
+    });
+    try {
+      const response = await postJson<McpErrorEnvelope>(api.port, api.token, `/field/${field}`, {
+        content: invalid,
+      });
+      expect(response.status).toBe(400);
+      expect(response.data).toMatchObject({ action: 'update field', target: `field:${field}` });
+      expect(response.data.error).toContain(type);
+      expect(fixture[field]).toBe(initial);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(broadcast).not.toHaveBeenCalled();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects missing content through the real field route without confirmation or mutation', async () => {
+    const fixture: SearchFixture = { description: 'original' };
+    const confirm = vi.fn(async () => true);
+    const api = await startTestApiServer(fixture, [], undefined, { askRendererConfirm: confirm });
+    try {
+      const response = await postJson<McpErrorEnvelope>(api.port, api.token, '/field/description', {});
+      expect(response.status).toBe(400);
+      expect(response.data).toMatchObject({
+        action: 'update field',
+        target: 'field:description',
+        error: 'Missing "content"',
+      });
+      expect(fixture.description).toBe('original');
+      expect(confirm).not.toHaveBeenCalled();
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+});
 
 describe('MCP API structured error envelopes — field routes', () => {
   it('returns a structured error envelope for GET /field/not-a-real-field', async () => {

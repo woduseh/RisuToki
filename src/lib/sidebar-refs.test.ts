@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { buildRefsSidebar, openRefTabById, _resetBuildVersion } from './sidebar-refs';
+import { buildRefsSidebar, _resetBuildVersion } from './sidebar-refs';
 import type { RefsSidebarDeps } from './sidebar-refs';
 
 function createMockDeps(): RefsSidebarDeps {
@@ -79,7 +79,7 @@ describe('buildRefsSidebar race-condition guard', () => {
     },
   );
 
-  it('renders guide and file views without a nested tab row and supports drill-in workspaces', async () => {
+  it('drills into reference workspaces and opens their real fields in read-only tabs', async () => {
     const container = document.getElementById('sidebar-refs')!;
     const refs = [
       {
@@ -103,6 +103,8 @@ describe('buildRefsSidebar race-condition guard', () => {
       },
     ];
     const deps = createMockDeps();
+    const openTab = vi.fn<RefsSidebarDeps['openTab']>((id) => ({ id }));
+    deps.openTab = openTab;
     deps.getReferenceFiles = () => refs as never[];
     deps.syncReferenceFiles = vi.fn().mockResolvedValue(refs as never[]);
 
@@ -119,6 +121,12 @@ describe('buildRefsSidebar race-condition guard', () => {
     ).toEqual(['캐릭터', '메시지', '스크립트']);
     expect(container.querySelector('[data-label="제작자 코멘트"]')).not.toBeNull();
     expect(container.querySelector('[data-label="캐릭터 버전"]')).not.toBeNull();
+    (container.querySelector('[data-label="제작자 코멘트"]') as HTMLElement).click();
+    const fieldCall = openTab.mock.calls[0];
+    expect(fieldCall[0]).toBe('ref_0_creatorcomment');
+    expect(fieldCall[2]).toBe('plaintext');
+    expect(fieldCall[3]()).toBe('creator note');
+    expect(fieldCall[4]).toBeNull();
 
     (
       [...container.querySelectorAll('.reference-workspace-tabs button')].find(
@@ -126,6 +134,13 @@ describe('buildRefsSidebar race-condition guard', () => {
       ) as HTMLButtonElement
     ).click();
     expect(container.querySelector('[data-label="인사말 1"]')).not.toBeNull();
+    (container.querySelector('[data-label="인사말 1"]') as HTMLElement).click();
+    const greetingCall = openTab.mock.calls[1];
+    expect(greetingCall[0]).toBe('ref_0_greeting_alternate_0');
+    expect(greetingCall[1]).toBe('[참고] card.charx - 인사말 1');
+    expect(greetingCall[2]).toBe('html');
+    expect(greetingCall[3]()).toBe('hello there');
+    expect(greetingCall[4]).toBeNull();
 
     (
       [...container.querySelectorAll('.reference-workspace-tabs button')].find(
@@ -133,12 +148,32 @@ describe('buildRefsSidebar race-condition guard', () => {
       ) as HTMLButtonElement
     ).click();
     expect(container.querySelector('[data-label="트리거 스크립트"]')).not.toBeNull();
+    (container.querySelector('[data-label="트리거 스크립트"]') as HTMLElement).click();
+    const triggerCall = openTab.mock.calls[2];
+    expect(triggerCall[0]).toBe('ref_0_triggerScripts');
+    expect(triggerCall[2]).toBe('_triggerform');
+    expect(triggerCall[3]()).toEqual(
+      expect.objectContaining({ triggers: [expect.objectContaining({ comment: 'main', type: 'input' })] }),
+    );
+    expect(triggerCall[4]).toBeNull();
 
     (container.querySelector('[aria-label="참고 파일 목록으로 돌아가기"]') as HTMLButtonElement).click();
     (container.querySelectorAll('.reference-file-row')[1] as HTMLButtonElement).click();
     expect(
       [...container.querySelectorAll('.reference-workspace-tabs button')].map((button) => button.textContent),
     ).toEqual(['기본', '프롬프트', '모델·API', '파라미터', '고급']);
+    (
+      [...container.querySelectorAll('.reference-workspace-tabs button')].find(
+        (button) => button.textContent === '프롬프트',
+      ) as HTMLButtonElement
+    ).click();
+    (container.querySelector('[data-label="프리셋 연동"]') as HTMLElement).click();
+    const risupCall = openTab.mock.calls[3];
+    expect(risupCall[0]).toBe('ref_1_risup_templates');
+    expect(risupCall[2]).toBe('_risupform');
+    expect(risupCall[3]()).toBe(refs[1].data);
+    expect(risupCall[4]).toBeNull();
+    expect(openTab.mock.results[3]?.value?._risupGroupId).toBe('templates');
     (
       [...container.querySelectorAll('.reference-workspace-tabs button')].find(
         (button) => button.textContent === '모델·API',
@@ -152,6 +187,12 @@ describe('buildRefsSidebar race-condition guard', () => {
     ).click();
     expect(container.querySelector('[data-label="JSON 스키마"]')).not.toBeNull();
     expect(container.querySelector('[data-label="설명"]')).toBeNull();
+    (container.querySelector('[data-label="프롬프트"]') as HTMLElement).click();
+    const promptCall = openTab.mock.calls[4];
+    expect(promptCall[0]).toBe('ref_1_promptTemplate');
+    expect(promptCall[2]).toBe('json');
+    expect(promptCall[3]()).toBe('[{"type":"plain","text":"Reference prompt"}]');
+    expect(promptCall[4]).toBeNull();
   });
 
   it('keeps nested guide paths and presents reference paths as compact file rows', async () => {
@@ -207,63 +248,5 @@ describe('buildRefsSidebar race-condition guard', () => {
     expect(container.querySelector('.reference-lorebook-row .manager-badge-accent')?.textContent).toBe('항상');
     expect(container.querySelector('.manager-check')).toBeNull();
     expect(container.querySelector('.manager-row-actions')).toBeNull();
-  });
-});
-
-describe('openRefTabById', () => {
-  it('opens greeting, trigger, and risup reference tabs in read-only mode', () => {
-    const referenceFiles = [
-      {
-        fileName: 'card.charx',
-        data: {
-          alternateGreetings: ['hello there'],
-          triggerScripts: '[{"comment":"main","type":"input","conditions":[],"effect":[]}]',
-        },
-      },
-      {
-        fileName: 'preset.risup',
-        fileType: 'risup' as const,
-        data: {
-          _fileType: 'risup',
-          description: 'preset description',
-          promptTemplate: '[{"type":"plain","text":"Reference prompt"}]',
-        },
-      },
-    ];
-    const openTab = vi.fn().mockImplementation((id: string) => ({ id }));
-    const deps = {
-      getReferenceFiles: () => referenceFiles as never[],
-      openTab,
-      findOpenTab: vi.fn().mockReturnValue(undefined),
-      activateTab: vi.fn(),
-    };
-
-    openRefTabById('ref_0_greeting_alternate_0', deps);
-    expect(openTab).toHaveBeenNthCalledWith(
-      1,
-      'ref_0_greeting_alternate_0',
-      '[참고] card.charx - 인사말 1',
-      'html',
-      expect.any(Function),
-      null,
-    );
-
-    openRefTabById('ref_0_triggerScripts', deps);
-    const triggerCall = openTab.mock.calls[1];
-    expect(triggerCall[0]).toBe('ref_0_triggerScripts');
-    expect(triggerCall[2]).toBe('_triggerform');
-    expect(triggerCall[4]).toBeNull();
-    expect(triggerCall[3]()).toEqual(expect.objectContaining({ triggers: expect.any(Array) }));
-
-    openRefTabById('ref_1_risup_templates', deps);
-    const risupTab = openTab.mock.results[2]?.value as { _risupGroupId?: string };
-    expect(openTab.mock.calls[2][2]).toBe('_risupform');
-    expect(risupTab._risupGroupId).toBe('templates');
-
-    openRefTabById('ref_1_promptTemplate', deps);
-    const promptCall = openTab.mock.calls[3];
-    expect(promptCall[2]).toBe('json');
-    expect(promptCall[4]).toBeNull();
-    expect(promptCall[3]()).toBe('[{"type":"plain","text":"Reference prompt"}]');
   });
 });

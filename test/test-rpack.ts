@@ -1,5 +1,16 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { buildRisum, parseRisum, rpackEncode, rpackDecode } from '../src/rpack';
+
+(function testByteSubstitutionMatchesOriginalMap() {
+  // The original RisuAI map is independent of the TypeScript encoder/decoder tables.
+  const map = fs.readFileSync(path.join(process.cwd(), 'src', 'rpack_map.bin'));
+  const allBytes = Buffer.from(Array.from({ length: 256 }, (_, index) => index));
+  assert.equal(map.length, 512, 'reference map must contain both 256-byte tables');
+  assert.deepStrictEqual(rpackEncode(allBytes), map.subarray(0, 256));
+  assert.deepStrictEqual(rpackDecode(allBytes), map.subarray(256));
+})();
 
 (function testByteRoundTrip() {
   const original = Buffer.from(Array.from({ length: 256 }, (_, index) => index));

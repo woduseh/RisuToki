@@ -1,12 +1,15 @@
+import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readAppSettingsSnapshot, writeRpMode } from '../lib/app-settings';
 import type { CustomThemePalette, ThemeId } from '../lib/theme-registry';
+import { useAppStore } from '../stores/app-store';
 import { changeTheme } from './settings-handlers';
 
 describe('settings-handlers', () => {
   beforeEach(() => {
     localStorage.clear();
     document.body.innerHTML = '';
+    setActivePinia(createPinia());
   });
 
   it('changes and persists the app theme without changing RP mode', () => {
@@ -29,6 +32,7 @@ describe('settings-handlers', () => {
     expect(themeId).toBe('yuuka');
     expect(readAppSettingsSnapshot().themeId).toBe('yuuka');
     expect(readAppSettingsSnapshot().rpMode).toBe('aris');
+    expect(useAppStore().statusText).toBe('테마 변경: 유우카 (클리어 시안)');
   });
 
   it('does not require RP or dark-mode mutation callbacks in the theme contract', () => {
@@ -41,5 +45,6 @@ describe('settings-handlers', () => {
       setCustomTheme: vi.fn(),
     });
     expect(setThemeId).toHaveBeenCalledWith('mika');
+    expect(useAppStore().statusText).toBe('테마 변경: 미카 (아이보리 골드)');
   });
 });

@@ -646,6 +646,36 @@ import {
     assert.equal(currentFieldAfterOpenJson.field, 'description');
     assert.equal(currentFieldAfterOpenJson.content, 'Probe description field.');
 
+    const primaryLua = 'print("primary")';
+    const secondaryLua = 'print("secondary")';
+    const triggerScripts = [
+      {
+        comment: 'Primary trigger',
+        type: 'start',
+        effect: [{ type: 'triggercode', code: 'console.log("preserved")' }, { code: primaryLua }],
+      },
+      { comment: 'Secondary trigger', type: 'manual', effect: [{ type: 'triggerlua', code: secondaryLua }] },
+    ];
+    await callClientJson(client, 'write_field', { field: 'triggerScripts', content: JSON.stringify(triggerScripts) });
+    const primaryLuaRead = await callClientJson(client, 'read_field', { field: 'lua' });
+    assert.equal(primaryLuaRead.content, primaryLua, 'Trigger JSON must select only the first Lua effect');
+
+    const updatedLua = 'print("updated primary")';
+    await callClientJson(client, 'write_field', { field: 'lua', content: updatedLua });
+    const synchronizedTriggers = await callClientJson(client, 'read_field', { field: 'triggerScripts' });
+    assert.equal(typeof synchronizedTriggers.content, 'string');
+    assert.deepEqual(
+      JSON.parse(synchronizedTriggers.content as string),
+      [
+        {
+          ...triggerScripts[0],
+          effect: [triggerScripts[0].effect[0], { type: 'triggerlua', code: updatedLua }],
+        },
+        triggerScripts[1],
+      ],
+      'Lua edits must preserve JavaScript and secondary Lua effects',
+    );
+
     const workspaceFixtures = createFolderWorkspaceMcpFixtures(probeFixture.dir);
     const risumProjectPath = path.join(probeFixture.dir, 'workspace-module-project');
     const risumExtract = await callClientJson(client, 'extract_charx_to_project_folder', {

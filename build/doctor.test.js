@@ -8,7 +8,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
-const { doctor, run, main, parseArgs, satisfiesVersion, PROBE_TIMEOUT_MS } = require('./doctor');
+const { doctor, main, parseArgs, satisfiesVersion, PROBE_TIMEOUT_MS } = require('./doctor');
 
 const BUILD_ROOT = path.resolve(__dirname, '..', '.build');
 const ENGINE = '>=26.10.0 <27';
@@ -145,7 +145,6 @@ test('Node engine boundaries allow the tested Node 26 line and reject other majo
     assert.throws(() => satisfiesVersion('24.14.0', range), { code: 'UNSUPPORTED_VERSION_RANGE' });
   assert.throws(() => satisfiesVersion('24.0.0-rc.1', ENGINE), { code: 'UNSUPPORTED_VERSION' });
   assert.equal(PROBE_TIMEOUT_MS, 3000);
-  assert.equal(run, doctor);
 });
 
 test('real direct dependency fixtures accept exports-hidden manifests and ignore unused extraneous packages', async (t) => {

@@ -21,6 +21,26 @@ describe('content simulation', () => {
     expect(result.trace[0].error).toBeTruthy();
   });
 
+  it.each(['g<order 2>', 'g<order 2, no_end_nl>', 'g<cbs, order 2, no_end_nl>', 'g<cbs, no_end_nl, order 2>'])(
+    'runs enabled regex ordering from %s metadata',
+    (flag) => {
+      const result = runRegexPipeline(
+        'alpha BETA',
+        [
+          { type: 'editinput', comment: 'second', find: 'BETA', replace: 'gamma', ableFlag: true, flag },
+          { type: 'editinput', comment: 'first', find: 'alpha', replace: 'BETA', ableFlag: true, flag: 'g<order 1>' },
+        ],
+        'editinput',
+      );
+
+      expect(result.result).toBe('BETA gamma');
+      expect(result.trace.map(({ comment, order }) => ({ comment, order }))).toEqual([
+        { comment: 'second', order: 2 },
+        { comment: 'first', order: 1 },
+      ]);
+    },
+  );
+
   it('supports RisuAI move actions and newline replacement tokens', () => {
     const result = runRegexPipeline(
       'before [note] after',
@@ -33,6 +53,56 @@ describe('content simulation', () => {
           flag: 'g<move_top,no_end_nl>',
         },
       ],
+      'editdisplay',
+    );
+
+    expect(result.result).toBe('note\nline\nbefore  after');
+  });
+
+  it.each([false, undefined])('uses default flags and order when custom flags are %s', (ableFlag) => {
+    const result = runRegexPipeline(
+      'alpha alpha ALPHA',
+      [
+        { type: 'editinput', comment: 'first', find: 'alpha', replace: 'beta', ableFlag, flag: 'gi<order 1>' },
+        { type: 'editinput', comment: 'second', find: 'beta', replace: 'gamma', ableFlag, flag: 'gi<order 2>' },
+      ],
+      'editinput',
+    );
+
+    expect(result.result).toBe('gamma gamma ALPHA');
+    expect(result.trace.map(({ comment, flags, order }) => ({ comment, flags, order }))).toEqual([
+      { comment: 'first', flags: 'g', order: 0 },
+      { comment: 'second', flags: 'g', order: 0 },
+    ]);
+  });
+
+  it.each([
+    [false, 'move_top'],
+    [false, 'move_bottom'],
+    [undefined, 'move_top'],
+    [undefined, 'move_bottom'],
+  ])('ignores custom %s flag actions including %s and no_end_nl', (ableFlag, moveAction) => {
+    const result = runRegexPipeline(
+      'before [note] after',
+      [
+        {
+          type: 'editdisplay',
+          find: '\\[(note)\\]',
+          replace: '<b>$1</b>',
+          ableFlag,
+          flag: `g<${moveAction},no_end_nl>`,
+        },
+      ],
+      'editdisplay',
+    );
+
+    expect(result.result).toBe('before <b>note</b>\n after');
+  });
+
+  it('retains OUT move prefixes when custom flag metadata is disabled', () => {
+    const result = runRegexPipeline(
+      'before [note] after',
+      [{ type: 'editdisplay', find: '\\[(note)\\]', replace: '@@move_top $1$nline', ableFlag: false }],
       'editdisplay',
     );
 

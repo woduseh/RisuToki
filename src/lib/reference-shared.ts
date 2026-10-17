@@ -6,8 +6,7 @@ export type GreetingFieldName = 'alternateGreetings' | 'groupOnlyGreetings';
 // Shared reference scalar-field definitions
 // ---------------------------------------------------------------------------
 // Single source of truth for which scalar fields are exposed on references.
-// Used by sidebar-refs, mcp-api-server (list / read), and
-// openRefTabById so they never drift out of sync.
+// Used by the reference MCP list/read routes.
 
 export interface RefScalarFieldDef {
   /** Field key on the reference data object. */

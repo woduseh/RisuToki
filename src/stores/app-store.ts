@@ -51,6 +51,7 @@ export const useAppStore = defineStore('app', () => {
   const statusText = ref('');
   const statusKind = ref<StatusKind>('info');
   const statusSticky = ref(false);
+  const statusRevision = ref(0);
   const documentStatsText = ref('');
   const fileLabel = ref('');
   const projectPath = ref<string | null>(null);
@@ -133,6 +134,7 @@ export const useAppStore = defineStore('app', () => {
     statusText.value = text;
     statusKind.value = options.kind ?? 'info';
     statusSticky.value = options.sticky ?? false;
+    statusRevision.value += 1;
   }
 
   function clearStatus() {
@@ -362,6 +364,7 @@ export const useAppStore = defineStore('app', () => {
     statusText,
     statusKind,
     statusSticky,
+    statusRevision,
     documentStatsText,
     fileLabel,
     recentItems,

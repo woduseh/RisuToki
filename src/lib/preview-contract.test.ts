@@ -53,19 +53,9 @@ function createRecordingEngine() {
 
     onReloadDisplay() {},
 
-    processRegex(content: string, scripts: PreviewRegexScript[], type?: string) {
+    processRegex(content: string, scripts: PreviewRegexScript[], type = 'editdisplay', onTrace) {
       calls.push({ op: 'processRegex', type });
-      for (const s of scripts) {
-        if (s.type !== type || s.ableFlag === false) continue;
-        const find = s.find || s.in || '';
-        const replace = s.replace || s.out || '';
-        try {
-          content = content.replace(new RegExp(find, 'g'), replace);
-        } catch {
-          /* skip invalid regex */
-        }
-      }
-      return content;
+      return RealPreviewEngine.processRegex(content, scripts, type, onTrace);
     },
 
     resetVars() {
@@ -464,26 +454,31 @@ describe('preview pipeline contract: lorebook activation', () => {
 describe('preview pipeline contract: regex type routing', () => {
   it('editoutput and editdisplay scripts transform char messages', async () => {
     const engine = createRecordingEngine();
-    const session = makeSession(engine, {
-      firstMessage: 'raw-output',
-      regex: [
-        { type: 'editoutput', comment: 'out-rewrite', find: 'raw-output', replace: 'edited-output', ableFlag: true },
-        {
-          type: 'editdisplay',
-          comment: 'display-rewrite',
-          find: 'edited-output',
-          replace: 'displayed',
-          ableFlag: true,
-        },
-        {
-          type: 'editinput',
-          comment: 'input-rewrite',
-          find: 'raw-output',
-          replace: 'SHOULD-NOT-APPEAR',
-          ableFlag: true,
-        },
-      ],
-    });
+    const chatFrame = createTestFrame();
+    const session = makeSession(
+      engine,
+      {
+        firstMessage: 'raw-output',
+        regex: [
+          { type: 'editoutput', comment: 'out-rewrite', find: 'raw-output', replace: 'edited-output', ableFlag: true },
+          {
+            type: 'editdisplay',
+            comment: 'display-rewrite',
+            find: 'edited-output',
+            replace: 'displayed',
+            ableFlag: true,
+          },
+          {
+            type: 'editinput',
+            comment: 'input-rewrite',
+            find: 'raw-output',
+            replace: 'SHOULD-NOT-APPEAR',
+            ableFlag: true,
+          },
+        ],
+      },
+      { chatFrame },
+    );
     await session.initialize();
 
     // The char message goes through editoutput → editdisplay pipeline.
@@ -491,6 +486,7 @@ describe('preview pipeline contract: regex type routing', () => {
     const chatText = session.getSnapshot().messages[0].content;
     // Raw content is preserved in snapshot
     expect(chatText).toBe('raw-output');
+    expect(chatFrame.contentDocument.querySelector('#chat-container .chattext')?.textContent?.trim()).toBe('displayed');
 
     // Verify the engine was called with correct types for the first message
     const regexCalls = engine.calls.filter((c) => c.op === 'processRegex');
@@ -501,12 +497,17 @@ describe('preview pipeline contract: regex type routing', () => {
 
   it('editinput scripts transform user messages', async () => {
     const engine = createRecordingEngine();
-    const session = makeSession(engine, {
-      regex: [
-        { type: 'editinput', comment: 'input-rewrite', find: 'hello', replace: 'modified', ableFlag: true },
-        { type: 'editoutput', comment: 'out-rewrite', find: 'hello', replace: 'WRONG', ableFlag: true },
-      ],
-    });
+    const chatFrame = createTestFrame();
+    const session = makeSession(
+      engine,
+      {
+        regex: [
+          { type: 'editinput', comment: 'input-rewrite', find: 'hello', replace: 'modified', ableFlag: true },
+          { type: 'editoutput', comment: 'out-rewrite', find: 'hello', replace: 'WRONG', ableFlag: true },
+        ],
+      },
+      { chatFrame },
+    );
     await session.initialize();
     engine.calls.length = 0;
 
@@ -517,10 +518,14 @@ describe('preview pipeline contract: regex type routing', () => {
     // First processRegex call should be editinput (for the user message)
     const firstRegex = engine.calls.find((c) => c.op === 'processRegex');
     expect(firstRegex?.type).toBe('editinput');
+    expect(chatFrame.contentDocument.querySelectorAll('#chat-container .chattext')[1]?.textContent?.trim()).toBe(
+      'modified world',
+    );
   });
 
   it('ableFlag=false scripts stay active because ableFlag only controls custom flags', async () => {
     const engine = createRecordingEngine();
+    const chatFrame = createTestFrame();
     const script: PreviewRegexScript = {
       type: 'editoutput',
       comment: 'default-flags',
@@ -528,15 +533,20 @@ describe('preview pipeline contract: regex type routing', () => {
       replace: 'REPLACED',
       ableFlag: false,
     };
-    const session = makeSession(engine, {
-      firstMessage: 'Hello!',
-      regex: [script],
-    });
+    const session = makeSession(
+      engine,
+      {
+        firstMessage: 'Hello!',
+        regex: [script],
+      },
+      { chatFrame },
+    );
     await session.initialize();
 
     expect(session.getSnapshot().scripts).toHaveLength(1);
     expect(session.getSnapshot().scripts[0].ableFlag).toBe(false);
     expect(engine.calls.some((c) => c.op === 'processRegex' && c.type === 'editoutput')).toBe(true);
+    expect(chatFrame.contentDocument.querySelector('#chat-container .chattext')?.textContent?.trim()).toBe('REPLACED!');
   });
 });
 

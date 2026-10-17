@@ -57,7 +57,7 @@ type LoreRuntimeEntry = PreviewLorebookEntry & {
 type LoreMatchWithEntry = PreviewLoreMatch & { entry: LoreRuntimeEntry };
 
 function extractRegexOrder(flagStr: string): number {
-  const match = flagStr.match(/<order\s+(\d+)>/i);
+  const match = flagStr.match(/<(?:[^<>]*?,)?\s*order\s+(\d+)\s*(?=[,>])/i);
   return match ? Number.parseInt(match[1], 10) : 0;
 }
 
@@ -70,8 +70,8 @@ function extractRegexActions(flagStr: string): string[] {
   );
 }
 
-function regexFlags(script: PreviewRegexScript): string {
-  let flags = String(script.ableFlag === true ? (script.flag ?? script.flags ?? 'g') : 'g')
+function regexFlags(flagSource: string): string {
+  let flags = flagSource
     .replace(/<.+?>/g, '')
     .split('')
     .filter((character) => 'dgimsuvy'.includes(character))
@@ -96,33 +96,31 @@ export function runRegexPipeline(
   const modeLower = mode.toLowerCase();
   const selected = selectedIndices ? new Set(selectedIndices) : null;
   const ordered = scripts
-    .map((script, index) => ({
-      script,
-      index: typeof script.__mcpIndex === 'number' ? script.__mcpIndex : index,
-    }))
+    .map((script, index) => {
+      const flagSource = script.ableFlag === true ? String(script.flag ?? script.flags ?? 'g') : 'g';
+      return {
+        script,
+        index: typeof script.__mcpIndex === 'number' ? script.__mcpIndex : index,
+        flagSource,
+        order: (script.replaceOrder as number | undefined) ?? extractRegexOrder(flagSource),
+      };
+    })
     .filter(({ script, index }) => {
       const type = String(script.type || '').toLowerCase();
       return (
         (!selected || selected.has(index)) && type === modeLower && type !== 'disabled' && !!(script.find || script.in)
       );
     })
-    .sort(({ script: a }, { script: b }) => {
-      const orderA = (a.replaceOrder as number | undefined) ?? extractRegexOrder(String(a.flag ?? a.flags ?? ''));
-      const orderB = (b.replaceOrder as number | undefined) ?? extractRegexOrder(String(b.flag ?? b.flags ?? ''));
-      return orderB - orderA;
-    });
+    .sort((a, b) => b.order - a.order);
 
   const trace: RegexTraceEntry[] = [];
-  for (const { script, index } of ordered) {
+  for (const { script, index, flagSource, order } of ordered) {
     signal?.throwIfAborted();
     const before = text;
     const find = script.find || script.in || '';
     const replace = script.replace || script.out || '';
-    const flagSource = String(script.flag ?? script.flags ?? '');
     const actions = extractRegexActions(flagSource);
-    const flags = regexFlags(script);
-    const order =
-      (script.replaceOrder as number | undefined) ?? extractRegexOrder(String(script.flag ?? script.flags ?? ''));
+    const flags = regexFlags(flagSource);
     try {
       const regex = new RegExp(find, flags);
       const matchCount = countRegexMatches(before, regex);

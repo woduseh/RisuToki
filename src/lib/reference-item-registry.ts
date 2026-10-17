@@ -3,14 +3,7 @@ import { getVisibleRisupFieldGroups, type RisupFieldGroupId } from './risup-fiel
 import type { GreetingType, ReferenceFileType } from './reference-shared';
 
 export type ReferenceUiItemKind =
-  | 'field'
-  | 'greetings'
-  | 'lua'
-  | 'css'
-  | 'triggerScripts'
-  | 'lorebook'
-  | 'regex'
-  | 'risup-group';
+  'field' | 'greetings' | 'lua' | 'css' | 'triggerScripts' | 'lorebook' | 'regex' | 'risup-group';
 
 interface ReferenceUiItemBase {
   icon: string;
@@ -48,16 +41,14 @@ export type ReferenceUiItemDescriptor =
   | ReferenceRisupGroupItemDescriptor;
 
 const CHARX_ITEMS: readonly ReferenceUiItemDescriptor[] = [
-  ...getCharxInfoItems().map(
-    (item): ReferenceFieldItemDescriptor => ({
-      field: item.field,
-      icon: item.icon,
-      key: item.id,
-      kind: 'field',
-      label: item.label,
-      language: item.lang,
-    }),
-  ),
+  ...getCharxInfoItems().map((item): ReferenceFieldItemDescriptor => ({
+    field: item.field,
+    icon: item.icon,
+    key: item.id,
+    kind: 'field',
+    label: item.label,
+    language: item.lang,
+  })),
   {
     field: 'firstMessage',
     icon: '💬',
@@ -170,15 +161,13 @@ const RISUP_ITEMS: readonly ReferenceUiItemDescriptor[] = [
     label: '프롬프트',
     language: 'json',
   },
-  ...getVisibleRisupFieldGroups().map(
-    (group): ReferenceRisupGroupItemDescriptor => ({
-      groupId: group.id,
-      icon: group.icon,
-      key: `risup:${group.id}`,
-      kind: 'risup-group',
-      label: group.label,
-    }),
-  ),
+  ...getVisibleRisupFieldGroups().map((group): ReferenceRisupGroupItemDescriptor => ({
+    groupId: group.id,
+    icon: group.icon,
+    key: `risup:${group.id}`,
+    kind: 'risup-group',
+    label: group.label,
+  })),
   { icon: '⚡', key: 'regex', kind: 'regex', label: '정규식' },
 ] as const;
 
@@ -190,15 +179,6 @@ const REFERENCE_ITEMS_BY_FILE_TYPE: Readonly<Record<ReferenceFileType, readonly 
 
 export function getReferenceUiItems(fileType: ReferenceFileType): readonly ReferenceUiItemDescriptor[] {
   return REFERENCE_ITEMS_BY_FILE_TYPE[fileType];
-}
-
-export function findReferenceUiFieldItem(
-  fileType: ReferenceFileType,
-  field: string,
-): ReferenceFieldItemDescriptor | undefined {
-  return getReferenceUiItems(fileType).find(
-    (item): item is ReferenceFieldItemDescriptor => item.kind === 'field' && item.field === field,
-  );
 }
 
 export function getReferenceGreetingItemLabel(index: number): string {

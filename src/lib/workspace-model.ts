@@ -21,22 +21,7 @@ export interface WorkspaceDefinition {
   id: WorkspaceId;
   label: string;
   icon:
-    | 'user'
-    | 'message'
-    | 'code'
-    | 'book'
-    | 'photo'
-    | 'package'
-    | 'settings'
-    | 'sparkles'
-    | 'cpu'
-    | 'sliders'
-    | 'dots';
-}
-
-export interface NavigatorSelection {
-  workspaceId: WorkspaceId;
-  itemId: string | null;
+    'user' | 'message' | 'code' | 'book' | 'photo' | 'package' | 'settings' | 'sparkles' | 'cpu' | 'sliders' | 'dots';
 }
 
 export type InspectorContextKind = 'empty' | 'lorebook' | 'asset' | 'prompt' | 'regex' | 'trigger';

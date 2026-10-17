@@ -35,7 +35,6 @@ import {
   searchAllBodySchema,
   searchBodySchema,
   validateBody,
-  writeFieldBodySchema,
 } from './mcp-request-schemas';
 
 // ---------------------------------------------------------------------------
@@ -58,24 +57,6 @@ describe('validateBody', () => {
       expect(result.path).toBe('find');
       expect(result.error).toBeTruthy();
     }
-  });
-});
-
-// ---------------------------------------------------------------------------
-// writeFieldBodySchema
-// ---------------------------------------------------------------------------
-
-describe('writeFieldBodySchema', () => {
-  it('accepts any content value', () => {
-    expect(validateBody({ content: 'hello' }, writeFieldBodySchema).success).toBe(true);
-    expect(validateBody({ content: 42 }, writeFieldBodySchema).success).toBe(true);
-    expect(validateBody({ content: true }, writeFieldBodySchema).success).toBe(true);
-    expect(validateBody({ content: ['a', 'b'] }, writeFieldBodySchema).success).toBe(true);
-  });
-
-  it('rejects missing content', () => {
-    const result = validateBody({}, writeFieldBodySchema);
-    expect(result.success).toBe(false);
   });
 });
 

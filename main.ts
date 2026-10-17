@@ -119,7 +119,6 @@ interface MainStateStore {
   resetCurrentDocument(data: LoadedDocumentData): void;
   setCurrentDocument(filePath: string, data: LoadedDocumentData): void;
   setCurrentProject(projectPath: string, data: LoadedDocumentData, sourceFilePath?: string | null): void;
-  clearCurrentProject(): void;
   setCurrentFileBaseline(baseline: Record<string, unknown> | null): void;
   setReferenceFiles(files: ReferenceRecord[]): void;
   setReferenceManifestStatus(status: ReferenceManifestStatus | null): void;

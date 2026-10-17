@@ -1,83 +1,101 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
+import { createPinia } from 'pinia';
+import { nextTick } from 'vue';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import StatusBar from '../components/StatusBar.vue';
+import { useAppStore } from '../stores/app-store';
+import { setStatus } from './status-bar';
 
-// The module caches DOM element refs. We must reset the module between tests
-// so each test gets a fresh lookup against the newly-created DOM elements.
-let clearStatus: typeof import('./status-bar').clearStatus;
-let setStatus: typeof import('./status-bar').setStatus;
+enableAutoUnmount(afterEach);
 
-beforeEach(async () => {
+function mountStatusBar() {
+  const pinia = createPinia();
+  const wrapper = mount(StatusBar, { attachTo: document.body, global: { plugins: [pinia] } });
+  return { wrapper, store: useAppStore(pinia) };
+}
+
+beforeEach(() => {
   vi.useFakeTimers();
-  vi.resetModules();
-
-  // Create the DOM elements that setStatus expects
-  const bar = document.createElement('div');
-  bar.id = 'statusbar';
-  const span = document.createElement('span');
-  span.id = 'status-text';
-  bar.appendChild(span);
-  document.body.appendChild(bar);
-
-  const mod = await import('./status-bar');
-  clearStatus = mod.clearStatus;
-  setStatus = mod.setStatus;
 });
 
 afterEach(() => {
   vi.useRealTimers();
 });
 
-describe('setStatus', () => {
-  it('sets the text content of the status span', () => {
+describe('renderer status messages', () => {
+  it('shows messages from the controller helper and hides them after three seconds', async () => {
+    const { wrapper } = mountStatusBar();
     setStatus('Hello');
-    expect(document.getElementById('status-text')!.textContent).toBe('Hello');
-  });
+    await nextTick();
 
-  it('adds the "visible" class to the status bar', () => {
-    setStatus('msg');
-    expect(document.getElementById('statusbar')!.classList.contains('visible')).toBe(true);
-  });
+    expect(wrapper.get('#status-text').text()).toBe('Hello');
+    expect(wrapper.classes()).toContain('visible');
 
-  it('removes "visible" class after 3 seconds', () => {
-    setStatus('temp');
-    const bar = document.getElementById('statusbar')!;
-    expect(bar.classList.contains('visible')).toBe(true);
     vi.advanceTimersByTime(3000);
-    expect(bar.classList.contains('visible')).toBe(false);
+    await nextTick();
+    expect(wrapper.get('#status-text').text()).toBe('');
+    expect(wrapper.classes()).not.toContain('visible');
   });
 
-  it('resets the timer when called again before timeout', () => {
+  it.each(['first', 'second'])('restarts the timer when another event reports %s', async (nextMessage) => {
+    const { wrapper } = mountStatusBar();
     setStatus('first');
+    await nextTick();
     vi.advanceTimersByTime(2000);
-    setStatus('second');
+    setStatus(nextMessage);
+    await nextTick();
     vi.advanceTimersByTime(2000);
-    // Only 2s since last call — still visible
-    const bar = document.getElementById('statusbar')!;
-    expect(bar.classList.contains('visible')).toBe(true);
-    expect(document.getElementById('status-text')!.textContent).toBe('second');
+    await nextTick();
+
+    expect(wrapper.get('#status-text').text()).toBe(nextMessage);
+    expect(wrapper.classes()).toContain('visible');
+
     vi.advanceTimersByTime(1000);
-    // Now 3s since last call — hidden
-    expect(bar.classList.contains('visible')).toBe(false);
+    await nextTick();
+    expect(wrapper.get('#status-text').text()).toBe('');
+    expect(wrapper.classes()).not.toContain('visible');
   });
 
-  it('updates text on consecutive calls', () => {
-    setStatus('a');
-    setStatus('b');
-    setStatus('c');
-    expect(document.getElementById('status-text')!.textContent).toBe('c');
+  it('shows the same message again after its previous display expired', async () => {
+    const { wrapper } = mountStatusBar();
+    setStatus('저장 완료');
+    await nextTick();
+    vi.advanceTimersByTime(3000);
+    await nextTick();
+    expect(wrapper.get('#status-text').text()).toBe('');
+
+    setStatus('저장 완료');
+    await nextTick();
+    expect(wrapper.get('#status-text').text()).toBe('저장 완료');
+    expect(wrapper.classes()).toContain('visible');
   });
 
-  it('keeps sticky error statuses visible until explicitly cleared', () => {
+  it('keeps sticky errors visible until the user dismisses them', async () => {
+    const { wrapper, store } = mountStatusBar();
     setStatus('저장 실패', { kind: 'error', sticky: true });
-    const bar = document.getElementById('statusbar')!;
-
-    expect(bar.classList.contains('visible')).toBe(true);
-    expect(bar.classList.contains('status-error')).toBe(true);
-    expect(bar.classList.contains('sticky')).toBe(true);
-
+    await nextTick();
     vi.advanceTimersByTime(10000);
-    expect(bar.classList.contains('visible')).toBe(true);
+    await nextTick();
 
-    clearStatus();
-    expect(bar.classList.contains('visible')).toBe(false);
+    expect(wrapper.get('#status-text').text()).toBe('저장 실패');
+    expect(wrapper.classes()).toEqual(expect.arrayContaining(['visible', 'status-error', 'sticky']));
+
+    await wrapper.get('#status-dismiss').trigger('click');
+    expect(store.statusText).toBe('');
+    expect(store.statusSticky).toBe(false);
+    expect(wrapper.classes()).not.toContain('visible');
+  });
+
+  it('keeps document statistics visible after a helper message expires', async () => {
+    const { wrapper, store } = mountStatusBar();
+    store.setDocumentStatsText('CHARX · 로어북 2 · 에셋 3');
+    setStatus('저장 완료');
+    await nextTick();
+    vi.advanceTimersByTime(3000);
+    await nextTick();
+
+    expect(wrapper.get('#status-text').text()).toBe('');
+    expect(wrapper.get('#status-stats').text()).toBe('CHARX · 로어북 2 · 에셋 3');
+    expect(wrapper.classes()).toContain('visible');
   });
 });

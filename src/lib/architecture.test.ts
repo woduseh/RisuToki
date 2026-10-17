@@ -289,7 +289,7 @@ describe('packaged MCP runtime assets', () => {
 
   it('ships isolated Electron runtime files without source-side JavaScript', () => {
     const packagedFiles = packageJson.build?.files ?? [];
-    expect(packagedFiles).toEqual(expect.arrayContaining(['.build/electron/**/*', 'src/rpack_map.bin']));
+    expect(packagedFiles).toContain('.build/electron/**/*');
     expect(packagedFiles).not.toContain('main.js');
     expect(packagedFiles).not.toContain('preload.js');
     expect(packagedFiles).not.toContain('src/**/*.js');

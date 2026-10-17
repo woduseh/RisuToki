@@ -214,7 +214,11 @@ export async function handleFieldRoute(
             target: `field:${fieldName}`,
           });
         }
-        // Validate content type: must be string or array (for alternateGreetings)
+        const scalarType = BOOLEAN_FIELD_NAMES.includes(fieldName)
+          ? 'boolean'
+          : NUMBER_FIELD_NAMES.includes(fieldName)
+            ? 'number'
+            : undefined;
         const arrayFields = ['alternateGreetings'];
         if (arrayFields.includes(fieldName)) {
           if (!Array.isArray(body.content)) {
@@ -222,6 +226,18 @@ export async function handleFieldRoute(
               action: 'update field',
               message: `"${fieldName}" must be an array`,
               suggestion: '문자열 배열 형태로 값을 다시 보내세요.',
+              target: `field:${fieldName}`,
+            });
+          }
+        } else if (scalarType) {
+          if (typeof body.content !== scalarType) {
+            return mcpError(res, 400, {
+              action: 'update field',
+              message: `"${fieldName}" must be a ${scalarType}`,
+              suggestion:
+                scalarType === 'boolean'
+                  ? `"${fieldName}" 값을 true 또는 false 로 전달하세요.`
+                  : `"${fieldName}" 값을 숫자로 전달하세요.`,
               target: `field:${fieldName}`,
             });
           }
@@ -246,14 +262,16 @@ export async function handleFieldRoute(
         const oldSize =
           fieldName === 'triggerScripts'
             ? deps.stringifyTriggerScripts(currentData.triggerScripts).length
-            : Array.isArray(currentData[fieldName])
-              ? currentData[fieldName].length
-              : (currentData[fieldName] || '').length;
+            : scalarType
+              ? String(currentData[fieldName] ?? '').length
+              : Array.isArray(currentData[fieldName])
+                ? currentData[fieldName].length
+                : (currentData[fieldName] || '').length;
         const newSize =
           fieldName === 'triggerScripts'
             ? String(body.content || '').length
-            : Array.isArray(body.content)
-              ? body.content.length
+            : scalarType
+              ? String(body.content).length
               : body.content.length;
 
         const allowed = await deps.askRendererConfirm(
@@ -320,13 +338,14 @@ export async function handleFieldRoute(
           }
           logMcpMutation('update field', `field:${fieldName}`, { oldSize, newSize });
           deps.broadcastToAll('data-updated', fieldName, content);
+          const contentSize = scalarType ? String(content).length : content.length;
           return jsonResSuccess(
             res,
-            { success: true, field: fieldName, size: content.length },
+            { success: true, field: fieldName, size: contentSize },
             {
               toolName: 'write_field',
-              summary: `Updated "${fieldName}" (${oldSize}→${content.length} chars)`,
-              artifacts: { fieldName, oldSize, newSize: content.length },
+              summary: `Updated "${fieldName}" (${oldSize}→${contentSize} chars)`,
+              artifacts: { fieldName, oldSize, newSize: contentSize },
             },
           );
         } else {

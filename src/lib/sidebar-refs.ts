@@ -1,9 +1,5 @@
 import { createTreeItem, createFolderItem } from './sidebar-builder';
-import {
-  findReferenceUiFieldItem,
-  getReferenceGreetingItemLabel,
-  getReferenceUiItems,
-} from './reference-item-registry';
+import { getReferenceGreetingItemLabel } from './reference-item-registry';
 import { getRefFileType } from './reference-shared';
 import { getReferenceExplorerWorkspaces } from './reference-explorer-model';
 import { getFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
@@ -95,10 +91,6 @@ export function isSameReferencePath(left: unknown, right: unknown): boolean {
     typeof right === 'string' &&
     left.localeCompare(right, undefined, { sensitivity: 'accent' }) === 0
   );
-}
-
-export function stringifyStringArray(value: unknown): string {
-  return JSON.stringify(Array.isArray(value) ? value : [], null, 2);
 }
 
 // ---- addReferenceFile ----
@@ -1071,105 +1063,4 @@ function renderRefTriggerScripts(
     ]);
   });
   parent.appendChild(el);
-}
-
-// ---- openRefTabById ----
-
-export interface OpenRefTabDeps {
-  getReferenceFiles(): ReferenceFile[];
-  openTab(
-    id: string,
-    label: string,
-    lang: string,
-    getValue: () => unknown,
-    setValue: ((v: unknown) => void) | null,
-  ): OpenedTab | null;
-  findOpenTab(id: string): OpenedTab | undefined;
-  activateTab(id: string): void;
-}
-
-export function openRefTabById(tabId: string, deps: OpenRefTabDeps): void {
-  const existing = deps.findOpenTab(tabId);
-  if (existing) {
-    deps.activateTab(tabId);
-    return;
-  }
-
-  const parts = tabId.split('_');
-  if (parts.length < 3) return;
-  const ri = parseInt(parts[1], 10);
-  const referenceFiles = deps.getReferenceFiles();
-  if (ri < 0 || ri >= referenceFiles.length) return;
-  const ref = referenceFiles[ri];
-  const fileType = ref.fileType || getRefFileType(ref);
-  const fieldPart = parts[2];
-
-  if (fieldPart === 'lua') {
-    deps.openTab(tabId, `[참고] ${ref.fileName} - Lua`, 'lua', () => ref.data.lua, null);
-  } else if (fieldPart === 'css') {
-    deps.openTab(tabId, `[참고] ${ref.fileName} - CSS`, 'css', () => ref.data.css, null);
-  } else if (fieldPart === 'triggerScripts') {
-    deps.openTab(
-      tabId,
-      `[참고] ${ref.fileName} - 트리거 스크립트`,
-      '_triggerform',
-      () => parseTriggerScriptsText(normalizeTriggerScriptsText(ref.data.triggerScripts)),
-      null,
-    );
-  } else if (fieldPart === 'greeting' && parts.length >= 5) {
-    const greetingType = parts[3];
-    const fieldName =
-      greetingType === 'alternate' ? 'alternateGreetings' : greetingType === 'group' ? 'groupOnlyGreetings' : null;
-    const idx = parseInt(parts[4], 10);
-    const greetings = fieldName && Array.isArray(ref.data[fieldName]) ? ref.data[fieldName] : [];
-    if (idx >= 0 && idx < greetings.length) {
-      const greetingLabel = getReferenceGreetingItemLabel(idx);
-      deps.openTab(tabId, `[참고] ${ref.fileName} - ${greetingLabel}`, 'html', () => greetings[idx] ?? '', null);
-    }
-  } else if (fieldPart === 'risup' && parts.length >= 4) {
-    const groupId = parts.slice(3).join('_');
-    const groupItem = getReferenceUiItems(fileType).find(
-      (item) => item.kind === 'risup-group' && item.groupId === groupId,
-    );
-    if (groupItem?.kind === 'risup-group') {
-      const tab = deps.openTab(
-        tabId,
-        `[참고] ${ref.fileName} - ${groupItem.label}`,
-        '_risupform',
-        () => ref.data,
-        null,
-      );
-      if (tab) tab._risupGroupId = groupItem.groupId;
-    }
-  } else if (fieldPart === 'lb' && parts.length >= 4) {
-    const li = parseInt(parts[3], 10);
-    if (ref.data.lorebook && ref.data.lorebook[li]) {
-      const lbLabel = (ref.data.lorebook[li].comment as string) || (ref.data.lorebook[li].key as string) || `#${li}`;
-      const tab = deps.openTab(
-        tabId,
-        `[참고] ${ref.fileName} - ${lbLabel}`,
-        '_loreform',
-        () => ref.data.lorebook![li],
-        null,
-      );
-      if (tab) tab._refLorebook = ref.data.lorebook;
-    }
-  } else if (fieldPart === 'rx' && parts.length >= 4) {
-    const xi = parseInt(parts[3], 10);
-    if (ref.data.regex && ref.data.regex[xi]) {
-      const rxLabel = (ref.data.regex[xi].comment as string) || `#${xi}`;
-      deps.openTab(tabId, `[참고] ${ref.fileName} - ${rxLabel}`, '_regexform', () => ref.data.regex![xi], null);
-    }
-  } else {
-    const fieldDef = findReferenceUiFieldItem(fileType, fieldPart);
-    if (fieldDef) {
-      deps.openTab(
-        tabId,
-        `[참고] ${ref.fileName} - ${fieldDef.label}`,
-        fieldDef.language,
-        () => ref.data[fieldDef.field],
-        null,
-      );
-    }
-  }
 }

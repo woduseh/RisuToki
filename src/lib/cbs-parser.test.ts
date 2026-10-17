@@ -410,6 +410,32 @@ describe('resolve', () => {
     expect(resolve(text, blocks, { toggle_A: '0', toggle_B: '1' })).toBe('');
   });
 
+  it.each([
+    ['0', '0', ''],
+    ['0', '1', ''],
+    ['1', '0', 'outer:inner-no:end'],
+    ['1', '1', 'outer:inner-yes:end'],
+  ])('keeps a nested else inside its own block (outer=%s, inner=%s)', (outer, inner, expected) => {
+    const text = '{{#when::toggle::A}}outer:{{#when::toggle::B}}inner-yes{{:else}}inner-no{{/when}}:end{{/when}}';
+    const { blocks } = parse(text);
+
+    expect(resolve(text, blocks, { toggle_A: outer, toggle_B: inner })).toBe(expected);
+  });
+
+  it.each([
+    ['0', '0', 'outer-no:else-inner-no:end'],
+    ['0', '1', 'outer-no:else-inner-yes:end'],
+    ['1', '0', 'outer:inner-no:end'],
+    ['1', '1', 'outer:inner-yes:end'],
+  ])('resolves nested else blocks in both parent branches (outer=%s, inner=%s)', (outer, inner, expected) => {
+    const text =
+      '{{#when::toggle::A}}outer:{{#when::toggle::B}}inner-yes{{:else}}inner-no{{/when}}:end' +
+      '{{:else}}outer-no:{{#when::toggle::B}}else-inner-yes{{:else}}else-inner-no{{/when}}:end{{/when}}';
+    const { blocks } = parse(text);
+
+    expect(resolve(text, blocks, { toggle_A: outer, toggle_B: inner })).toBe(expected);
+  });
+
   it('sequential: first on', () => {
     const text =
       '{{#when::keep::{{getglobalvar::toggle_A}}::is::1}}AAA{{/}}{{#when::keep::{{getglobalvar::toggle_B}}::is::1}}BBB{{/}}';

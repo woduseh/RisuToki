@@ -1,5 +1,5 @@
 import { sanitizePreviewHtml } from './preview-sanitizer';
-import { getPreviewRendererStyles, renderPreviewMarkdown } from './preview-renderer';
+import { getPreviewRendererStyles } from './preview-renderer';
 
 export interface PreviewParserEngine {
   risuChatParser(text: string, options?: Record<string, unknown>): string;
@@ -24,10 +24,6 @@ export function escapePreviewHtml(value: unknown): string {
 }
 
 export { sanitizePreviewHtml } from './preview-sanitizer';
-
-export function simpleMarkdown(text: string): string {
-  return renderPreviewMarkdown(text, 'normal');
-}
 
 export function wrapCssForPreview({
   raw,

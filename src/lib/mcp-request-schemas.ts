@@ -56,16 +56,6 @@ const DRY_RUN_CONFLICT_MSG = {
 // Field editing request bodies
 // ---------------------------------------------------------------------------
 
-/** POST /field/:name  (write_field) — content can be any defined value. */
-export const writeFieldBodySchema = z
-  .object({})
-  .catchall(z.unknown())
-  .refine((d) => (d as Record<string, unknown>).content !== undefined, {
-    message: 'Missing "content"',
-    path: ['content'],
-  });
-export type WriteFieldBody = { content: unknown; [k: string]: unknown };
-
 /** POST /field/batch  (read_field_batch) */
 export const fieldBatchReadSchema = z.object({
   fields: z.array(z.string()),

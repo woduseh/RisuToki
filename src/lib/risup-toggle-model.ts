@@ -1,14 +1,7 @@
 import { normalizeLF } from './shared-utils';
 
 export type ToggleTemplateItemType =
-  | 'group'
-  | 'groupEnd'
-  | 'divider'
-  | 'caption'
-  | 'select'
-  | 'text'
-  | 'textarea'
-  | 'toggle';
+  'group' | 'groupEnd' | 'divider' | 'caption' | 'select' | 'text' | 'textarea' | 'toggle';
 
 export type ToggleTemplateState = 'empty' | 'valid' | 'invalid';
 
@@ -58,17 +51,6 @@ export interface ToggleTemplateModel {
   rawText: string;
   parseError?: string;
 }
-
-export const TOGGLE_TEMPLATE_ITEM_TYPES: readonly ToggleTemplateItemType[] = [
-  'toggle',
-  'select',
-  'text',
-  'textarea',
-  'divider',
-  'caption',
-  'group',
-  'groupEnd',
-];
 
 function parseStructuralValue(line: string, suffix: '=group' | '=divider' | '=caption'): string | undefined {
   const value = line.slice(1, -suffix.length);

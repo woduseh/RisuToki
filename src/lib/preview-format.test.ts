@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import {
-  buildPreviewDocument,
-  buildPreviewMessageHtml,
-  escapePreviewHtml,
-  simpleMarkdown,
-  wrapCssForPreview,
-} from './preview-format';
+import { buildPreviewDocument, buildPreviewMessageHtml, escapePreviewHtml, wrapCssForPreview } from './preview-format';
 import type { PreviewParserEngine } from './preview-format';
+import { renderPreviewMarkdown } from './preview-renderer';
 
 const engine: PreviewParserEngine = {
   risuChatParser: (text: string) => text.replace('{{color}}', 'royalblue'),
@@ -20,7 +15,7 @@ describe('preview format helpers', () => {
   });
 
   it('renders lightweight markdown for basic text formatting without relying on raw html passthrough', () => {
-    const html = simpleMarkdown('**굵게** _기울임_ `snippet`\n다음 줄');
+    const html = renderPreviewMarkdown('**굵게** _기울임_ `snippet`\n다음 줄');
 
     expect(html).toContain('<strong>굵게</strong>');
     expect(html).toContain('<em>기울임</em>');
@@ -29,7 +24,7 @@ describe('preview format helpers', () => {
   });
 
   it('renders richer markdown blocks for headings, lists, links, strikethrough, and horizontal rules', () => {
-    const html = simpleMarkdown(
+    const html = renderPreviewMarkdown(
       '# 제목\n\n- 첫째\n- 둘째\n\n1. 셋째\n2. 넷째\n\n[문서](https://example.com)\n\n~~취소~~\n\n---',
     );
 
@@ -44,7 +39,7 @@ describe('preview format helpers', () => {
   });
 
   it('keeps raw html intact while parsing surrounding markdown and richer block content', () => {
-    const html = simpleMarkdown(
+    const html = renderPreviewMarkdown(
       '**굵게** <details open><summary>더보기</summary><p>내용</p></details>\n| A | B |\n|---|---|\n| 1 | 2 |\n> 인용문',
     );
 
@@ -59,7 +54,7 @@ describe('preview format helpers', () => {
   });
 
   it('escapes fenced code blocks and resolves risu private-use escape sequences', () => {
-    const html = simpleMarkdown('```js\nconsole.log("<tag>")\n```\n\uE9B8name\uE9BE value\uE9B9');
+    const html = renderPreviewMarkdown('```js\nconsole.log("<tag>")\n```\n\uE9B8name\uE9BE value\uE9B9');
 
     expect(html).toContain('class="hljs');
     expect(html).toContain('&lt;tag&gt;');

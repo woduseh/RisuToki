@@ -4,26 +4,30 @@ import * as http from 'node:http';
 import * as path from 'node:path';
 
 import {
+  extractPrimaryLuaFromTriggerScripts,
+  mergePrimaryLuaIntoTriggerScripts,
+  normalizeTriggerScripts,
   openCharx,
   openRisum,
   openRisup,
   saveCharx,
   saveRisum,
   saveRisup,
+  stringifyTriggerScripts,
   type LoadedDocumentData,
 } from '../src/charx-io';
 import { startApiServer } from '../src/lib/mcp-api-server';
 import { MCP_SINGLE_TOOL_MAX_BYTES } from '../src/lib/mcp-compact-input';
 import type { RuntimeMetadata } from '../src/lib/mcp-runtime-contract';
 import {
-  combineCssSections as combineCssSectionsImpl,
-  combineLuaSections as combineLuaSectionsImpl,
-  detectCssBlockClose as detectCssBlockCloseImpl,
-  detectCssBlockOpen as detectCssBlockOpenImpl,
-  detectCssSectionInline as detectCssSectionInlineImpl,
-  detectLuaSection as detectLuaSectionImpl,
-  parseCssSections as parseCssSectionsImpl,
-  parseLuaSections as parseLuaSectionsImpl,
+  combineCssSections,
+  combineLuaSections,
+  detectCssBlockClose,
+  detectCssBlockOpen,
+  detectCssSectionInline,
+  detectLuaSection,
+  parseCssSections,
+  parseLuaSections,
 } from '../src/lib/section-parser';
 import { callJson, type McpCallJson, type StandaloneClientRuntime } from './mcp-test-client';
 
@@ -39,30 +43,6 @@ for (const asset of MCP_RUNTIME_WASM) {
   );
 }
 
-export function parseLuaSections(lua = '') {
-  return parseLuaSectionsImpl(lua);
-}
-
-export function combineLuaSections(sections: Array<{ name: string; content: string }> = []) {
-  return combineLuaSectionsImpl(sections);
-}
-
-export function detectLuaSection(line = '') {
-  return detectLuaSectionImpl(line);
-}
-
-export function parseCssSections(css: string) {
-  return parseCssSectionsImpl(css);
-}
-
-export function combineCssSections(sections: Array<{ name: string; content: string }> = [], prefix = '', suffix = '') {
-  return combineCssSectionsImpl(sections, prefix, suffix);
-}
-
-export function detectCssSectionInline(line = '') {
-  return detectCssSectionInlineImpl(line);
-}
-
 export async function createCompressiblePngBase64(): Promise<string> {
   const sharpModule = await import('sharp');
   const width = 512;
@@ -76,14 +56,6 @@ export async function createCompressiblePngBase64(): Promise<string> {
     .png()
     .toBuffer();
   return buffer.toString('base64');
-}
-
-export function detectCssBlockOpen(line = '') {
-  return detectCssBlockOpenImpl(line);
-}
-
-export function detectCssBlockClose(line = '') {
-  return detectCssBlockCloseImpl(line);
 }
 
 export function openExternalDocumentForTest(filePath: string): LoadedDocumentData {
@@ -466,31 +438,10 @@ export async function startTestApiServer(currentData: SearchFixture, options: { 
     detectCssBlockClose,
     openExternalDocument: openExternalDocumentForTest,
     saveExternalDocument: (filePath, _fileType, data) => saveExternalDocumentForTest(filePath, data),
-    normalizeTriggerScripts: (data: unknown) => (Array.isArray(data) ? data : []),
-    extractPrimaryLua: (scripts: unknown) => {
-      if (!Array.isArray(scripts)) return '';
-      return scripts
-        .flatMap((script) => {
-          const effect = script && typeof script === 'object' ? (script as { effect?: unknown }).effect : undefined;
-          if (!Array.isArray(effect)) return [];
-          return effect
-            .map((item) =>
-              item &&
-              typeof item === 'object' &&
-              (item as { type?: unknown }).type === 'triggerlua' &&
-              typeof (item as { code?: unknown }).code === 'string'
-                ? String((item as { code?: unknown }).code)
-                : '',
-            )
-            .filter((code) => code.length > 0);
-        })
-        .join('\n\n');
-    },
-    mergePrimaryLua: (scripts: unknown, lua: string) => {
-      void lua;
-      return Array.isArray(scripts) ? scripts : [];
-    },
-    stringifyTriggerScripts: (scripts: unknown) => JSON.stringify(scripts),
+    normalizeTriggerScripts,
+    extractPrimaryLua: extractPrimaryLuaFromTriggerScripts,
+    mergePrimaryLua: mergePrimaryLuaIntoTriggerScripts,
+    stringifyTriggerScripts,
     getSkillRoots: () => [path.join(PROJECT_ROOT, 'skills')],
     getUserDataPath: () => path.join(TEST_DIR, 'api-user-data'),
     getCurrentFilePath: () => activeFilePath,

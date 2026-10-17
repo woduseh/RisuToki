@@ -15,7 +15,6 @@ export interface MainStateStore {
   resetCurrentDocument(data: Record<string, unknown>): void;
   setCurrentDocument(filePath: string, data: Record<string, unknown>): void;
   setCurrentProject(projectPath: string, data: Record<string, unknown>, sourceFilePath?: string | null): void;
-  clearCurrentProject(): void;
   setCurrentFileBaseline(baseline: Record<string, unknown> | null): void;
   setReferenceFiles(files: Record<string, unknown>[]): void;
   setReferenceManifestStatus(status: Record<string, unknown> | null): void;
@@ -50,10 +49,6 @@ export function createMainStateStore(): MainStateStore {
       this.currentProjectPath = projectPath;
       this.currentFilePath = sourceFilePath;
       this.currentData = data;
-    },
-
-    clearCurrentProject() {
-      this.currentProjectPath = null;
     },
 
     setCurrentFileBaseline(baseline) {

@@ -9,6 +9,20 @@
 
 ---
 
+## [3.10.3] - 2026-10-18
+
+### Fixed
+
+- Accept boolean and numeric values in single-field MCP writes while rejecting values with the wrong type before changing the document.
+- Resolve nested CBS conditionals without treating a child block's else marker as the parent branch separator.
+- Restart the status-message timeout when the same message is shown again, with Vue owning status display and dismissal.
+- Ignore custom regex flag metadata when Custom Flag is disabled, preserving default flags and ordering; honor execution order inside comma-separated custom metadata when enabled.
+
+### Changed
+
+- Remove unused reference-tab reconstruction, schema, alias, and state helpers after tracing their runtime consumers; retain their useful coverage on active paths.
+- Exercise real trigger-script synchronization and regex transformations in integration fixtures, strengthen desktop exit-code rejection, and check RPack maps against the retained source binary instead of shipping it as a runtime asset.
+
 ## [3.10.2] - 2026-10-04
 
 ### Fixed

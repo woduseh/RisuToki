@@ -152,7 +152,14 @@ export function resolve(text: string, blocks: Block[], toggles: ToggleMap): stri
     const { active, mode } = evaluateWhenTag(block.raw, toggles);
     const innerContent = result.substring(block.contentStart, block.contentEnd);
 
-    const elseIdx = innerContent.indexOf('{{:else}}');
+    // Nested blocks own their else markers even when the parent is inactive.
+    let elseIdx = innerContent.indexOf('{{:else}}');
+    while (elseIdx !== -1) {
+      const offset = block.contentStart + elseIdx;
+      const child = block.children.find((candidate) => candidate.startOffset <= offset && offset < candidate.endOffset);
+      if (!child) break;
+      elseIdx = innerContent.indexOf('{{:else}}', child.endOffset - block.contentStart);
+    }
     let selectedContent = '';
     let branchStart = block.contentStart;
 

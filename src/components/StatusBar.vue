@@ -22,7 +22,7 @@ const statusClasses = computed(() => ({
 const displayStatusText = computed(() => (messageVisible.value ? store.statusText : ''));
 
 watch(
-  () => [store.statusText, store.statusSticky] as const,
+  () => [store.statusText, store.statusSticky, store.statusRevision] as const,
   ([text, sticky]) => {
     if (hideTimer) {
       clearTimeout(hideTimer);
