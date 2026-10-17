@@ -16,6 +16,7 @@ Phēmē lives in the independent Git repository at `risu/prompts/phēmē/`. The 
 
 - `src/pheme-source.md` owns shared principles, authored mode branches, and the version. Its prompt-item comments define the item metadata and `.risup` synchronization contract.
 - `src/pheme-toggles.txt` owns the common `customPromptTemplateToggle` declarations.
+- `src/continuity-digest.md` owns the shared `/summary` instruction; its existing regex match and metadata remain in the presets.
 - Generated sources are `src/pheme-roleplay-source.md`, `src/pheme-novel-source.md`, and `src/pheme-ooc-source.md`. Change their inputs and regenerate; do not edit them independently.
 - Distribution presets are `dist/pheme-preset.risup` (RP), `dist/pheme-novel-preset.risup`, and `dist/pheme-ooc-preset.risup`.
 
@@ -29,6 +30,8 @@ Run these commands from the nested Phēmē repository:
 
 - `node scripts/build-variants.mjs` regenerates all three sources from common principles and their fixed-mode contracts.
 - Read each preset's `name`, `promptTemplate`, `customPromptTemplateToggle`, and `templateDefaultVariables` through MCP. Save field-value objects under `.build/preset-input/<preset filename without .risup>.json`.
+- Also read the `/regex` surface through MCP and store its array as `regex` in that baseline. The generator patches only the existing Continuity Digest instruction and its present alias, preserving other regex entries and metadata.
+- Apply mixed field/surface plans one operation at a time with a fresh preview after each write, as described in the family README. A partial application requires rereading the target and planning only the remaining changes.
 - Use a plain object keyed by field name with each read item's `data.content` as its value, not the MCP response envelope. Keep `promptTemplate` as the returned JSON string. Read fresh baselines for each edit; prior release snapshots can carry stale names or metadata.
 - For a new distribution file, use the MCP project extraction/reassembly workflow with the appropriate existing preset as its seed, then read the created target's fresh fields. Reassembly addresses the extracted folder as an `external` target with explicit `project_path` and `output_path`. This preserves request settings without decoding a binary container directly.
 - `node scripts/build-variants.mjs --preset-input-dir .build/preset-input --plan-dir .build/preset-plans` prepares plans for all three presets. Existing unknown item metadata is preserved; the generator does not write `.risup` binaries. Plans include the retired mode default and new initiative default as well as name, prompt items, and applicable controls. Each plan contains `target`, `operations`, and an item-change summary; pass only `target` and `operations` to `preview_edit`.
