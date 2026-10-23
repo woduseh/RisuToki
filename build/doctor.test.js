@@ -11,7 +11,7 @@ const test = require('node:test');
 const { doctor, main, parseArgs, satisfiesVersion, PROBE_TIMEOUT_MS } = require('./doctor');
 
 const BUILD_ROOT = path.resolve(__dirname, '..', '.build');
-const ENGINE = '>=26.10.0 <27';
+const ENGINE = '>=26.12.1 <27';
 
 function writeJson(filename, value) {
   fs.mkdirSync(path.dirname(filename), { recursive: true });
@@ -63,7 +63,7 @@ function fixture(t) {
   writeJson(path.join(root, 'package.json'), manifest);
   writeJson(path.join(root, 'package-lock.json'), lock);
   // The baseline must not falsely reject an allowed newer Node version.
-  fs.writeFileSync(path.join(root, '.node-version'), '26.10.0\n');
+  fs.writeFileSync(path.join(root, '.node-version'), '26.12.1\n');
   return root;
 }
 
@@ -119,8 +119,8 @@ function environment(t, name, value) {
 }
 
 test('Node engine boundaries allow the tested Node 26 line and reject other majors', () => {
-  for (const version of ['26.10.0', '26.99.99']) assert.equal(satisfiesVersion(version, ENGINE), true, version);
-  for (const version of ['20.20.0', '22.23.3', '24.21.0', '25.0.0', '26.9.99', '27.0.0', '30.0.0'])
+  for (const version of ['26.12.1', '26.99.99']) assert.equal(satisfiesVersion(version, ENGINE), true, version);
+  for (const version of ['20.20.0', '22.23.3', '24.21.0', '25.0.0', '26.10.0', '26.12.0', '27.0.0', '30.0.0'])
     assert.equal(satisfiesVersion(version, ENGINE), false, version);
   for (const [version, range, expected] of [
     ['0.3.9', '^0.3.0', true],
