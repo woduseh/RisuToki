@@ -12,7 +12,7 @@ export const MCP_TOOL_DESCRIPTIONS = {
   analyze_content:
     'Analyze content without editing: field statistics, token counts, lorebook activation simulation, regex testing, CBS toggles/simulation, Danbooru vocabulary, and reference comparisons. Choose operation.action and its required arguments. Example: operation={action:"field_stats",field:"description"}. token_count requires explicit cl100k_base/o200k_base encoding and exactly one of text or selectors. Use verify_risup_prompt_import to check text import fidelity; use validate_content for syntax/semantic diagnostics.',
   validate_content:
-    'Check selected syntax and semantic rules without editing. Select lorebook, regex, cbs, lua, trigger, danbooru, risup-prompt, risum, or external plugin-v3 content; supports .charx export compatibility. Lua/triggerlua checks compile without running scripts. Omitted selectors check lorebook keys only: select every desired family explicitly for broader checks. Simulation and comparisons belong to analyze_content.',
+    'Check selected syntax and semantic rules without editing. Select lorebook, regex, cbs, lua, trigger, danbooru, risup-prompt, risum, or external plugin-v3 content; supports .charx export compatibility and uimori runtime compatibility. Lua/triggerlua checks compile without running scripts. Omitted selectors check lorebook keys only: select every desired family explicitly for broader checks. Simulation and comparisons belong to analyze_content.',
   load_guidance:
     'Legacy guidance loader. Prefer list_skills/read_skill, or inspect_document with target.kind="guidance" for guide documents. Reads the skill catalog or a skill document without editing.',
   preview_edit:

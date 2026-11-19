@@ -344,6 +344,7 @@ export const facadeV1ContentSelectorSchema = z.object({
       'danbooru',
       'plugin-v3',
       'risum',
+      'uimori',
     ])
     .optional(),
   path: z.string().min(1).optional(),

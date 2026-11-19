@@ -278,6 +278,27 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
       'Lua syntax errors should be reported per section',
     );
 
+    for (const [target, expectedRoute] of [
+      [activeTarget, 'read_surface'],
+      [externalTarget, 'external_read_surface'],
+    ] as const) {
+      const uimoriValidation = await callJson(runtime, 'validate_content', {
+        target,
+        selectors: [{ family: 'uimori' }],
+      });
+      assert.deepEqual(routedTools(uimoriValidation), [expectedRoute]);
+      const uimoriData = nestedRecord(
+        nestedRecord(
+          nestedArray(nestedRecord(uimoriValidation.result, 'uimori validation result').validations, 'uimori items')[0],
+          'uimori validation item',
+        ).data,
+        'uimori validation data',
+      );
+      assert.equal(uimoriData.baseline, 'Uimori v0.13.3');
+      assert.equal(uimoriData.fileType, 'charx');
+      assert.ok(Array.isArray(uimoriData.findings), 'Uimori compatibility returns a findings list');
+    }
+
     const inspect = await callJson(runtime, 'inspect_document', { target: activeTarget, max_bytes: 32000 });
     metrics.activeWorkflowCallCount += 1;
     assert.deepEqual(routedTools(inspect), ['session_status', 'list_fields', 'list_surfaces']);

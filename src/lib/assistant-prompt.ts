@@ -53,7 +53,7 @@ export const UIMORI_TARGET_SECTION = [
   `- 로어북: 키워드 활성화가 없습니다. 상시 활성 항목은 항상 포함되고, 나머지는 판단 모델이 항목 이름(comment)과 본문을 보고 고르거나 작문 모델이 이름 목록에서 찾아 읽습니다. 항목 이름과 첫 문장만으로 무엇에 관한 항목인지 알 수 있게 쓰세요. CBS 조건은 그대로 적용됩니다.`,
   `- 지원되지 않음: 로어 @@position·@@inject_*·음수 depth, 프리셋 memory 슬롯 치환과 @@inject·@@repeat_back·@@emo, Lua의 캐릭터 setter·이미지 생성·외부 HTTP·loadLoreBooks·axLLM emotion/submodel 모드, 임의 JavaScript·iframe·외부 URL과 CSS, 오디오·영상 에셋.`,
   `- 카드와 모듈의 extensions.uimori(번역 지침 translationGuide, 삽화 인물 외형 illustrationProfiles)는 Uimori 전용 설정입니다. 지우거나 다른 필드로 옮기지 마세요.`,
-  `- 세부 기준과 extensions.uimori의 경로·한도는 targeting-uimori 스킬에 있습니다.`,
+  `- 세부 기준과 extensions.uimori의 경로·한도는 targeting-uimori 스킬에 있고, validate_content의 uimori 선택자로 자료를 검사할 수 있습니다.`,
 ].join('\n');
 
 function sanitizeMetadataValue(value: string): string {
