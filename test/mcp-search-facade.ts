@@ -2016,7 +2016,12 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
     const referenceInventoryFacade = await callJson(recoveryRuntime, 'inspect_document', {
       target: { kind: 'reference' },
     });
-    const directReferenceInventory = await callJson(recoveryRuntime, 'list_references', {});
+    const { status, summary, next_actions, artifacts, ...directReferenceInventory } = await callJson(
+      recoveryRuntime,
+      'list_references',
+      {},
+    );
+    assert.ok(status === 200 && summary && next_actions && artifacts, 'direct list_references keeps its envelope');
     assert.deepEqual(
       nestedRecord(referenceInventoryFacade.result, 'reference parity result').references,
       directReferenceInventory,

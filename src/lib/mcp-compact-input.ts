@@ -30,6 +30,41 @@ export function isStructuredDefaultToolName(name: string): name is StructuredDef
   return structuredDefaultToolNameSet.has(name);
 }
 
+function withoutImplicitSchemaKeywords(schema: unknown): unknown {
+  if (Array.isArray(schema)) return schema.map(withoutImplicitSchemaKeywords);
+  if (!schema || typeof schema !== 'object') return schema;
+  return Object.fromEntries(
+    Object.entries(schema)
+      .filter(
+        ([key, value]) =>
+          key !== '$schema' &&
+          !(key === 'maximum' && value === Number.MAX_SAFE_INTEGER) &&
+          !(key === 'minimum' && value === Number.MIN_SAFE_INTEGER),
+      )
+      .map(([key, value]) => [key, withoutImplicitSchemaKeywords(value)]),
+  );
+}
+
+/**
+ * Drop JSON Schema keywords the SDK conversion adds without constraining arguments: the per-tool `$schema`
+ * dialect and zod's safe-integer bounds on every integer.
+ */
+export function compactToolsListMessage<T>(message: T): T {
+  const result = (message as { result?: { tools?: unknown } }).result;
+  if (!result || !Array.isArray(result.tools)) return message;
+  return {
+    ...message,
+    result: {
+      ...result,
+      tools: result.tools.map((tool: Record<string, unknown>) => ({
+        ...tool,
+        inputSchema: withoutImplicitSchemaKeywords(tool.inputSchema),
+        ...(tool.outputSchema ? { outputSchema: withoutImplicitSchemaKeywords(tool.outputSchema) } : {}),
+      })),
+    },
+  };
+}
+
 /**
  * Keep the registered handler shape as the public contract. Publishing only
  * discriminators hides required arguments (for example external.file_path or

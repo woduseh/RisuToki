@@ -191,15 +191,50 @@ export const TOOL_NEXT_ACTIONS: Partial<Record<keyof typeof TOOL_TAXONOMY, strin
  * - All other payload keys are preserved as-is.
  */
 export function mcpSuccess(payload: Record<string, unknown>, opts: McpSuccessOptions): Record<string, unknown> {
+  const nestedPayload = Object.fromEntries(
+    Object.entries(payload).map(([key, value]) => [key, withoutNestedSuccessEnvelopes(value)]),
+  );
   const nextActions = resolveNextActions(opts);
-  const artifacts = createArtifacts(payload, opts, nextActions);
+  const artifacts = createArtifacts(nestedPayload, opts, nextActions);
   return {
-    ...payload,
+    ...nestedPayload,
     status: 200,
     summary: opts.summary,
     next_actions: nextActions,
     artifacts,
   };
+}
+
+function isSuccessEnvelope(record: Record<string, unknown>): boolean {
+  const artifacts = record.artifacts;
+  return (
+    record.status === 200 &&
+    Array.isArray(record.next_actions) &&
+    !!artifacts &&
+    typeof artifacts === 'object' &&
+    typeof (artifacts as Record<string, unknown>).byte_size === 'number'
+  );
+}
+
+function isEnvelopeField(key: string, value: unknown): boolean {
+  return (
+    key === 'status' ||
+    key === 'next_actions' ||
+    key === 'artifacts' ||
+    (key === 'summary' && typeof value === 'string')
+  );
+}
+
+function withoutNestedSuccessEnvelopes(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withoutNestedSuccessEnvelopes);
+  if (!value || typeof value !== 'object' || ArrayBuffer.isView(value)) return value;
+  const record = value as Record<string, unknown>;
+  const envelope = isSuccessEnvelope(record);
+  return Object.fromEntries(
+    Object.entries(record)
+      .filter(([key, child]) => !(envelope && isEnvelopeField(key, child)))
+      .map(([key, child]) => [key, withoutNestedSuccessEnvelopes(child)]),
+  );
 }
 
 function resolveNextActions(opts: McpSuccessOptions): string[] {

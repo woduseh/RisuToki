@@ -1,4 +1,5 @@
 import { getStructuredReadRoute } from './mcp-read-routes';
+import { describeBinaryViews, restoreBinaryViews } from './mcp-surface-fingerprint';
 import type * as http from 'http';
 import type { McpErrorInfo, McpSuccessOptions } from './mcp-response-envelope';
 import type { SupportedFileType } from './mcp-field-access';
@@ -30,7 +31,7 @@ interface SurfaceRouteDeps {
   redactHiddenFields: (data: Record<string, unknown>) => unknown;
   measureSurface: (value: unknown) => Record<string, unknown>;
   getSurfacePatchMutationBlock: (data: Record<string, unknown>, operations: unknown[]) => SurfaceBlock | null;
-  cloneJson: <T>(value: T) => T;
+  cloneDocumentData: <T>(value: T) => T;
   applySurfacePatch: (
     root: Record<string, unknown>,
     operations: unknown[],
@@ -112,7 +113,7 @@ export async function handleSurfaceRoute(
         res,
         {
           path: pointer || '/',
-          value,
+          value: body.include_binary_bytes === true ? value : describeBinaryViews(value),
           hash: deps.hashSurface(value),
           hiddenFieldWarnings: deps.collectHiddenFieldWarnings(currentData),
           ...deps.measureSurface(value),
@@ -169,9 +170,9 @@ export async function handleSurfaceRoute(
       });
       return true;
     }
-    const draft = deps.cloneJson(currentData) as Record<string, unknown>;
+    const draft = deps.cloneDocumentData(currentData) as Record<string, unknown>;
     try {
-      const result = deps.applySurfacePatch(draft, operations);
+      const result = deps.applySurfacePatch(draft, restoreBinaryViews(operations, currentData) as typeof operations);
       deps.validateTouchedRisupJsonFields(draft, result.touchedTopLevel);
       const afterHash = deps.hashSurface(draft);
       if (body.dry_run === true) {

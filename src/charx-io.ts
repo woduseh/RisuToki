@@ -34,6 +34,25 @@ const { pack, unpack } = require('msgpackr') as {
 
 const ZIP_LOCAL_FILE_HEADER: Buffer = Buffer.from([0x50, 0x4b, 0x03, 0x04]);
 const MAX_FILE_SIZE: number = 200 * 1024 * 1024; // 200 MB
+const ZIP_METHOD_STORED = 0;
+const PRECOMPRESSED_ASSET_EXTENSIONS = new Set([
+  '.png',
+  '.jpg',
+  '.jpeg',
+  '.webp',
+  '.gif',
+  '.avif',
+  '.mp3',
+  '.ogg',
+  '.opus',
+  '.m4a',
+  '.aac',
+  '.flac',
+  '.mp4',
+  '.webm',
+  '.woff',
+  '.woff2',
+]);
 
 /**
  * Mapping from Risutoki legacy/camelCase regex type names to RisuAI-compatible lowercase names.
@@ -826,9 +845,11 @@ export function buildCharxZip(data: LoadedDocumentData): InstanceType<typeof Adm
   const risumBuf: Buffer = buildRisum(moduleJson, normalizeRisumAssetBuffers(data.risumAssets as unknown[]));
   zip.addFile('module.risum', risumBuf);
 
-  // Add image assets
   for (const asset of zipAssets) {
     zip.addFile(asset.path, asset.data);
+    if (PRECOMPRESSED_ASSET_EXTENSIONS.has(path.extname(asset.path).toLowerCase())) {
+      zip.getEntry(asset.path)!.header.method = ZIP_METHOD_STORED;
+    }
   }
 
   // Add x_meta
@@ -845,7 +866,7 @@ export function buildCharxZip(data: LoadedDocumentData): InstanceType<typeof Adm
 export function saveCharx(filePath: string, data: LoadedDocumentData): void {
   const zip = buildCharxZip(data);
   writePathAtomicSync(filePath, (tempPath) => {
-    fs.writeFileSync(tempPath, (zip as unknown as { toBuffer: () => Buffer }).toBuffer());
+    fs.writeFileSync(tempPath, zip.toBuffer());
     const compatibility = validateCharxExportCompatibilityFile(tempPath);
     if (!compatibility.ok) {
       throw new Error(`Invalid .charx export compatibility: ${formatCharxExportCompatibilityFailure(compatibility)}`);

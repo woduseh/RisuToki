@@ -1,11 +1,11 @@
 // @vitest-environment node
-import { serialize } from 'v8';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { closeServer, createSearchFixture, postJson, startTestApiServer } from './mcp-api-test-harness';
+import { hashDocumentSnapshot } from './mcp-surface-fingerprint';
 
-vi.mock('v8', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('v8')>();
-  return { ...actual, serialize: vi.fn(actual.serialize) };
+vi.mock('./mcp-surface-fingerprint', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./mcp-surface-fingerprint')>();
+  return { ...actual, hashDocumentSnapshot: vi.fn(actual.hashDocumentSnapshot) };
 });
 
 afterEach(() => vi.clearAllMocks());
@@ -31,7 +31,7 @@ describe('MCP field reads with binary assets', () => {
           expect(response.status).toBe(200);
           expect(response.data).toMatchObject(expected);
         }
-        expect(serialize).not.toHaveBeenCalled();
+        expect(hashDocumentSnapshot).not.toHaveBeenCalled();
         expect(confirm).not.toHaveBeenCalled();
         expect(bytes.equals(Buffer.alloc(bytes.length, 42))).toBe(true);
       } finally {
@@ -54,7 +54,7 @@ describe('MCP field reads with binary assets', () => {
         const response = await postJson(api.port, api.token, route, body);
         expect(response.status).toBe(400);
       }
-      expect(serialize).not.toHaveBeenCalled();
+      expect(hashDocumentSnapshot).not.toHaveBeenCalled();
     } finally {
       await closeServer(api.server);
     }
@@ -78,7 +78,7 @@ describe('MCP field reads with binary assets', () => {
         expect(response.status).toBe(409);
         expect(data.description).toBe('original');
         expect(bytes[0]).toBe(255);
-        expect(serialize).toHaveBeenCalled();
+        expect(hashDocumentSnapshot).toHaveBeenCalled();
       } finally {
         await closeServer(api.server);
       }
@@ -93,7 +93,7 @@ describe('MCP field reads with binary assets', () => {
       await postJson(api.port, api.token, '/field/description', { content: 'replacement' });
       expect(confirm).toHaveBeenCalledOnce();
       expect(data.description).toBe(allowed ? 'replacement' : 'original');
-      expect(serialize).toHaveBeenCalled();
+      expect(hashDocumentSnapshot).toHaveBeenCalled();
     } finally {
       await closeServer(api.server);
     }
@@ -146,7 +146,7 @@ describe('MCP structured reads with binary assets', () => {
         for (const [route] of requests.filter(([route]) => route.endsWith('/batch'))) {
           expect((await postJson(api.port, api.token, route, { indices: 'invalid' })).status, route).toBe(400);
         }
-        expect(serialize).not.toHaveBeenCalled();
+        expect(hashDocumentSnapshot).not.toHaveBeenCalled();
         expect(confirm).not.toHaveBeenCalled();
         expect(JSON.stringify({ ...data, assets: undefined })).toBe(before);
         expect(bytes.equals(Buffer.alloc(bytes.length, 42))).toBe(true);

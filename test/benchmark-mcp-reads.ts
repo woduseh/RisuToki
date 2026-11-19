@@ -67,11 +67,6 @@ const scenarios: Array<{ name: string; method: 'GET' | 'POST'; path: string; bod
       ]
     : []),
 ];
-if (values.extended)
-  assert(
-    assetSizes.every((size) => size <= 2),
-    'Use --asset-mib=0,1 or 0,1,2 for full legacy surface measurements.',
-  );
 
 function summarize(numbers: number[]) {
   const sorted = [...numbers].sort((left, right) => left - right);

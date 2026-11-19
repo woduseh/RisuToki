@@ -1,10 +1,9 @@
-import { hashDocumentState } from './mcp-surface-fingerprint';
+import { fingerprintSurface, hashDocumentSnapshot } from './mcp-surface-fingerprint';
 import { getStructuredReadRoute } from './mcp-read-routes';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
-import { serialize } from 'v8';
 import { observeMcpRequest, observeMcpActiveTarget, observeMcpReferenceTarget } from './mcp-activity-observer';
 import type { McpActivityRecord, McpActivityTarget } from './mcp-activity-types';
 import { FileConflictError } from './file-baseline';
@@ -31,6 +30,7 @@ import {
   jsonMcpNoOp,
   readJsonBody,
   LOREBOOK_ALLOWED_FIELDS,
+  cloneDocumentData,
   hashSurface,
   measureSurface,
   getPointerValue,
@@ -569,13 +569,11 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
       // Private facade binding: no surface inventory or renderer IPC is needed.
       if (req.method === 'GET' && parts[0] === 'document' && parts[1] === 'binding' && !parts[2]) {
         return jsonRes(res, {
-          document_hash: hashDocumentState(activeData),
+          document_hash: fingerprintSurface(activeData).hash,
           file_path: deps.getCurrentFilePath?.() ?? null,
         });
       }
-      // Bind confirmation to the state the route reads, including array order.
-      // V8 serialization preserves binary assets without expanding each byte into JSON.
-      const documentDigest = () => crypto.createHash('sha256').update(serialize(currentData)).digest('hex');
+      const documentDigest = () => hashDocumentSnapshot(currentData);
       // Dispatch and snapshot policy share the verified read matchers. Keep an
       // eager snapshot for every other POST, including unknown routes and dry runs.
       const initialDocumentDigest = req.method === 'POST' && currentData && !readOnlyPost ? documentDigest() : null;
@@ -584,7 +582,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
         if (readOnlyPost) {
           throw new ActiveDocumentConflictError('A read-only request cannot confirm a document mutation.');
         }
-        const assertCurrent = async () => {
+        const assertCurrent = async (compareContent: boolean) => {
           const renderer = deps.hasRendererDraftChanges ? null : (await deps.getSessionStatus?.())?.renderer;
           const hasDraftChanges = deps.hasRendererDraftChanges
             ? await deps.hasRendererDraftChanges()
@@ -597,16 +595,16 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           if (
             deps.getCurrentData() !== currentData ||
             deps.getCurrentFilePath?.() !== documentPath ||
-            (initialDocumentDigest && initialDocumentDigest !== documentDigest())
+            (compareContent && initialDocumentDigest && initialDocumentDigest !== documentDigest())
           ) {
             throw new ActiveDocumentConflictError(
               'The active document changed while the request was pending. Read the current state and preview again.',
             );
           }
         };
-        await assertCurrent();
+        await assertCurrent(false);
         const allowed = await deps.askRendererConfirm(title, message);
-        if (allowed) await assertCurrent();
+        if (allowed) await assertCurrent(true);
         return allowed;
       }
       const activeDeps = { ...deps, askRendererConfirm: confirmActiveMutation };
@@ -631,7 +629,7 @@ export function startApiServer(deps: McpApiDeps): McpApiServer {
           redactHiddenFields,
           measureSurface,
           getSurfacePatchMutationBlock,
-          cloneJson,
+          cloneDocumentData,
           applySurfacePatch,
           validateTouchedRisupJsonFields,
           touchesAssetMapSource,

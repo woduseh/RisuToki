@@ -314,8 +314,7 @@ function validateAssets(
   const assetEntries = zip.getEntries().filter((entry) => entry.entryName.startsWith('assets/') && !entry.isDirectory);
   const assetPaths = new Set(assetEntries.map((entry) => entry.entryName));
   for (const entry of assetEntries) {
-    const size = entry.getData().length;
-    if (size !== 0) continue;
+    if (entry.header.size !== 0) continue;
     issues.push(
       issue(
         'zero-byte-asset',

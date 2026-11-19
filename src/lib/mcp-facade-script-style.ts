@@ -305,9 +305,14 @@ export function createFacadeScriptStyleEngine(apiRequest: FacadeApiRequest) {
   async function readExternalSurfaceValue(
     filePath: string,
     surfacePath: string,
+    options: { includeBinaryBytes?: boolean } = {},
   ): Promise<{ value: unknown; routes: FacadeRoute[]; raw: Record<string, unknown> } | ApiErrorResult> {
     const routePath = '/external/surface/read';
-    const read = await apiRequest('POST', routePath, { file_path: filePath, path: surfacePath });
+    const read = await apiRequest('POST', routePath, {
+      file_path: filePath,
+      path: surfacePath,
+      ...(options.includeBinaryBytes ? { include_binary_bytes: true } : {}),
+    });
     if (isApiError(read)) return read;
     const record = asRecord(read);
     return {

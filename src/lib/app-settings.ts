@@ -1,4 +1,3 @@
-import { parseStoredJson, storedAvatarStateSchema } from './stored-state-validation';
 import {
   DEFAULT_CUSTOM_THEME_PALETTE,
   isDarkTheme,
@@ -19,6 +18,16 @@ export interface StorageLike {
 
 export interface StoredAvatarState {
   src: string;
+}
+
+function parseStoredAvatarState(value: string | null): StoredAvatarState | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as { src?: unknown } | null;
+    return parsed && typeof parsed === 'object' && typeof parsed.src === 'string' ? { src: parsed.src } : null;
+  } catch {
+    return null;
+  }
 }
 
 export interface AppSettingsSnapshot {
@@ -177,8 +186,8 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     autosaveInterval: parseInteger(target.getItem(STORAGE_KEYS.autosaveInterval), DEFAULT_AUTOSAVE_INTERVAL),
     autosaveDir: target.getItem(STORAGE_KEYS.autosaveDir) || '',
     previewFocusByDefault: parseBoolean(target.getItem(STORAGE_KEYS.previewFocusByDefault), true),
-    avatarIdle: parseStoredJson(target.getItem(STORAGE_KEYS.avatarIdle), storedAvatarStateSchema),
-    avatarWorking: parseStoredJson(target.getItem(STORAGE_KEYS.avatarWorking), storedAvatarStateSchema),
+    avatarIdle: parseStoredAvatarState(target.getItem(STORAGE_KEYS.avatarIdle)),
+    avatarWorking: parseStoredAvatarState(target.getItem(STORAGE_KEYS.avatarWorking)),
   };
 }
 

@@ -55,6 +55,25 @@ export type PromptItemType2 = (typeof TYPE2_VALUES)[number];
 export type FormatingOrderToken = (typeof FORMATTING_ORDER_TOKENS)[number];
 export type SupportedPromptItemType = (typeof SUPPORTED_PROMPT_ITEM_TYPES)[number];
 
+export const PROMPT_TYPE_LABELS: Record<SupportedPromptItemType, string> = {
+  plain: '일반 프롬프트',
+  jailbreak: '탈옥 프롬프트',
+  cot: '생각의 사슬',
+  chatML: 'ChatML',
+  persona: '페르소나',
+  description: '캐릭터 설명',
+  lorebook: '로어북',
+  postEverything: '최후 삽입',
+  memory: '메모리',
+  authornote: '작가 노트',
+  chat: '채팅',
+  cache: '캐시',
+};
+
+export function promptTypeLabel(type: string | null | undefined): string {
+  return type && type in PROMPT_TYPE_LABELS ? PROMPT_TYPE_LABELS[type as SupportedPromptItemType] : (type ?? 'unknown');
+}
+
 export interface PromptItemBaseModel {
   id: string;
 }

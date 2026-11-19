@@ -848,3 +848,28 @@ describe('agent eval: recovery guidance chooses the next safe tool', () => {
     expect(meta.next_actions).toEqual(['open_file', 'list_references', 'session_status']);
   });
 });
+
+describe('nested routed responses', () => {
+  it('keeps routed data but only the outer envelope fields', () => {
+    const routed = mcpSuccess({ matchCount: 1 }, { toolName: 'replace_in_lorebook', summary: 'Dry-run: 1 match' });
+    const bytes = Buffer.from([1, 2, 3]);
+    const outer = mcpSuccess(
+      {
+        result: {
+          previews: [{ operation: 'replace_text', data: routed }],
+          validation: { status: 'valid', summary: { errors: 0 }, next_actions: ['x'] },
+          asset: bytes,
+        },
+      },
+      { toolName: 'preview_edit', summary: 'Previewed', nextActions: ['apply_edit'] },
+    );
+    expect(outer).toMatchObject({ status: 200, summary: 'Previewed', next_actions: ['apply_edit'] });
+    const result = outer.result as Record<string, unknown>;
+    expect(result.previews).toEqual([{ operation: 'replace_text', data: { matchCount: 1 } }]);
+    expect(result.validation).toEqual({ status: 'valid', summary: { errors: 0 }, next_actions: ['x'] });
+    expect(result.asset).toBe(bytes);
+    expect((outer.artifacts as { byte_size: number }).byte_size).toBe(
+      Buffer.byteLength(JSON.stringify({ ...outer, artifacts: {} }), 'utf8'),
+    );
+  });
+});

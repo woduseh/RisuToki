@@ -12,7 +12,7 @@ import {
   type PromptItemModel,
   type SupportedPromptItemType,
 } from '../lib/risup-prompt-model';
-import { promptTypeLabel } from '../lib/risup-prompt-editor';
+import { promptTypeLabel } from '../lib/risup-prompt-model';
 
 const store = useAppStore();
 const assetPath = computed(() => (store.inspectorContext.kind === 'asset' ? store.inspectorContext.itemId : null));

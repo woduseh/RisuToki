@@ -21,6 +21,36 @@ const { createExternalCharxFixture, createExternalRisumFixture, createExternalRi
 const startTestApiServer = createLegacyTestApiServer(TEST_DIR);
 
 describe('MCP API external unopened-file routes', () => {
+  it('reuses a parsed unopened file until its bytes change', async () => {
+    const fixture = createExternalCharxFixture();
+    let opens = 0;
+    const api = await startTestApiServer(null, [], undefined, {
+      openExternalDocument: (filePath) => {
+        opens++;
+        return openCharx(filePath);
+      },
+    });
+    const inspectName = async () =>
+      (
+        await postJson<Record<string, unknown>>(api.port, api.token, '/external/inspect', {
+          file_path: fixture.filePath,
+        })
+      ).data.name;
+
+    try {
+      expect(await inspectName()).toBe('External Char');
+      expect(await inspectName()).toBe('External Char');
+      expect(opens).toBe(1);
+      const data = openCharx(fixture.filePath);
+      data.name = 'Changed On Disk';
+      saveCharx(fixture.filePath, data);
+      expect(await inspectName()).toBe('Changed On Disk');
+      expect(opens).toBe(2);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
   it('inspects unopened charx files and exposes missing probe surfaces', async () => {
     const fixture = createExternalCharxFixture();
     const fixtureZip = new AdmZip(fixture.filePath);

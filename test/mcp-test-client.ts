@@ -81,6 +81,8 @@ export async function startStandaloneClient(options: StandaloneClientOptions): P
   const stderrChunks: string[] = [];
   const stderrStream = transport.stderr;
   if (stderrStream) stderrStream.on('data', (chunk) => stderrChunks.push(String(chunk)));
+  const protocolErrors: string[] = [];
+  client.onerror = (error) => protocolErrors.push(error.message);
   await client.connect(transport);
 
   return {
@@ -88,6 +90,7 @@ export async function startStandaloneClient(options: StandaloneClientOptions): P
     stderrChunks,
     close: async () => {
       await client.close().catch(() => undefined);
+      assert.deepEqual(protocolErrors, [], 'standalone stdout must carry only JSON-RPC messages');
     },
   };
 }

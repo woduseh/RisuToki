@@ -201,3 +201,28 @@ describe('facade semantic response bounds', () => {
     expect(observedSignal).toBe(controller.signal);
   });
 });
+
+describe('active regex validation', () => {
+  it('validates more regex entries than one batch read allows', async () => {
+    const total = 120;
+    const apiRequest = vi.fn(async (method: string, route: string, body?: { indices: number[] }) => {
+      if (method === 'GET' && route === '/regex') {
+        return { entries: Array.from({ length: total }, (_, index) => ({ index })) };
+      }
+      if (body!.indices.length > 50) return { __apiError: true, status: 400, error: 'Maximum 50 indices per batch' };
+      return { entries: body!.indices.map((index) => ({ index, entry: { find: `a${index}`, flag: 'g' } })) };
+    });
+    const engine = createFacadeContentEngine({
+      apiRequest,
+      danbooru: {},
+      items: {},
+      scriptStyle: {},
+    } as unknown as FacadeContentEngineDeps);
+
+    const result = await engine.validateFacadeSelectors({ kind: 'active' }, [{ family: 'regex' }]);
+
+    expect(result).toMatchObject({
+      result: { validations: [{ data: { count: total, ok: true } }] },
+    });
+  });
+});

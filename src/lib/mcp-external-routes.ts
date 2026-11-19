@@ -1,4 +1,5 @@
 import { getStructuredReadRoute } from './mcp-read-routes';
+import { describeBinaryViews, restoreBinaryViews } from './mcp-surface-fingerprint';
 import {
   charxAssetSummary,
   risumAssetSummary,
@@ -11,6 +12,7 @@ import { manageAssetsSelectorSchema } from './mcp-request-schemas';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
+import { deserialize, serialize } from 'v8';
 import { fieldRangeFingerprint, safeFieldRange } from './mcp-field-range';
 import { assertFileUnchanged, captureFileBaseline } from './file-baseline';
 import type { ZodType } from 'zod';
@@ -20,6 +22,7 @@ import {
   applyExternalFieldMutation,
   applySurfacePatch,
   buildCssListResponse,
+  cloneDocumentData,
   buildFieldInventory,
   buildLuaListResponse,
   getCurrentSessionFilePath,
@@ -60,7 +63,7 @@ import {
 import { searchTextBlock } from './mcp-search';
 import { fileStatMetadata } from './mcp-session-routes';
 import { parsePromptTemplate } from './risup-prompt-model';
-import { cloneJson, normalizeLF } from './shared-utils';
+import { normalizeLF } from './shared-utils';
 import { z } from 'zod';
 import {
   checkNewArtifactPath,
@@ -87,6 +90,17 @@ export interface ExternalDocumentReaderDeps {
 }
 
 export function createExternalDocumentReaders(readerDeps: ExternalDocumentReaderDeps) {
+  let parsedExternal: { filePath: string; sha256: string; snapshot: Buffer } | null = null;
+
+  function openExternalDocumentCopy(filePath: string, sha256: string | undefined): LoadedDocumentData {
+    if (sha256 && parsedExternal?.filePath === filePath && parsedExternal.sha256 === sha256) {
+      return deserialize(parsedExternal.snapshot) as LoadedDocumentData;
+    }
+    const data = readerDeps.openExternalDocument(filePath) as LoadedDocumentData;
+    parsedExternal = sha256 ? { filePath, sha256, snapshot: serialize(data) } : null;
+    return data;
+  }
+
   async function resolveExternalDocumentRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse,
@@ -188,10 +202,11 @@ export function createExternalDocumentReaders(readerDeps: ExternalDocumentReader
     if (!request) return null;
 
     try {
+      const baseline = captureFileBaseline(request.filePath);
       return {
         ...request,
-        baseline: captureFileBaseline(request.filePath),
-        data: readerDeps.openExternalDocument(request.filePath),
+        baseline,
+        data: openExternalDocumentCopy(request.filePath, baseline?.sha256),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -514,7 +529,7 @@ export async function handleExternalRoute(
         });
       }
 
-      const draftData = deps.openExternalDocument(probe.filePath) as Record<string, unknown>;
+      const draftData = cloneDocumentData(probe.data) as Record<string, unknown>;
       const validatedEntries: Array<{ field: string; oldSize: number; newSize: number }> = [];
       for (const entry of entries) {
         const field = entry.field;
@@ -1371,7 +1386,7 @@ export async function handleExternalRoute(
             file_path: probe.filePath,
             file_type: probe.fileType,
             path: pointer || '/',
-            value,
+            value: probe.body.include_binary_bytes === true ? value : describeBinaryViews(value),
             hash: hashSurface(value),
             hiddenFieldWarnings: collectHiddenFieldWarnings(probe.data),
             ...measureSurface(value),
@@ -1448,9 +1463,9 @@ export async function handleExternalRoute(
           target: `external:surface:${mutationBlock.fieldName}`,
         });
       }
-      const draft = cloneJson(probe.data) as Record<string, unknown>;
+      const draft = cloneDocumentData(probe.data) as Record<string, unknown>;
       try {
-        const result = applySurfacePatch(draft, operations);
+        const result = applySurfacePatch(draft, restoreBinaryViews(operations, probe.data) as typeof operations);
         validateTouchedRisupJsonFields(draft, result.touchedTopLevel);
         const afterHash = hashSurface(draft);
         if (probe.body.dry_run === true) {

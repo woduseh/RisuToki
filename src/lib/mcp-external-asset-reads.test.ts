@@ -108,7 +108,7 @@ describe('external asset read projections', () => {
         if (isApiError(read)) throw new Error(String(read.error));
         expect(read.result.asset).toMatchObject({ index: 1, base64: small.toString('base64') });
         expect(read.result.asset_collection_digest).toBe(list.result.asset_collection_digest);
-        expect(open).toHaveBeenCalledTimes(2);
+        expect(open).toHaveBeenCalledTimes(1);
         expect(request).toHaveBeenCalledTimes(2);
         expect(responses[1]).toBeLessThan(2048);
         expect(confirm).not.toHaveBeenCalled();
