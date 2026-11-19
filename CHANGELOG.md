@@ -9,6 +9,12 @@
 
 ---
 
+## [3.12.0] - 2026-11-19
+
+### Added
+
+- Add a Uimori mode switch under Settings → 실행 대상, off by default. When it is on, AI assistants started afterwards are told that the artifact runs in Uimori: lorebook entries are chosen by a judgment model from their names and content instead of activation keys, the RisuAI directives, Lua APIs, and display features Uimori does not run are listed, and the Uimori-only `extensions.uimori` card and module settings are kept as they are. Assistants that are already running keep the prompt they started with.
+
 ## [3.11.0] - 2026-11-19
 
 ### Changed

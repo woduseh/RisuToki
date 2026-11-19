@@ -9,12 +9,14 @@ import {
   handleCopilotStart,
   handleCodexStart,
   handleAntigravityStart,
+  UIMORI_TARGET_SECTION,
 } from './assistant-prompt';
 
 function createMockDeps(overrides: Partial<AssistantDeps> = {}): AssistantDeps {
   return {
     rpMode: 'off',
     rpCustomText: '',
+    uimoriMode: false,
     hasTerminal: true,
     readPersona: vi.fn(async () => ''),
     getClaudePrompt: vi.fn(async () => ({
@@ -158,6 +160,27 @@ describe('buildAssistantPrompt', () => {
     expect(result).toContain('== Response Persona ==');
     expect(result).toContain('persona text');
     expect(result.indexOf('== Response Persona ==')).toBeGreaterThan(result.indexOf('</risutoki_artifact_metadata>'));
+  });
+
+  it('names Uimori as the target runtime only when Uimori mode is on', async () => {
+    const off = await buildAssistantPrompt(samplePromptInfo, true, createMockDeps());
+    expect(off).not.toContain('Uimori');
+
+    const deps = createMockDeps({ uimoriMode: true, rpMode: 'custom', rpCustomText: 'Be friendly' });
+    const on = await buildAssistantPrompt(samplePromptInfo, true, deps);
+    expect(on).toContain(UIMORI_TARGET_SECTION);
+    expect(on.indexOf('== 실행 대상: Uimori ==')).toBeGreaterThan(on.indexOf('</risutoki_artifact_metadata>'));
+    expect(on.indexOf('== Response Persona ==')).toBeGreaterThan(on.indexOf('== 실행 대상: Uimori =='));
+  });
+
+  it('keeps the Uimori target when no document is open', async () => {
+    const deps = createMockDeps({ uimoriMode: true });
+    expect(await buildAssistantPrompt(null, false, deps)).toBe(UIMORI_TARGET_SECTION);
+
+    const withPersona = createMockDeps({ uimoriMode: true, rpMode: 'custom', rpCustomText: 'Be friendly' });
+    expect(await buildAssistantPrompt(null, false, withPersona)).toBe(`${UIMORI_TARGET_SECTION}
+
+Be friendly`);
   });
 });
 

@@ -43,6 +43,7 @@ export interface AppSettingsSnapshot {
   autosaveInterval: number;
   autosaveDir: string;
   previewFocusByDefault: boolean;
+  uimoriMode: boolean;
   avatarIdle: StoredAvatarState | null;
   avatarWorking: StoredAvatarState | null;
 }
@@ -78,6 +79,7 @@ export const STORAGE_KEYS = {
   rpMode: 'toki-rp-mode',
   recentItems: 'toki-recent-items',
   themeId: 'toki-theme-id',
+  uimoriMode: 'toki-uimori-mode',
 } as const;
 
 export const DEFAULT_AUTOSAVE_INTERVAL = 60_000;
@@ -186,6 +188,7 @@ export function readAppSettingsSnapshot(storage?: StorageLike): AppSettingsSnaps
     autosaveInterval: parseInteger(target.getItem(STORAGE_KEYS.autosaveInterval), DEFAULT_AUTOSAVE_INTERVAL),
     autosaveDir: target.getItem(STORAGE_KEYS.autosaveDir) || '',
     previewFocusByDefault: parseBoolean(target.getItem(STORAGE_KEYS.previewFocusByDefault), true),
+    uimoriMode: parseBoolean(target.getItem(STORAGE_KEYS.uimoriMode)),
     avatarIdle: parseStoredAvatarState(target.getItem(STORAGE_KEYS.avatarIdle)),
     avatarWorking: parseStoredAvatarState(target.getItem(STORAGE_KEYS.avatarWorking)),
   };
@@ -313,6 +316,10 @@ export function writeBgmPath(path: string, storage?: StorageLike): void {
 
 export function writePreviewFocusByDefault(enabled: boolean, storage?: StorageLike): void {
   getDefaultStorage(storage).setItem(STORAGE_KEYS.previewFocusByDefault, String(enabled));
+}
+
+export function writeUimoriMode(enabled: boolean, storage?: StorageLike): void {
+  getDefaultStorage(storage).setItem(STORAGE_KEYS.uimoriMode, String(enabled));
 }
 
 export function writeAutosaveEnabled(enabled: boolean, storage?: StorageLike): void {

@@ -17,6 +17,7 @@ import {
   writeCustomTheme,
   writeMcpApprovalMode,
   writePreviewFocusByDefault,
+  writeUimoriMode,
   writeRecentItems,
   writeRpMode,
   writeThemeId,
@@ -58,6 +59,7 @@ describe('app settings', () => {
     expect(snapshot.rpMode).toBe('off');
     expect(snapshot.mcpApprovalMode).toBe('ask');
     expect(snapshot.previewFocusByDefault).toBe(true);
+    expect(snapshot.uimoriMode).toBe(false);
   });
 
   it('maps legacy dark mode to the matching built-in theme id', () => {
@@ -116,6 +118,7 @@ describe('app settings', () => {
     writeAutosaveDir('C:\\temp', storage);
     writeMcpApprovalMode('auto', storage);
     writePreviewFocusByDefault(false, storage);
+    writeUimoriMode(true, storage);
 
     let snapshot = readAppSettingsSnapshot(storage);
     expect(snapshot.rpMode).toBe('custom');
@@ -124,6 +127,7 @@ describe('app settings', () => {
     expect(snapshot.autosaveDir).toBe('C:\\temp');
     expect(snapshot.mcpApprovalMode).toBe('auto');
     expect(snapshot.previewFocusByDefault).toBe(false);
+    expect(snapshot.uimoriMode).toBe(true);
 
     clearAutosaveDir(storage);
     snapshot = readAppSettingsSnapshot(storage);

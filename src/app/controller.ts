@@ -41,6 +41,7 @@ import {
   writePreviewFocusByDefault,
   writeRpCustomText,
   writeRpMode,
+  writeUimoriMode,
 } from '../lib/app-settings';
 import type { McpApprovalMode, RecentItem, RecentSourceFormat } from '../lib/app-settings';
 import { initTokiAvatar as initTokiAvatarUi, setTokiActive } from '../lib/avatar-ui';
@@ -240,6 +241,7 @@ let rpMode = settingsSnapshot.rpMode;
 let rpCustomText = settingsSnapshot.rpCustomText;
 let mcpApprovalMode: McpApprovalMode = settingsSnapshot.mcpApprovalMode;
 let previewFocusByDefault = settingsSnapshot.previewFocusByDefault;
+let uimoriMode = settingsSnapshot.uimoriMode;
 
 // Autosave state
 let autosaveEnabled = settingsSnapshot.autosaveEnabled;
@@ -2249,6 +2251,7 @@ function getAssistantDeps(sessionId?: string) {
   return {
     rpMode,
     rpCustomText,
+    uimoriMode,
     hasTerminal: !!session?.ui,
     readPersona: (mode: string) => window.tokiAPI.readPersona(mode),
     getClaudePrompt: () => window.tokiAPI.getClaudePrompt(),
@@ -2366,6 +2369,7 @@ function showSettingsPopup(): void {
       rpCustomText,
       mcpApprovalMode,
       previewFocusByDefault,
+      uimoriMode,
     }),
     onAutosaveToggle(enabled) {
       autosaveEnabled = enabled;
@@ -2438,6 +2442,10 @@ function showSettingsPopup(): void {
     onPreviewFocusByDefaultChange(enabled) {
       previewFocusByDefault = enabled;
       writePreviewFocusByDefault(enabled);
+    },
+    onUimoriModeChange(enabled) {
+      uimoriMode = enabled;
+      writeUimoriMode(enabled);
     },
     async onOpenPersonaTab(name) {
       const tabId = `persona_${name}`;
@@ -2864,6 +2872,7 @@ export async function initMainRenderer(): Promise<void> {
     autosaveInterval = snapshot.autosaveInterval;
     autosaveDir = snapshot.autosaveDir;
     previewFocusByDefault = snapshot.previewFocusByDefault;
+    uimoriMode = snapshot.uimoriMode;
     if (themeChanged) {
       refreshThemeUi();
     }
