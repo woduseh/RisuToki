@@ -28,8 +28,16 @@ Use the risup-prompt facade for individual item reads and edits. Index-based ope
 
 For Phēmē's generated variants, follow `prompt-family`: prepare the generator's field-write plans and apply them through MCP preview, then apply. Preserve preset fields outside those plans.
 
-Chat item ranges determine which history is sent; split ranges need the intended coverage without accidental overlap. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary. Provider-native prefill shapes can differ.
+Chat item ranges determine which history is sent; split ranges need the intended coverage without accidental overlap. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary. Provider-native prefill shapes can differ, and the current Claude models below reject a trailing prefill.
 
 Use the parameter set exposed by the current provider adapter. Reasoning effort and thinking-token budgets are different controls; do not translate one into the other from a model name alone.
+
+Provider API documentation checked on 2026-11-19 records these model constraints:
+
+- Claude Opus 5.5 and Claude Fable 5.2 always think, and effort is the only depth control. Both return a 400 error for disabled thinking, a manual thinking-token budget, a request whose messages end with a prefilled assistant turn, and a forced tool choice. Omit `temperature`, `top_p`, and `top_k` for both. Prompt text asking Fable 5.2 to think less does not stop its thinking at `medium` effort or above.
+- On both Claude models, prompt text that asks the model to reproduce its internal reasoning in the response, such as a `cot` item or a visible thought-tag section, can be declined with the `reasoning_extraction` refusal category. Ask for a short explanation or summary instead.
+- GPT-6.2 Astra and Sol take no `temperature`, `top_p`, or log-probability parameters. Reasoning effort is their main control; `none` and `minimal` should become `low`.
+
+Whether a preset's sampling, thinking, or prefill settings reach the API in these forms depends on the RisuAI provider adapter, so check the adapter before treating a preset value as the cause of an error.
 
 Exact fields live in `risu/prompts/docs/PRESET_FIELDS.md`. Use `prompt-family` for Phēmē behavior and variant alignment, `writing-cbs-syntax` for expression semantics, and `writing-risum-modules` for module activation.

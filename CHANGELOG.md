@@ -9,6 +9,15 @@
 
 ---
 
+## [3.10.4] - 2026-10-23
+
+### Changed
+
+- Pin the development Node.js baseline to 26.13.1, the current 26.x LTS release, to include the November 10 security fixes.
+- Tune the assistant launch prompt for Claude Opus 5.5, Claude Fable 5.2, and GPT-6.2 Astra: apply a matching preview under the selected approval policy without a second chat approval, ask first only for unrequested destructive or outbound actions, carry requested changes through verification, state reversible assumptions instead of stopping, and keep final answers self-contained.
+- Describe the approval boundary as the editor's approval policy, including user-selected automatic approval, in the agent router, bundled guide, and MCP skill.
+- Replace emphatic MCP tool wording with plain routing notes, including a single final-set Danbooru tag check, and record current Claude and GPT request constraints in the preset skill.
+
 ## [3.10.3] - 2026-10-18
 
 ### Fixed

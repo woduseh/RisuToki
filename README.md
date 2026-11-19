@@ -48,7 +48,7 @@ Packaged builds check for each newer stable release once. Installer builds ask b
 
 ### From Source (developers)
 
-Node.js 26.10+ is required. The repository's `.node-version` pins Node 26.10 as the tested development and CI baseline.
+Node.js 26.10+ is required. The repository's `.node-version` pins Node 26.13.1 (LTS) as the development and CI baseline, including the November 10 security fixes.
 
 ```bash
 git clone https://github.com/woduseh/RisuToki.git

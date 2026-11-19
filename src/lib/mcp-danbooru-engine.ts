@@ -271,9 +271,7 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
     }));
 
   type DanbooruValidationLookup =
-    | { status: 'found'; tag: DanbooruTag }
-    | { status: 'not_found' }
-    | { status: 'degraded'; reason: string };
+    { status: 'found'; tag: DanbooruTag } | { status: 'not_found' } | { status: 'degraded'; reason: string };
 
   const danbooruApiValidate = (tagName: string, signal?: AbortSignal): Promise<DanbooruValidationLookup> => {
     const key = `validate:${tagName}`;
@@ -453,7 +451,7 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
 - All lowercase: \`blue_eyes\` not \`Blue_Eyes\`
 - Use established compound tags: \`hair_ornament\`, \`looking_at_viewer\`
 - Separate tags with commas: \`1girl, solo, long_hair, blue_eyes\`
-- Do NOT invent new tags — always verify with \`validate_danbooru_tags\` tool
+- Use existing tags only; recognizing a term does not mean the tag exists
 
 ## Tag Categories (Danbooru)
 - **General (0)**: Descriptive tags for appearance, actions, objects (most commonly used)
@@ -472,9 +470,9 @@ export function createDanbooruEngine(options: DanbooruEngineOptions) {
 7. Add pose/action: \`standing\`, \`sitting\`, \`looking_at_viewer\`
 8. Add background: \`simple_background\`, \`outdoors\`, \`classroom\`
 
-## ⚠️ IMPORTANT
-- ALWAYS use \`validate_danbooru_tags\` to verify tags before using them in prompts
+## Tag Tools
 - Use \`search_danbooru_tags\` to find the correct tag when unsure
+- Validate the final tag set with one \`validate_danbooru_tags\` call before using it in a prompt
 - Use \`get_popular_danbooru_tags\` with \`group_by_semantic=true\` for reference
 `;
 

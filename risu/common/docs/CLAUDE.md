@@ -29,7 +29,7 @@ RisuToki가 프로젝트 고유 안내가 없을 때 사용하는 기본 가이�
 
 현재 `tools/list`와 응답 메타데이터가 사용 가능한 도구·입력의 기준이에요. 기본 facade는 `inspect_document`, `read_content`, `preview_edit`, `apply_edit`, `validate_content` 등을 제공해요. 세부 도구 선택과 실패 복구는 `using-mcp-tools`에 모여 있어요.
 
-변경은 preview 후 apply해요. 에디터 확인 창 또는 standalone write gate이 승인 경계이므로 요청과 일치하는 preview는 채팅에서 재승인받지 않아요. 토큰은 1회용이며, 결과가 불명확한 변경은 상태를 확인한 뒤 새 preview를 만들어요.
+변경은 preview 후 apply해요. 에디터 승인 정책(확인 창 또는 사용자가 고른 자동 승인)이나 standalone write gate가 승인 경계이므로 요청과 일치하는 preview는 채팅에서 재승인받지 않아요. 토큰은 1회용이며, 결과가 불명확한 변경은 상태를 확인한 뒤 새 preview를 만들어요.
 
 ## 프로젝트별 참고사항
 
