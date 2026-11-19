@@ -37,7 +37,7 @@ Use the current `tools/list` metadata and response `next_actions`. Prefer the fa
 
 ## Mutation contract
 
-Create and inspect a matching preview, then apply it. The editor confirmation dialog or standalone write gate is the approval boundary; a requested mutation does not need another chat approval. `preview_token`, `operation_digest`, and stale guards bind the preview to its target. Tokens are consumed once, before the first mutation; after a stale response, timeout, interruption, or partial failure, inspect current state and generate a fresh preview. Never blindly retry a mutation with an unknown outcome.
+Create and inspect a matching preview, then apply it. The editor's approval policy (its confirmation dialog or the automatic approval the user selected) or the standalone write gate is the approval boundary; a requested mutation does not need another chat approval. `preview_token`, `operation_digest`, and stale guards bind the preview to its target. Tokens are consumed once, before the first mutation; after a stale response, timeout, interruption, or partial failure, inspect current state and generate a fresh preview. Never blindly retry a mutation with an unknown outcome.
 
 Prefer focused replace/insert/range operations when they describe the change well. For large exact rewrites, guarded export/import or project-folder workflows avoid oversized responses. Verify the changed artifact with the relevant read, diff, or validator.
 

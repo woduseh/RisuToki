@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/version-3.10.2-blue.svg)](https://github.com/woduseh/RisuToki/releases)
 [![License](https://img.shields.io/badge/license-CC%20BY--NC%204.0-green.svg)](LICENSE)
 [![Electron](https://img.shields.io/badge/Electron-44-47848F.svg)](https://www.electronjs.org/)
-[![Node](https://img.shields.io/badge/Node-26.10%2B-339933.svg)](https://nodejs.org/)
+[![Node](https://img.shields.io/badge/Node-26.12.1%2B-339933.svg)](https://nodejs.org/)
 
 ## What is RisuToki?
 
@@ -48,7 +48,7 @@ Packaged builds check for each newer stable release once. Installer builds ask b
 
 ### From Source (developers)
 
-Node.js 26.10+ is required. The repository's `.node-version` pins Node 26.10 as the tested development and CI baseline.
+Node.js 26.12.1+ is required. The repository's `.node-version` pins Node 26.13.1 (LTS) as the development and CI baseline, including the November 10 security fixes.
 
 ```bash
 git clone https://github.com/woduseh/RisuToki.git

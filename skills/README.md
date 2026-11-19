@@ -26,4 +26,6 @@ YAML frontmatter requires `name` and `description`. Optional fields include `tag
 
 Keep project facts, user preferences, non-obvious runtime contracts, and useful examples. General problem-solving steps, fixed creative recipes, arbitrary quotas, and repeated harness instructions do not belong in the execution layer. State the verified baseline for version-sensitive behavior. Optional recipes should identify their purpose without claiming unmeasured model performance.
 
+Current models follow absolute wording literally. In skills, routers, and MCP tool text, state a limit with its scope and reason, and name the exception or the step that needs approval instead of an unscoped "never". Leave out emphasis markers such as `IMPORTANT` or `ALWAYS`, standing instructions to delegate, and requests to write reasoning into the response.
+
 Static tests check discovery and reference delivery. Live routing diagnostics and optional task-quality comparisons are described in `test/behavior-evals/README.md`; selecting a skill alone does not establish result quality.

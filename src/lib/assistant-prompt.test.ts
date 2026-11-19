@@ -100,8 +100,10 @@ describe('buildAssistantPrompt', () => {
     expect(result).not.toContain('연결됨');
     expect(result).toContain('tools/list');
     expect(result).toContain('preview → apply');
+    expect(result).toContain('다시 승인받지 않고 apply');
     expect(result).toContain('읽기 전용');
     expect(result).toContain('먼저 확인');
+    expect(result).toContain('검증까지 이어서 끝내세요');
   });
 
   it('does not duplicate the registered tool catalog or urge tool use', async () => {

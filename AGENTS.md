@@ -17,7 +17,7 @@ Do not preload `project-workflow`, the full Skill catalog, or unrelated authorin
 
 ## Delivery
 
-- Artifact mutations run preview, then apply. The editor's confirmation dialog or the standalone write gate is the approval boundary, so apply a preview that matches the request without asking in chat.
+- Artifact mutations run preview, then apply. The editor's approval policy (its confirmation dialog or the automatic approval the user selected) or the standalone write gate is the approval boundary, so apply a preview that matches the request without asking in chat.
 - Deliver the requested outputs, including dependent edits and validation necessary for correctness and consistency within the authorized scope. Do not create additional standalone deliverables or expand to unrelated artifacts; offer those separately. Dependent edits do not waive explicit approval requirements.
 
 ## Scope boundaries
