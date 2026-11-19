@@ -36,6 +36,7 @@ const ROUTER_SKILLS: Record<string, readonly string[]> = {
     'writing-restricted-wysiwyg-html',
     'writing-trigger-scripts',
     'writing-standing-image-prompts',
+    'targeting-uimori',
   ],
   'risu/bot/AGENTS.md': ['authoring-bots', 'writing-translation-guides'],
   'risu/prompts/AGENTS.md': ['writing-risup-presets', 'prompt-family'],

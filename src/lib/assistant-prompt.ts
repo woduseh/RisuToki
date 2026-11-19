@@ -23,6 +23,7 @@ interface NavigatorLike {
 export interface AssistantDeps {
   rpMode: string;
   rpCustomText: string;
+  uimoriMode: boolean;
   hasTerminal: boolean;
   readPersona(mode: string): Promise<string>;
   getClaudePrompt(): Promise<PromptInfo | null>;
@@ -41,8 +42,19 @@ export interface AssistantDeps {
 }
 
 type RpDeps = Pick<AssistantDeps, 'rpMode' | 'rpCustomText' | 'readPersona'>;
+type PromptDeps = RpDeps & Pick<AssistantDeps, 'uimoriMode'>;
 
 const MAX_METADATA_CHARS = 200;
+
+// Uimori runtime limits from the Uimori repository: docs/RISU-IMPORT.md, docs/LORE-CONTEXT.md, docs/TRANSLATION-GUIDES.md, docs/ILLUSTRATIONS.md.
+export const UIMORI_TARGET_SECTION = [
+  `== 실행 대상: Uimori ==`,
+  `작업할 자료는 RisuAI가 아니라 Uimori에서 실행됩니다. Uimori가 다르게 처리하는 RisuAI 기능에 기대지 마세요.`,
+  `- 로어북: 키워드 활성화가 없습니다. 상시 활성 항목은 항상 포함되고, 나머지는 판단 모델이 항목 이름(comment)과 본문을 보고 고르거나 작문 모델이 이름 목록에서 찾아 읽습니다. 항목 이름과 첫 문장만으로 무엇에 관한 항목인지 알 수 있게 쓰세요. CBS 조건은 그대로 적용됩니다.`,
+  `- 지원되지 않음: 로어 @@position·@@inject_*·음수 depth, 프리셋 memory 슬롯 치환과 @@inject·@@repeat_back·@@emo, Lua의 캐릭터 setter·이미지 생성·외부 HTTP·loadLoreBooks·axLLM emotion/submodel 모드, 임의 JavaScript·iframe·외부 URL과 CSS, 오디오·영상 에셋.`,
+  `- 카드와 모듈의 extensions.uimori(번역 지침 translationGuide, 삽화 인물 외형 illustrationProfiles)는 Uimori 전용 설정입니다. 지우거나 다른 필드로 옮기지 마세요.`,
+  `- 세부 기준과 extensions.uimori의 경로·한도는 targeting-uimori 스킬에 있고, validate_content의 uimori 선택자로 자료를 검사할 수 있습니다.`,
+].join('\n');
 
 function sanitizeMetadataValue(value: string): string {
   const normalized = String(value ?? '').replace(/[\u0000-\u001f\u007f-\u009f]/g, ' ');
@@ -76,10 +88,11 @@ export async function loadRpPersona(deps: RpDeps): Promise<string> {
 export async function buildAssistantPrompt(
   promptInfo: PromptInfo | null,
   mcpConfigured: boolean,
-  deps: RpDeps,
+  deps: PromptDeps,
 ): Promise<string> {
   if (!promptInfo) {
-    return deps.rpMode !== 'off' ? await loadRpPersona(deps) : '';
+    const rpText = deps.rpMode !== 'off' ? await loadRpPersona(deps) : '';
+    return [deps.uimoriMode ? UIMORI_TARGET_SECTION : '', rpText].filter(Boolean).join('\n\n');
   }
 
   const lines: string[] = [
@@ -99,6 +112,11 @@ export async function buildAssistantPrompt(
     `변경 요청은 검증까지 이어서 끝내세요. 오류·시간 초과·빈 결과 같은 일반적인 장애는 원인을 확인한 뒤 요청을 고치거나 다른 경로로 계속하고, 범위 안의 다음 단계를 제안만 하고 멈추지 마세요. 세부가 불명확하면 되돌릴 수 있는 가정을 밝히고 진행하며, 질문은 사용자만 내릴 수 있는 결정에 한정하세요.`,
     `결과를 먼저 제시하고 근거, 주의점, 검증 결과, 검증하지 못한 항목과 사용자 결정이 필요한 항목을 덧붙이세요. 최종 답변은 도구 출력이나 작업 중 만든 약어를 보지 않은 사람도 그것만 읽고 이해할 수 있게 쓰세요.`,
   ];
+
+  if (deps.uimoriMode) {
+    lines.push(``);
+    lines.push(UIMORI_TARGET_SECTION);
+  }
 
   const rpText = await loadRpPersona(deps);
   if (rpText) {

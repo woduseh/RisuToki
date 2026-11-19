@@ -40,7 +40,7 @@ import {
   measureSurface,
   readJsonBody,
   sameDocumentPath,
-  validateTouchedRisupJsonFields,
+  validateSurfaceMutation,
   type McpNoOpInfo,
 } from './mcp-api-helpers';
 import type { McpApiDeps } from './mcp-api-server';
@@ -1481,7 +1481,7 @@ export async function handleExternalRoute(
       const draft = cloneDocumentData(probe.data) as Record<string, unknown>;
       try {
         const result = applySurfacePatch(draft, restoreBinaryViews(operations, probe.data) as typeof operations);
-        validateTouchedRisupJsonFields(draft, result.touchedTopLevel);
+        validateSurfaceMutation(probe.data, draft, result.touchedTopLevel);
         const afterHash = hashSurface(draft);
         if (probe.body.dry_run === true) {
           return jsonResSuccess(

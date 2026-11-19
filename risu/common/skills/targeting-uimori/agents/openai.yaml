@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Uimori Target'
+  short_description: 'Adapt artifacts for Uimori and edit its translation and illustration data'
+  default_prompt: 'Use $targeting-uimori to prepare the requested artifact for Uimori and keep its Uimori-only card data valid.'

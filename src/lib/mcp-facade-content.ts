@@ -4,6 +4,7 @@ import * as path from 'path';
 import { get_encoding } from '@dqbd/tiktoken';
 import { LuaFactory } from 'wasmoon';
 import { validateCharxExportCompatibilityFile } from './charx-export-compatibility';
+import { checkUimoriCompatibility } from './uimori-compatibility';
 import { runRegexPipeline, simulateLorebookActivation } from './content-simulation';
 import {
   asRecord,
@@ -953,6 +954,24 @@ export function createFacadeContentEngine({
 
     if (target.kind !== 'active') {
       if (target.kind === 'external') {
+        const uimoriSelector = selectors?.find((selector) => selector.family === 'uimori');
+        if (uimoriSelector) {
+          const validation = await validateUimoriSurface('/external/surface/read', 'external_read_surface', {
+            file_path: target.file_path,
+          });
+          if (isApiError(validation)) return validation;
+          const touchedTarget = `external:${target.file_path}:uimori`;
+          return {
+            result: {
+              validations: [{ selector: uimoriSelector, data: { file_path: target.file_path, ...validation.data } }],
+              routed_legacy: validation.routes,
+              touched_targets: [touchedTarget],
+              source_workflow: true,
+            },
+            routes: validation.routes,
+            touchedTargets: [touchedTarget],
+          };
+        }
         const exportCompatibilitySelector = selectors?.find(
           (selector) => selector.family === 'asset' || selector.field === 'exportCompatibility',
         );
@@ -1034,7 +1053,7 @@ export function createFacadeContentEngine({
       return facadeApiError(
         400,
         `Unsupported validate_content target kind "${target.kind}"`,
-        'validate_content supports active-document validators plus external .charx export compatibility, external .risum semantic fields, external Plugin v3, and external .risup prompt scans. Use inspect_document/read_content for other external or reference preflight.',
+        'validate_content supports active-document validators plus external .charx export compatibility, external Uimori compatibility, external .risum semantic fields, external Plugin v3, and external .risup prompt scans. Use inspect_document/read_content for other external or reference preflight.',
         undefined,
         ['inspect_document', 'read_content'],
       );
@@ -1155,6 +1174,15 @@ export function createFacadeContentEngine({
         continue;
       }
 
+      if (selector.family === 'uimori') {
+        const validation = await validateUimoriSurface('/surface/read', 'read_surface', {});
+        if (isApiError(validation)) return validation;
+        validations.push({ selector, data: validation.data });
+        routes.push(...validation.routes);
+        touchedTargets.push('uimori');
+        continue;
+      }
+
       if (selector.family === 'plugin-v3') {
         return facadeApiError(
           400,
@@ -1210,7 +1238,7 @@ export function createFacadeContentEngine({
       return facadeApiError(
         400,
         'Unsupported validate_content selector',
-        'validate_content supports active lorebook, regex, CBS, Danbooru, charx export compatibility, risup-prompt, risum semantic fields, promptTemplate, and formatingOrder selectors; keep granular validators for imports, diffs, simulations, and unsupported source shapes.',
+        'validate_content supports active lorebook, regex, CBS, Danbooru, charx export compatibility, Uimori compatibility, risup-prompt, risum semantic fields, promptTemplate, and formatingOrder selectors; keep granular validators for imports, diffs, simulations, and unsupported source shapes.',
         { selector },
         ['validate_cbs', 'validate_danbooru_tags', 'read_content'],
       );
@@ -1701,6 +1729,20 @@ export function createFacadeContentEngine({
       count: results.length,
       ok: results.every((result) => result.ok === true),
       results,
+    };
+  }
+
+  async function validateUimoriSurface(
+    routePath: '/surface/read' | '/external/surface/read',
+    toolName: 'read_surface' | 'external_read_surface',
+    body: Record<string, unknown>,
+  ): Promise<{ data: Record<string, unknown>; routes: FacadeRoute[] } | ApiErrorResult> {
+    const surface = await apiRequest('POST', routePath, { ...body, path: '/' });
+    if (isApiError(surface)) return surface;
+    const document = asRecord(asRecord(surface)?.value) ?? {};
+    return {
+      data: { ...checkUimoriCompatibility(document) },
+      routes: [route(toolName, 'POST', routePath)],
     };
   }
 

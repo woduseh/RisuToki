@@ -14,6 +14,7 @@ function makeState(overrides: Partial<SettingsState> = {}): SettingsState {
     rpCustomText: '',
     mcpApprovalMode: 'ask',
     previewFocusByDefault: true,
+    uimoriMode: false,
     ...overrides,
   };
 }
@@ -33,6 +34,7 @@ function makeCallbacks(overrides: Partial<SettingsCallbacks> = {}): SettingsCall
     onRpCustomTextChange: vi.fn(),
     onMcpApprovalModeChange: vi.fn(),
     onPreviewFocusByDefaultChange: vi.fn(),
+    onUimoriModeChange: vi.fn(),
     onOpenPersonaTab: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -155,6 +157,19 @@ describe('settings popup', () => {
     toggle.click();
     expect(toggle.getAttribute('aria-checked')).toBe('false');
     expect(callbacks.onPreviewFocusByDefaultChange).toHaveBeenCalledWith(false);
+  });
+
+  it('offers an off-by-default Uimori mode in the target section and persists changes', () => {
+    const callbacks = makeCallbacks();
+    showSettingsPopup(makeState(), callbacks);
+    const overlay = getOverlay()!;
+    const toggle = overlay.querySelector<HTMLButtonElement>('[role="switch"][aria-label="Uimori 모드"]')!;
+
+    expect(toggle.closest<HTMLElement>('.settings-section')?.dataset.settingsSection).toBe('target');
+    expect(toggle.getAttribute('aria-checked')).toBe('false');
+    toggle.click();
+    expect(toggle.getAttribute('aria-checked')).toBe('true');
+    expect(callbacks.onUimoriModeChange).toHaveBeenCalledWith(true);
   });
 
   it('shows custom palette editor and persists palette edits', () => {

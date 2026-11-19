@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
-import { openCharx } from '../charx-io';
+import { openCharx, openRisum } from '../charx-io';
 import {
   closeServer,
   createExternalFixtureHelpers,
@@ -12,7 +12,7 @@ import {
 import { useMcpApiTestDir } from './mcp-api-vitest-helpers';
 
 const TEST_DIR = useMcpApiTestDir('surface-routes');
-const { createExternalCharxFixture } = createExternalFixtureHelpers(TEST_DIR);
+const { createExternalCharxFixture, createExternalRisumFixture } = createExternalFixtureHelpers(TEST_DIR);
 const startTestApiServer = createLegacyTestApiServer(TEST_DIR);
 
 describe('MCP API surface routes', () => {
@@ -129,6 +129,100 @@ describe('MCP API surface routes', () => {
       expect(rejected.status).toBe(400);
       expect(rejected.data.error).toContain('Invalid promptSettings');
       expect(currentData.promptSettings).toBe('{}');
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('rejects Uimori extension writes that Uimori would refuse, leaving unrelated card edits alone', async () => {
+    const legacyGuide = { instructions: 7, terms: [] };
+    const currentData: SearchFixture = {
+      name: 'Uimori Bot',
+      _card: { data: { name: 'Uimori Bot', extensions: { risuai: {}, uimori: { translationGuide: legacyGuide } } } },
+      _moduleData: null,
+    };
+    const api = await startTestApiServer(currentData);
+    const uimori = () =>
+      (currentData._card as { data: { extensions: { uimori: Record<string, unknown> } } }).data.extensions.uimori;
+
+    try {
+      const unrelated = await postJson<{ success: boolean }>(api.port, api.token, '/surface/patch', {
+        operations: [{ op: 'add', path: '/_card/data/extensions/vendor', value: { kept: true } }],
+      });
+      expect(unrelated.status).toBe(200);
+
+      const invalid = await postJson<Record<string, unknown>>(api.port, api.token, '/surface/patch', {
+        operations: [
+          {
+            op: 'replace',
+            path: '/_card/data/extensions/uimori/translationGuide',
+            value: { instructions: '', terms: [{ source: 'Mira', target: '' }] },
+          },
+        ],
+      });
+      expect(invalid.status).toBe(400);
+      expect(invalid.data.error).toContain('Invalid /_card/data/extensions/uimori');
+      expect(uimori().translationGuide).toEqual(legacyGuide);
+
+      const guide = { instructions: '미라는 담담하게 말한다.', terms: [{ source: 'Mira', target: '미라' }] };
+      const valid = await postJson<{ success: boolean }>(api.port, api.token, '/surface/patch', {
+        operations: [{ op: 'replace', path: '/_card/data/extensions/uimori/translationGuide', value: guide }],
+      });
+      expect(valid.status).toBe(200);
+      expect(uimori().translationGuide).toEqual(guide);
+
+      const blanked = await postJson<Record<string, unknown>>(api.port, api.token, '/surface/replace', {
+        path: '/_card/data/extensions/uimori',
+        find: '미라',
+        replace: '',
+      });
+      expect(blanked.status).toBe(400);
+      expect(blanked.data.error).toContain('terms[0]');
+      expect(uimori().translationGuide).toEqual(guide);
+    } finally {
+      await closeServer(api.server);
+    }
+  });
+
+  it('writes Uimori extensions into unopened CHARX cards and RISUM modules that survive reopening', async () => {
+    const guide = { instructions: '', terms: [{ source: 'Rose', target: '로즈', note: '인물 이름일 때만.' }] };
+    const profiles = [{ id: 'mira', name: '미라', appearance: 'silver hair, navy coat' }];
+    const charx = createExternalCharxFixture();
+    const risum = createExternalRisumFixture();
+    const api = await startTestApiServer(null);
+
+    try {
+      const card = await postJson<{ success: boolean }>(api.port, api.token, '/external/surface/patch', {
+        file_path: charx.filePath,
+        operations: [
+          { op: 'add', path: '/_card/data/extensions', value: { uimori: { translationGuide: guide } } },
+          { op: 'add', path: '/_card/data/extensions/uimori/illustrationProfiles', value: profiles },
+        ],
+      });
+      expect(card.status).toBe(200);
+      const reopenedCard = openCharx(charx.filePath)._card as { data: { extensions: unknown } };
+      expect(reopenedCard.data.extensions).toMatchObject({
+        uimori: { translationGuide: guide, illustrationProfiles: profiles },
+      });
+
+      const modulePatch = await postJson<{ success: boolean }>(api.port, api.token, '/external/surface/patch', {
+        file_path: risum.filePath,
+        operations: [
+          { op: 'add', path: '/_moduleData/module/extensions', value: { uimori: { translationGuide: guide } } },
+        ],
+      });
+      expect(modulePatch.status).toBe(200);
+      const reopened = openRisum(risum.filePath)._moduleData as { module: { extensions: unknown } };
+      expect(reopened.module.extensions).toEqual({ uimori: { translationGuide: guide } });
+
+      const rejected = await postJson<Record<string, unknown>>(api.port, api.token, '/external/surface/patch', {
+        file_path: risum.filePath,
+        operations: [
+          { op: 'replace', path: '/_moduleData/module/extensions/uimori', value: { illustrationProfiles: {} } },
+        ],
+      });
+      expect(rejected.status).toBe(400);
+      expect(rejected.data.error).toContain('Invalid /_moduleData/module/extensions/uimori');
     } finally {
       await closeServer(api.server);
     }

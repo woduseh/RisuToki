@@ -1,5 +1,6 @@
 import { getStructuredReadRoute } from './mcp-read-routes';
 import { describeBinaryViews, restoreBinaryViews } from './mcp-surface-fingerprint';
+import { UIMORI_EXTENSION_TOP_LEVEL_FIELDS } from './uimori-extensions';
 import type * as http from 'http';
 import type { McpErrorInfo, McpSuccessOptions } from './mcp-response-envelope';
 import type { SupportedFileType } from './mcp-field-access';
@@ -36,7 +37,11 @@ interface SurfaceRouteDeps {
     root: Record<string, unknown>,
     operations: unknown[],
   ) => { changed: number; touchedTopLevel: string[] };
-  validateTouchedRisupJsonFields: (data: Record<string, unknown>, touchedTopLevel: string[]) => void;
+  validateSurfaceMutation: (
+    before: Record<string, unknown>,
+    after: Record<string, unknown>,
+    touchedTopLevel: string[],
+  ) => void;
   touchesAssetMapSource: (fields: readonly string[]) => boolean;
   logMcpMutation: (action: string, target: string, details: Record<string, unknown>) => void;
   getSurfaceMutationBlock: (data: Record<string, unknown>, pointer: string) => SurfaceBlock | null;
@@ -173,7 +178,7 @@ export async function handleSurfaceRoute(
     const draft = deps.cloneDocumentData(currentData) as Record<string, unknown>;
     try {
       const result = deps.applySurfacePatch(draft, restoreBinaryViews(operations, currentData) as typeof operations);
-      deps.validateTouchedRisupJsonFields(draft, result.touchedTopLevel);
+      deps.validateSurfaceMutation(currentData, draft, result.touchedTopLevel);
       const afterHash = deps.hashSurface(draft);
       if (body.dry_run === true) {
         deps.jsonResSuccess(
@@ -290,6 +295,12 @@ export async function handleSurfaceRoute(
         typeof body.flags === 'string' ? body.flags : undefined,
       );
       const afterHash = deps.hashSurface(next);
+      const topLevel = topLevelFieldFromPointer(body.path);
+      if (matches > 0 && topLevel && UIMORI_EXTENSION_TOP_LEVEL_FIELDS.includes(topLevel)) {
+        const draft = deps.cloneDocumentData(currentData) as Record<string, unknown>;
+        deps.setPointerValue(draft, body.path, next, false);
+        deps.validateSurfaceMutation(currentData, draft, [topLevel]);
+      }
       if (body.dry_run === true) {
         deps.jsonResSuccess(
           res,
@@ -326,7 +337,6 @@ export async function handleSurfaceRoute(
         return true;
       }
       deps.setPointerValue(currentData, body.path, next, false);
-      const topLevel = topLevelFieldFromPointer(body.path);
       if (topLevel) deps.broadcastToAll('data-updated', topLevel, currentData[topLevel]);
       deps.jsonResSuccess(
         res,

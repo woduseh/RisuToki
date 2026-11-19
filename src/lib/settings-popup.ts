@@ -28,6 +28,7 @@ export interface SettingsState {
   rpCustomText: string;
   mcpApprovalMode: McpApprovalMode;
   previewFocusByDefault: boolean;
+  uimoriMode: boolean;
 }
 
 export interface SettingsCallbacks {
@@ -44,6 +45,7 @@ export interface SettingsCallbacks {
   onRpCustomTextChange(text: string): void;
   onMcpApprovalModeChange(mode: McpApprovalMode): void;
   onPreviewFocusByDefaultChange(enabled: boolean): void;
+  onUimoriModeChange(enabled: boolean): void;
   onOpenPersonaTab(name: string): Promise<void>;
 }
 
@@ -437,6 +439,17 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
     callbacks.onRpCustomTextChange(rpCustomArea.value);
   });
 
+  const uimoriRow = document.createElement('div');
+  uimoriRow.className = 'settings-row';
+  const uimoriLeft = document.createElement('div');
+  uimoriLeft.innerHTML =
+    '<div class="settings-label">Uimori 모드</div><div class="settings-desc">AI 어시스턴트가 Uimori에서 실행할 자료로 작업 · 다음에 시작하는 어시스턴트부터 적용</div>';
+  const uimoriToggle = createToggle(state.uimoriMode, 'Uimori 모드');
+  uimoriToggle.addEventListener('click', () => {
+    callbacks.onUimoriModeChange(uimoriToggle.classList.contains('on'));
+  });
+  uimoriRow.append(uimoriLeft, uimoriToggle);
+
   const settingsLayout = document.createElement('div');
   settingsLayout.className = 'settings-layout';
   const settingsNav = document.createElement('nav');
@@ -449,6 +462,7 @@ export function showSettingsPopup(state: SettingsState, callbacks: SettingsCallb
     { id: 'save', label: '저장 및 승인', rows: [autoRow, intervalRow, autoPathRow, approvalRow] },
     { id: 'appearance', label: '외형', rows: [themeRow, customThemeRow, previewFocusRow] },
     { id: 'tools', label: '터미널 및 페르소나', rows: [bgmRow, rpRow, rpCustomRow, rpEditRow] },
+    { id: 'target', label: '실행 대상', rows: [uimoriRow] },
   ];
   const sectionElements = new Map<string, HTMLElement>();
   const navButtons = new Map<string, HTMLButtonElement>();
