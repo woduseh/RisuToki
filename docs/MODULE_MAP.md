@@ -52,7 +52,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/mcp-external-routes.ts` — unopened-document inspection, field read/write/search, surface patch, and UI open-file routes
 - `src/lib/mcp-project-routes.ts` — approved project extract/reassemble writes with source/output conflict checks
 - `src/lib/mcp-file-state.ts` — shared on-disk file/tree fingerprints for facade previews and project writes
-- `src/lib/mcp-surface-fingerprint.ts` — streamed legacy-compatible surface hashes and private binary-aware document bindings
+- `src/lib/mcp-surface-fingerprint.ts` — binary-aware surface fingerprints (binaries hashed by length and digest) shared by `list_surfaces` and document bindings
 - `src/lib/mcp-read-routes.ts` — shared structured-read dispatch matching and read-only snapshot classification
 - `src/lib/mcp-field-routes.ts` — active-document field CRUD, batch, search, range, snapshot, statistics, and session-status routes
 - `src/lib/mcp-headless-server.ts` — standalone/file-backed MCP session bootstrap and lifecycle

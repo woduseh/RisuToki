@@ -7,7 +7,7 @@ import zlib from 'node:zlib';
 import AdmZip from 'adm-zip';
 import { pack, unpack } from 'msgpackr';
 import { afterEach, describe, expect, it } from 'vitest';
-import { openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } from './charx-io';
+import { buildCharxZip, openCharx, openRisum, openRisup, saveCharx, saveRisum, saveRisup } from './charx-io';
 import { buildRisum, parseRisum, rpackDecode, rpackEncode } from './rpack';
 
 const directories: string[] = [];
@@ -124,6 +124,22 @@ describe('synthetic artifact preservation', () => {
       'assets/portrait.WEBP': image,
       'assets/notes.bin': text,
     });
+  });
+
+  it('builds stored entries for compressed assets whose paths the ZIP writer normalizes', () => {
+    const file = fixturePath('charx');
+    const zip = new AdmZip();
+    zip.addFile('card.json', Buffer.from(JSON.stringify({ spec: 'chara_card_v3', data: { name: 'Synthetic' } })));
+    zip.addFile('assets/a.png', crypto.randomBytes(64));
+    zip.addFile('assets/b.png', crypto.randomBytes(64));
+    zip.writeZip(file);
+    const data = openCharx(file);
+    data.assets[0].path = '/assets/a.png';
+    data.assets[1].path = 'assets\\b.png';
+
+    const output = buildCharxZip(data);
+    expect(output.getEntry('assets/a.png')!.header.method).toBe(0);
+    expect(output.getEntry('assets/b.png')!.header.method).toBe(0);
   });
 
   it('rejects zero-byte CHARX assets without replacing the source archive', () => {

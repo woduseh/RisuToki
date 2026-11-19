@@ -89,15 +89,30 @@ export interface ExternalDocumentReaderDeps {
   mcpError: McpError;
 }
 
+function fileMatchesBaselineStat(filePath: string, baseline: ReturnType<typeof captureFileBaseline>): boolean {
+  try {
+    const stat = fs.statSync(filePath);
+    return !!baseline && stat.size === baseline.size && stat.mtimeMs === baseline.mtimeMs;
+  } catch {
+    return false;
+  }
+}
+
 export function createExternalDocumentReaders(readerDeps: ExternalDocumentReaderDeps) {
   let parsedExternal: { filePath: string; sha256: string; snapshot: Buffer } | null = null;
 
-  function openExternalDocumentCopy(filePath: string, sha256: string | undefined): LoadedDocumentData {
+  function openExternalDocumentCopy(
+    filePath: string,
+    baseline: ReturnType<typeof captureFileBaseline>,
+  ): LoadedDocumentData {
+    const sha256 = baseline?.sha256;
     if (sha256 && parsedExternal?.filePath === filePath && parsedExternal.sha256 === sha256) {
       return deserialize(parsedExternal.snapshot) as LoadedDocumentData;
     }
     const data = readerDeps.openExternalDocument(filePath) as LoadedDocumentData;
-    parsedExternal = sha256 ? { filePath, sha256, snapshot: serialize(data) } : null;
+    // The hash and the parse read the file separately; cache only when the file did not change in between.
+    parsedExternal =
+      sha256 && fileMatchesBaselineStat(filePath, baseline) ? { filePath, sha256, snapshot: serialize(data) } : null;
     return data;
   }
 
@@ -206,7 +221,7 @@ export function createExternalDocumentReaders(readerDeps: ExternalDocumentReader
       return {
         ...request,
         baseline,
-        data: openExternalDocumentCopy(request.filePath, baseline?.sha256),
+        data: openExternalDocumentCopy(request.filePath, baseline),
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

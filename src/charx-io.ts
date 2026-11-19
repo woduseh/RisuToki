@@ -847,9 +847,12 @@ export function buildCharxZip(data: LoadedDocumentData): InstanceType<typeof Adm
 
   for (const asset of zipAssets) {
     zip.addFile(asset.path, asset.data);
-    if (PRECOMPRESSED_ASSET_EXTENSIONS.has(path.extname(asset.path).toLowerCase())) {
-      zip.getEntry(asset.path)!.header.method = ZIP_METHOD_STORED;
-    }
+    if (!PRECOMPRESSED_ASSET_EXTENSIONS.has(path.extname(asset.path).toLowerCase())) continue;
+    // adm-zip stores names with backslashes converted and leading "/" or "../" removed,
+    // but getEntry() does not apply that rewrite.
+    const storedName = asset.path.replace(/\\/g, '/').replace(/^(?:\.\.\/|\/)+/, '');
+    const entry = zip.getEntry(asset.path) ?? zip.getEntry(storedName);
+    if (entry) entry.header.method = ZIP_METHOD_STORED;
   }
 
   // Add x_meta
