@@ -9,6 +9,27 @@
 
 ---
 
+## [3.11.0] - 2026-11-19
+
+### Changed
+
+- Hash binary assets in surface fingerprints by byte length and content digest instead of enumerating every byte, so `inspect_document`, `list_surfaces`, and root surface reads stay fast for cards with large assets. Surface hashes and the root `document_hash` of documents with assets change value, `assets` report their real byte size, and the private document binding now uses the same fingerprint.
+- Return binary values in surface reads as `{ binary, byteLength, sha256 }` instead of JSON byte arrays; use `manage_assets` to read asset bytes. Surface patches accept these descriptors for binaries already in the document and reject unknown ones.
+- Keep binary assets as buffers when applying surface patches and clone them without JSON expansion.
+- Compare document content once after the confirmation instead of before and after it; the editor draft, document identity, and path checks still run before the dialog.
+- Store already-compressed assets (PNG, JPEG, WebP, GIF, AVIF, common audio/video and web fonts) uncompressed in `.charx` archives instead of deflating them again, and check exported asset sizes from ZIP headers. Saving, autosave, and external writes of asset-heavy cards are several times faster.
+- Reuse a parsed unopened file across external reads until its bytes change, and copy the current probe for batch writes instead of reopening the file.
+- Cache per-asset content digests behind a CRC-32 change check for mutation snapshots and document bindings, and digest snapshot JSON instead of V8-serialized state.
+- Validate `.charx` export compatibility without cloning the whole document as JSON.
+- Omit the `$schema` dialect and implicit safe-integer bounds from `tools/list`, and drop the envelope fields of routed sub-responses inside facade results so follow-ups only name tools in the current profile.
+- Keep schema validation and Sortable out of the renderer entry chunk.
+
+### Fixed
+
+- Validate more than 50 regex entries through `validate_content` by reading them in batches.
+- Keep standalone and proxy MCP diagnostics on stderr so stdout carries only JSON-RPC messages.
+- Detect document changes during confirmation independently of how the JavaScript engine stores arrays.
+
 ## [3.10.4] - 2026-10-23
 
 ### Changed

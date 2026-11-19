@@ -107,6 +107,25 @@ describe('synthetic artifact preservation', () => {
     expect(openCharx(file).assets.map((asset) => asset.data)).toEqual([entries['assets/data.bin']]);
   });
 
+  it('stores already-compressed CHARX assets without recompressing them', () => {
+    const file = fixturePath('charx');
+    const zip = new AdmZip();
+    zip.addFile('card.json', Buffer.from(JSON.stringify({ spec: 'chara_card_v3', data: { name: 'Synthetic' } })));
+    const image = crypto.randomBytes(4096);
+    const text = Buffer.from('repeat '.repeat(512));
+    zip.addFile('assets/portrait.WEBP', image);
+    zip.addFile('assets/notes.bin', text);
+    zip.writeZip(file);
+    saveCharx(file, openCharx(file));
+    const output = new AdmZip(file);
+    expect(output.getEntry('assets/portrait.WEBP')!.header.method).toBe(0);
+    expect(output.getEntry('assets/notes.bin')!.header.method).toBe(8);
+    expect(Object.fromEntries(openCharx(file).assets.map((asset) => [asset.path, asset.data]))).toEqual({
+      'assets/portrait.WEBP': image,
+      'assets/notes.bin': text,
+    });
+  });
+
   it('rejects zero-byte CHARX assets without replacing the source archive', () => {
     const file = fixturePath('charx');
     const zip = new AdmZip();

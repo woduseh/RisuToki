@@ -98,6 +98,6 @@ Without MCP, read the relevant source skill or reference from the filesystem. Fo
 
 ### Runtime implementation boundaries
 
-Facade preview/apply binds the active document through a private `GET /document/binding` query. It includes ordered text/metadata and full binary contents without enumerating each byte as JSON. This internal fingerprint is not a replacement for the public legacy surface hashes; public surface hashes retain their canonical format. Restart both the editor and MCP process after runtime upgrades.
+Facade preview/apply binds the active document through a private `GET /document/binding` query. It returns the same fingerprint as the root `document_hash` of `list_surfaces`: JSON values use the canonical sorted-key text, and binary assets are framed by byte length and content digest instead of being enumerated byte by byte. Surface hashes are opaque and comparable only within one runtime version, so restart both the editor and MCP process after runtime upgrades.
 
 External asset list/read facades use one private read-only metadata query; only a requested asset is encoded into the response. Writes continue through the existing preview/confirmation and file-conflict guards. HTTP transport preserves split UTF-8 characters and terminates incomplete responses; the request deadline bounds total elapsed time, not just socket inactivity. A dispatched mutation with a lost response still requires inspecting the outcome before retrying.

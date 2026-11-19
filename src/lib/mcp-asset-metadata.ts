@@ -5,6 +5,7 @@ function assetByteLength(value: unknown): number {
   if (value instanceof Uint8Array) return value.byteLength;
   if (Array.isArray(value)) return value.every((entry) => typeof entry === 'number') ? value.length : 0;
   const record = asRecord(value);
+  if (record?.binary === true && typeof record.byteLength === 'number') return record.byteLength;
   return record?.type === 'Buffer' && Array.isArray(record.data) ? record.data.length : 0;
 }
 

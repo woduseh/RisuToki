@@ -2,6 +2,7 @@ import { fingerprintSurface } from './mcp-surface-fingerprint';
 import * as http from 'http';
 import * as crypto from 'crypto';
 import * as path from 'path';
+import { deserialize, serialize } from 'v8';
 import { observeMcpBody, observeMcpResponse } from './mcp-activity-observer';
 
 import type { CssCacheEntry, McpApiDeps, Section } from './mcp-api-server';
@@ -498,18 +499,9 @@ export function pickAllowedFields(source: Record<string, unknown>, allowed: Set<
   return result;
 }
 
-export function stableJson(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableJson(item)).join(',')}]`;
-  }
-  if (value && typeof value === 'object') {
-    const record = value as Record<string, unknown>;
-    return `{${Object.keys(record)
-      .sort()
-      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
-      .join(',')}}`;
-  }
-  return JSON.stringify(value) ?? 'undefined';
+/** Deep copy of document state that keeps binary assets as Buffers. */
+export function cloneDocumentData<T>(value: T): T {
+  return deserialize(serialize(value)) as T;
 }
 
 export function hashSurface(value: unknown): string {
@@ -712,7 +704,7 @@ export function removePointerValue(root: unknown, pointer: string): unknown {
 
 export function clonePatchValue(value: unknown): unknown {
   if (value === undefined) return undefined;
-  return cloneJson(value);
+  return cloneDocumentData(value);
 }
 
 export function applySurfacePatch(
@@ -1812,13 +1804,7 @@ export async function getCurrentSessionFilePath(
 }
 
 export type ExternalFieldKind =
-  | 'string'
-  | 'boolean'
-  | 'number'
-  | 'string-array'
-  | 'triggerScripts'
-  | 'lorebook'
-  | 'regex';
+  'string' | 'boolean' | 'number' | 'string-array' | 'triggerScripts' | 'lorebook' | 'regex';
 
 export interface ExternalFieldAccess {
   allowed: boolean;

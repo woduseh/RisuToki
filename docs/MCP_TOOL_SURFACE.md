@@ -23,7 +23,9 @@ If this file and code diverge, the TypeScript source wins.
 ## Cross-cutting contract
 
 - Successful read and mutation routes generally return `mcpSuccess()` with `summary`, `next_actions`, and `artifacts`.
-- The 14 default tools expose their actual action-specific input schemas plus a compact common `outputSchema`, and return the same parsed envelope through `structuredContent` while preserving the existing text JSON. Handler-side validation remains authoritative for cross-field conditions.
+- The 14 default tools expose their actual action-specific input schemas plus a compact common `outputSchema`, and return the same parsed envelope through `structuredContent` while preserving the existing text JSON. Handler-side validation remains authoritative for cross-field conditions. `tools/list` omits the per-schema `$schema` dialect and the implicit safe-integer bounds that the SDK conversion adds to every integer.
+- Surface reads return binary values as `{ binary: true, byteLength, sha256 }`; surface hashes and `byteSize` still cover the bytes. A surface patch may write such a descriptor back for a binary already in the document, and rejects descriptors that match none. Use `manage_assets` to read or add asset bytes.
+- Only the outer response carries `status`, `summary`, `next_actions`, and `artifacts`. Routed sub-responses embedded in a facade result keep their data but drop their own envelope fields, so follow-ups always name tools registered in the current profile.
 - The complete default `tools/list` response is statically guarded at 96 KiB and each serialized tool definition at 24 KiB. The current measured counts and byte sizes live in `test/fixtures/mcp-module-split-contract.json`; complete required inputs take precedence over discriminator-only schema compression.
 - `mcpSuccess()` also adds `artifacts.byte_size`, an approximate UTF-8 JSON size of the success response excluding the `artifacts.byte_size` field itself.
 - Hard failures return `mcpError()` with `action`, `target`, `error`, `status`, and `suggestion`.
@@ -213,6 +215,7 @@ The following marker-delimited list is canonical for the documentation gate in `
 - `write_regex`
 - `write_risup_prompt_item`
 - `write_risup_prompt_item_batch`
+
 <!-- stage1-legacy-inventory:end -->
 
 Declared evidence maps the inventory to implemented first-wave rows and the current 35 replayable workflow tasks. The scenario ids below are the canonical routes included in the successful 2026-07-03 measured run.

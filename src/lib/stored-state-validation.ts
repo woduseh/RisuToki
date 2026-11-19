@@ -1,9 +1,5 @@
 import { z } from 'zod';
 
-export const storedAvatarStateSchema = z.object({
-  src: z.string(),
-});
-
 export function parseStoredJson<T>(value: string | null, schema: z.ZodType<T>): T | null {
   if (!value) return null;
   try {

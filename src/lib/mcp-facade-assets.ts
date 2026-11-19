@@ -67,6 +67,7 @@ async function readSourceAsset(sourcePath: string): Promise<Buffer | ApiErrorRes
 type ExternalSurfaceValueReader = (
   filePath: string,
   surfacePath: string,
+  options?: { includeBinaryBytes?: boolean },
 ) => Promise<{ value: unknown; routes: FacadeRoute[]; raw: Record<string, unknown> } | ApiErrorResult>;
 
 export interface FacadeAssetsEngineDeps {
@@ -501,7 +502,7 @@ export function createFacadeAssetsEngine({
 
     if (target.kind === 'external') {
       if (family === 'charx') {
-        const read = await readExternalSurfaceValue(target.file_path, '/assets');
+        const read = await readExternalSurfaceValue(target.file_path, '/assets', { includeBinaryBytes: true });
         if (isApiError(read)) return read;
         if (!Array.isArray(read.value)) {
           return facadeApiError(
@@ -533,7 +534,7 @@ export function createFacadeAssetsEngine({
         };
       }
 
-      const assetsRead = await readExternalSurfaceValue(target.file_path, '/risumAssets');
+      const assetsRead = await readExternalSurfaceValue(target.file_path, '/risumAssets', { includeBinaryBytes: true });
       if (isApiError(assetsRead)) return assetsRead;
       if (!Array.isArray(assetsRead.value)) {
         return facadeApiError(

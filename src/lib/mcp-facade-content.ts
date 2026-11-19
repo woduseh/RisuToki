@@ -1084,9 +1084,16 @@ export function createFacadeContentEngine({
           selector.index !== undefined
             ? [selector.index]
             : (selector.indices ?? listEntries.map((entry) => Number(entry.index)));
-        const data = await apiRequest('POST', '/regex/batch', { indices });
-        if (isApiError(data)) return data;
-        validations.push({ selector, data: validateRegexEntries(data) });
+        const entries: unknown[] = [];
+        for (let start = 0; start < indices.length; start += FACADE_V1_LIMITS.maxBatchItems) {
+          const batch = await apiRequest('POST', '/regex/batch', {
+            indices: indices.slice(start, start + FACADE_V1_LIMITS.maxBatchItems),
+          });
+          if (isApiError(batch)) return batch;
+          const batchEntries = asRecord(batch)?.entries;
+          if (Array.isArray(batchEntries)) entries.push(...batchEntries);
+        }
+        validations.push({ selector, data: validateRegexEntries({ entries }) });
         routes.push(route('list_regex', 'GET', '/regex'), route('read_regex_batch', 'POST', '/regex/batch'));
         touchedTargets.push(selector.index !== undefined || selector.indices ? selectorTarget(selector) : 'regex');
         continue;

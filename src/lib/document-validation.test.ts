@@ -6,7 +6,10 @@ import {
   validateRisupEnvelope,
   validateRisupPresetPayload,
 } from './document-validation';
-import { parseStoredJson, storedAvatarStateSchema } from './stored-state-validation';
+import { z } from 'zod';
+import { parseStoredJson } from './stored-state-validation';
+
+const storedAvatarStateSchema = z.object({ src: z.string() });
 
 describe('document validation', () => {
   it('parses valid stored settings payloads and rejects malformed ones', () => {

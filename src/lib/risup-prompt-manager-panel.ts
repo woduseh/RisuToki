@@ -8,7 +8,8 @@ import {
   type PromptItemModel,
   type SupportedPromptItemType,
 } from './risup-prompt-model';
-import { promptItemSearchText, promptItemSummary, promptTypeLabel } from './risup-prompt-editor';
+import { promptItemSearchText, promptItemSummary } from './risup-prompt-editor';
+import { promptTypeLabel } from './risup-prompt-model';
 import { showContextMenu } from './context-menu';
 import Sortable from 'sortablejs';
 import { SHARED_OPTIONS, makeFlatOnEnd } from './sidebar-dnd';

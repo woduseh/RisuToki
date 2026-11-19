@@ -29,6 +29,7 @@ import {
   getStandaloneUserDataPath,
   startHeadlessFromArgs,
 } from './src/lib/toki-standalone-bootstrap';
+import { compactToolsListMessage } from './src/lib/mcp-compact-input';
 import {
   buildRuntimeMetadata,
   mergeRuntimeMetadata,
@@ -670,6 +671,8 @@ function attachStdioDiagnostics(): void {
 }
 
 async function main() {
+  // MCP stdio transport: stdout carries only newline-delimited JSON-RPC messages.
+  console.log = console.info = console.debug = console.error;
   if (process.argv.includes('--standalone')) {
     const runtime = await startHeadlessFromArgs(process.argv.slice(2), __dirname);
     TOKI_PORT = String(runtime.port);
@@ -710,6 +713,8 @@ async function main() {
   });
   attachStdioDiagnostics();
   const transport = new StdioServerTransport();
+  const send = transport.send.bind(transport);
+  transport.send = (message) => send(compactToolsListMessage(message));
   logProcessDiagnostic('transportConnectStart');
   await server.connect(transport);
   mcpConnected = true;

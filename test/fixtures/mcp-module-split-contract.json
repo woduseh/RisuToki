@@ -3,23 +3,23 @@
   "toolsList": {
     "facade-first": {
       "toolCount": 14,
-      "rawBytes": 76870,
-      "sha256": "13d572fe6e09aa121d5ebfe33e78f69e7f492da5261f19d5e7217239672600d5"
+      "rawBytes": 74010,
+      "sha256": "79e13be9639b2a4fae4666606cbd2afb8dc9e7e0ebb6e220c02f2efbe6ab1035"
     },
     "authoring": {
       "toolCount": 176,
-      "rawBytes": 273933,
-      "sha256": "c561425eb7d6f76cb62a06ceb8c945c267d609c7130f382af39a65bbaf90aee5"
+      "rawBytes": 262649,
+      "sha256": "27596feb943fb90497b8c10fd9283f8fb0c9b452b85eb51103b8f78594a6f27d"
     },
     "advanced-full": {
       "toolCount": 204,
-      "rawBytes": 304120,
-      "sha256": "8321853dd4036ce0a98b5018b57c31894110e2b5ad087106cd178cceeb0fce39"
+      "rawBytes": 291380,
+      "sha256": "90b09dd50dcc9f5f2ccbd17d2f6d3b9a5681d2840f8a371fbf6aca8dbc8e1161"
     },
     "readonly": {
       "toolCount": 109,
-      "rawBytes": 129560,
-      "sha256": "76f4231f4b3d595480ce3c07ee6152affd2d98d2d82c23df3746368dc4d8b363"
+      "rawBytes": 122884,
+      "sha256": "5e6abb039058f6767f78c0c489f3b148cab6c902bf0e7c3596985f50d7fdecdb"
     }
   },
   "http": {

@@ -741,7 +741,7 @@ export async function handleLorebookRoute(
           target: `document:${fileType}`,
         });
       }
-      const zip = buildCharxZip(cloneJson(currentData) as LoadedDocumentData);
+      const zip = buildCharxZip({ ...currentData, regex: cloneJson(currentData.regex || []) } as LoadedDocumentData);
       const result = validateCharxExportCompatibilityZip(zip);
       const payload: Record<string, unknown> = { ...result };
       return jsonResSuccess(res, payload, {
