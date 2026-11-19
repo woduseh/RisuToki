@@ -1,8 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { renderPreviewMarkdown, scopePreviewCss } from './preview-renderer';
+import { getPreviewRendererStyles, renderPreviewMarkdown, scopePreviewCss } from './preview-renderer';
 
 describe('preview renderer', () => {
+  it('embeds every KaTeX font because the sandboxed preview cannot load app files', () => {
+    const styles = getPreviewRendererStyles();
+
+    expect(styles).not.toMatch(/url\(fonts\//);
+    expect(styles.match(/@font-face\{/g)).toHaveLength(20);
+    expect(styles.match(/src:url\(data:font\/woff2;base64,/g)).toHaveLength(20);
+  });
+
   it('renders markdown-it tables, nested lists, highlighted code, and KaTeX', () => {
     const html = renderPreviewMarkdown(
       [

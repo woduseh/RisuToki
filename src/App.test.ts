@@ -200,6 +200,40 @@ describe('App shell', () => {
     expect(store.navigatorVisible).toBe(false);
     expect(document.activeElement).toBe(wrapper.get('[aria-label="탐색기 전환"]').element);
   });
+
+  it('restores a navigator that narrowing closed, but keeps one the user closed', async () => {
+    vi.stubGlobal('innerWidth', 1440);
+    const wrapper = mount(App, { attachTo: document.body, global: { plugins: [createPinia()] } });
+    const store = useAppStore();
+    await nextTick();
+    expect(store.navigatorVisible).toBe(true);
+
+    const resizeTo = async (width: number) => {
+      vi.stubGlobal('innerWidth', width);
+      window.dispatchEvent(new Event('resize'));
+      await nextTick();
+    };
+    await resizeTo(900);
+    expect(store.navigatorVisible).toBe(false);
+    await resizeTo(1440);
+    expect(store.navigatorVisible).toBe(true);
+
+    await wrapper.get('[aria-label="탐색기 전환"]').trigger('click');
+    expect(store.navigatorVisible).toBe(false);
+    await resizeTo(900);
+    await resizeTo(1440);
+    expect(store.navigatorVisible).toBe(false);
+
+    await wrapper.get('[aria-label="탐색기 전환"]').trigger('click');
+    await resizeTo(900);
+    expect(store.navigatorVisible).toBe(false);
+    await wrapper.get('[aria-label="탐색기 전환"]').trigger('click');
+    await wrapper.get('[aria-label="탐색기 전환"]').trigger('click');
+    expect(store.navigatorVisible).toBe(false);
+    await resizeTo(1440);
+    expect(store.navigatorVisible).toBe(false);
+    wrapper.unmount();
+  });
   beforeEach(() => {
     setActivePinia(createPinia());
   });

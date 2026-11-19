@@ -275,7 +275,7 @@ function updatePrompt(key: string, value: string) {
 .inspector-kind {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: var(--ui-accent-strong, #5eead4);
   font-size: 12px;
   font-weight: 700;
@@ -309,7 +309,7 @@ function updatePrompt(key: string, value: string) {
 }
 .inspector-checks {
   display: grid;
-  gap: 9px;
+  gap: 8px;
   padding-top: 6px;
   border-top: 1px solid var(--ui-border, rgba(148, 163, 184, 0.14));
 }
@@ -376,7 +376,7 @@ function updatePrompt(key: string, value: string) {
   text-align: center;
   display: grid;
   justify-items: center;
-  gap: 9px;
+  gap: 8px;
   color: var(--ui-text-faint, #64748b);
 }
 .inspector-empty strong {

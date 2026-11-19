@@ -204,7 +204,7 @@ function assetValue(asset: DocumentReviewAssetChange, side: 'before' | 'after') 
 .review-header h2,
 .review-detail h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
   overflow-wrap: anywhere;
 }
 .review-header p {

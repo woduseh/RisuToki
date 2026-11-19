@@ -360,6 +360,40 @@ describe('form-editor read-only badge', () => {
     expect(badge?.textContent).toContain('읽기');
   });
 
+  it('keeps the enable switch and type select in sync and restores the last active type', () => {
+    const deps = createDeps();
+    initFormEditor(deps);
+    const value = { comment: '대사', type: 'editoutput', find: 'a', replace: 'b', flag: 'g' };
+    showRegexEditor({
+      id: 'regex_0',
+      label: '대사',
+      language: '_regexform',
+      getValue: () => value,
+      setValue: vi.fn(),
+    });
+
+    const enabled = document.querySelector<HTMLButtonElement>('.form-editor-header [role="switch"]')!;
+    const type = document.querySelector<HTMLSelectElement>('.form-select')!;
+    expect(enabled.getAttribute('aria-checked')).toBe('true');
+
+    enabled.click();
+    expect([value.type, type.value, enabled.getAttribute('aria-checked')]).toEqual(['disabled', 'disabled', 'false']);
+    enabled.click();
+    expect([value.type, type.value, enabled.getAttribute('aria-checked')]).toEqual([
+      'editoutput',
+      'editoutput',
+      'true',
+    ]);
+
+    type.value = 'editdisplay';
+    type.dispatchEvent(new Event('change'));
+    type.value = 'disabled';
+    type.dispatchEvent(new Event('change'));
+    expect(enabled.getAttribute('aria-checked')).toBe('false');
+    enabled.click();
+    expect(value.type).toBe('editdisplay');
+  });
+
   it('grows the Replace editor upward and coalesces Monaco layouts by animation frame', () => {
     let frameCallback: FrameRequestCallback | null = null;
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {

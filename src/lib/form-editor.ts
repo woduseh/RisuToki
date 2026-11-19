@@ -1,4 +1,5 @@
 import { NON_MONACO_EDITOR_TAB_TYPES } from './editor-activation';
+import { editorTypography, type EditorTextKind } from './editor-typography';
 import { getFolderRef, normalizeFolderRef, resolveLorebookFolderRef } from './lorebook-folders';
 import { getRisupFieldGroup, isRisupDisableableNumberFieldId } from './risup-fields';
 import { coerceRisupInputValue, validateRisupDraftFields, type RisupFormTabInfo } from './risup-form-editor';
@@ -13,7 +14,7 @@ import {
   type TriggerFormTabInfo,
 } from './trigger-form-editor';
 import { parseTriggerScriptsText, serializeTriggerScriptModel, type TriggerScriptModel } from './trigger-script-model';
-import { createSwitchControl } from './switch-control';
+import { createSwitchControl, setSwitchChecked } from './switch-control';
 
 type MonacoWindow = Window & {
   monaco?: {
@@ -178,6 +179,7 @@ export function createMiniMonaco(
   value: string,
   language: string,
   onChange: ((val: string) => void) | null,
+  textKind: EditorTextKind = 'code',
 ): FormEditor {
   const d = deps!;
   const win = window as unknown as MonacoWindow;
@@ -194,6 +196,10 @@ export function createMiniMonaco(
     textarea.style.border = 'none';
     textarea.style.borderRadius = '0';
     textarea.style.resize = 'none';
+    const typography = editorTypography(textKind, true);
+    textarea.style.fontFamily = typography.fontFamily;
+    textarea.style.fontSize = `${typography.fontSize}px`;
+    textarea.style.lineHeight = String(typography.lineHeight);
     container.replaceChildren(textarea);
 
     const handleInput = () => {
@@ -234,7 +240,7 @@ export function createMiniMonaco(
       value: value || '',
       language: language,
       theme: d.getMonacoThemeId(),
-      fontSize: 13,
+      ...editorTypography(textKind, true),
       minimap: { enabled: false },
       wordWrap: 'on',
       automaticLayout: true,
@@ -274,7 +280,7 @@ export function createMiniMonaco(
     return ed;
   } catch (error) {
     console.error('[Editor] Failed to create mini Monaco, falling back to textarea:', error);
-    return createMiniMonaco(container, value, language, onChange);
+    return createMiniMonaco(container, value, language, onChange, textKind);
   }
 }
 
@@ -389,10 +395,16 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
     form.append(header, body);
     container.appendChild(form);
     setTimeout(() => {
-      createMiniMonaco(monacoContainer, (data.content as string) || '', 'plaintext', (value) => {
-        data.content = value;
-        markDirty();
-      });
+      createMiniMonaco(
+        monacoContainer,
+        (data.content as string) || '',
+        'plaintext',
+        (value) => {
+          data.content = value;
+          markDirty();
+        },
+        'prose',
+      );
     }, 10);
     return;
   }
@@ -610,6 +622,7 @@ export function showLoreEditor(tabInfo: FormTabInfo): void {
             data.content = val;
             markDirty();
           },
+      'prose',
     );
     if (ed && readonly) ed.updateOptions({ readOnly: true });
   }, 10);
@@ -1419,11 +1432,25 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     headerTitle.appendChild(badge);
   }
 
-  // Toggle (active/disabled type)
-  const toggle = document.createElement('div');
-  toggle.className = 'form-toggle' + ((data.type as string) !== 'disabled' ? ' active' : '');
-  toggle.title = '활성화 토글';
-  header.appendChild(toggle);
+  let previousRegexType = data.type && data.type !== 'disabled' ? (data.type as string) : 'editdisplay';
+  const activeSwitch = createSwitchControl({
+    checked: (data.type as string) !== 'disabled',
+    label: '정규식 사용',
+    disabled: readonly,
+    onChange: (checked) => {
+      const nextType = checked ? previousRegexType : 'disabled';
+      if (!checked && data.type && data.type !== 'disabled') previousRegexType = data.type as string;
+      data.type = nextType;
+      typeSelect.value = nextType;
+      markDirty();
+    },
+  });
+  const activeSwitchLabel = document.createElement('label');
+  activeSwitchLabel.className = 'form-header-switch';
+  const activeSwitchText = document.createElement('span');
+  activeSwitchText.textContent = '사용';
+  activeSwitchLabel.append(activeSwitchText, activeSwitch);
+  header.appendChild(activeSwitchLabel);
 
   // Body
   const body = document.createElement('div');
@@ -1457,7 +1484,7 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   typeRow.className = 'form-row';
   const typeLbl = document.createElement('span');
   typeLbl.className = 'form-label';
-  typeLbl.textContent = 'Type';
+  typeLbl.textContent = '종류';
   const typeSelect = document.createElement('select');
   typeSelect.className = 'form-select';
   if (readonly) typeSelect.disabled = true;
@@ -1476,23 +1503,11 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
     if (((data.type as string) || '').toLowerCase() === t.value.toLowerCase()) opt.selected = true;
     typeSelect.appendChild(opt);
   }
-  const syncRegexActiveToggle = (): void => {
-    toggle.classList.toggle('active', typeSelect.value !== 'disabled');
-  };
-  let previousRegexType = data.type && data.type !== 'disabled' ? (data.type as string) : 'editdisplay';
   if (!readonly) {
     typeSelect.addEventListener('change', () => {
       data.type = typeSelect.value;
       if (typeSelect.value !== 'disabled') previousRegexType = typeSelect.value;
-      syncRegexActiveToggle();
-      markDirty();
-    });
-    toggle.addEventListener('click', () => {
-      const nextType = toggle.classList.contains('active') ? 'disabled' : previousRegexType;
-      if (nextType === 'disabled' && data.type && data.type !== 'disabled') previousRegexType = data.type as string;
-      data.type = nextType;
-      typeSelect.value = nextType;
-      syncRegexActiveToggle();
+      setSwitchChecked(activeSwitch, typeSelect.value !== 'disabled');
       markDirty();
     });
   }
@@ -1500,20 +1515,18 @@ export function showRegexEditor(tabInfo: FormTabInfo): void {
   typeRow.appendChild(typeSelect);
   body.appendChild(typeRow);
 
-  // Find (in) label + mini Monaco
   const findLabel = document.createElement('div');
   findLabel.className = 'form-section-label';
-  findLabel.textContent = 'Find (in)';
+  findLabel.textContent = '찾을 패턴';
   body.appendChild(findLabel);
 
   const findContainer = document.createElement('div');
   findContainer.className = 'form-monaco form-monaco-regex';
   body.appendChild(findContainer);
 
-  // Replace (out) label + mini Monaco (resizable)
   const replaceLabel = document.createElement('div');
   replaceLabel.className = 'form-section-label';
-  replaceLabel.textContent = 'Replace (out)';
+  replaceLabel.textContent = '바꿀 내용';
   body.appendChild(replaceLabel);
 
   const replaceContainer = document.createElement('div');

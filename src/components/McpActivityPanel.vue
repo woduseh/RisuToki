@@ -143,7 +143,7 @@ onBeforeUnmount(() => activity.stop());
 }
 h3 {
   margin: 0 0 4px;
-  font-size: 15px;
+  font-size: 14px;
 }
 .activity-heading span,
 .activity-scope,
@@ -201,13 +201,13 @@ input:focus-visible {
 .activity-filters label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
 }
 select {
   color: var(--ui-text);
   background: var(--ui-control);
   border: 1px solid var(--ui-border);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 4px;
 }
 .activity-list {

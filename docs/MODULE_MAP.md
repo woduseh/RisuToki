@@ -145,6 +145,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/preview-engine.ts` — preview rendering engine
 - `src/lib/preview-assets.ts` — CCv2/CCv3/module/ZIP preview asset normalization, typed manifests, MIME preservation, and primary-icon aliases
 - `src/lib/preview-renderer.ts` — RisuAI-compatible Markdown, KaTeX, syntax highlighting, class prefixing, and scoped CSS rendering
+- `src/lib/preview-katex-styles.ts` — KaTeX stylesheet with its fonts embedded for the sandboxed preview frame
 - `src/lib/preview-workbench.ts` — shared greeting, viewport, role-injection, and typed asset-gallery controls for the central preview tab
 - `src/lib/content-simulation.ts` — shared pure regex execution and lorebook activation logic used by preview and MCP analysis
 - `src/lib/preview-runtime.ts` — runtime execution inside preview
@@ -169,6 +170,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/right-manager-panel.ts` — contextual lorebook, asset-tree, and thumbnail navigator rendering inside the unified shell
 - `src/lib/sidebar-refs.ts` — sidebar reference integration
 - `src/lib/editor-activation.ts` — editor focus/activation state
+- `src/lib/editor-typography.ts` — prose and code font families, sizes, and line heights shared by the main and form editors
 - `src/lib/editor-dirty-fields.ts` — dirty-field tracking
 - `src/lib/document-stats.ts` — status-bar document summary counts and active-tab character statistics
 - `src/lib/context-menu.ts` — renderer context menus

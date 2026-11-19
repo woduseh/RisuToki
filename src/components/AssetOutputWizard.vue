@@ -267,7 +267,7 @@ function apply() {
 .asset-wizard > header > div {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 12px;
 }
 .asset-wizard > header > div > span {
   width: 34px;
@@ -280,7 +280,7 @@ function apply() {
 }
 .asset-wizard > header div div {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 .asset-wizard > header strong {
   font-size: 14px;
@@ -296,7 +296,7 @@ function apply() {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: 9px;
+  border-radius: 8px;
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
@@ -324,7 +324,7 @@ function apply() {
 .wizard-section-title {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 8px;
   margin-bottom: 14px;
 }
 .wizard-section-title > span {
@@ -356,14 +356,14 @@ function apply() {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
   background: var(--bg-primary);
 }
 .part-mapping > small {
   color: var(--text-secondary);
-  font-size: 9px;
+  font-size: 10px;
 }
 .part-mapping select,
 .part-mapping input,
@@ -372,14 +372,14 @@ function apply() {
   height: 32px;
   padding: 0 8px;
   border: 1px solid var(--border-color);
-  border-radius: 7px;
+  border-radius: 6px;
   color: var(--text-primary);
   background: var(--bg-secondary);
 }
 .part-values {
   grid-column: 1 / -1;
   color: var(--text-secondary);
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
@@ -394,11 +394,11 @@ details summary {
 .excluded-list {
   margin-top: 7px;
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 .asset-key-list {
   display: grid;
-  gap: 5px;
+  gap: 6px;
 }
 .asset-key-list label {
   min-height: 34px;
@@ -428,9 +428,9 @@ details summary {
 }
 .template-row {
   display: grid;
-  gap: 5px;
+  gap: 6px;
   color: var(--text-secondary);
-  font-size: 9px;
+  font-size: 10px;
 }
 .wizard-preview textarea {
   flex: 1;
@@ -474,14 +474,14 @@ details summary {
 .wizard-targets label {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   color: var(--text-primary);
 }
 .wizard-footer-actions button {
   min-height: 36px;
   padding: 0 14px;
   border: 1px solid var(--border-color);
-  border-radius: 9px;
+  border-radius: 8px;
   color: var(--text-primary);
   background: var(--bg-secondary);
   cursor: pointer;
@@ -505,7 +505,7 @@ details summary {
   padding: 32px;
   display: grid;
   justify-items: center;
-  gap: 9px;
+  gap: 8px;
   color: var(--text-secondary);
   text-align: center;
 }

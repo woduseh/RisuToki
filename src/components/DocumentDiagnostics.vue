@@ -309,7 +309,7 @@ watch(
 h2,
 h3 {
   margin: 0;
-  font-size: 15px;
+  font-size: 14px;
 }
 .diagnostics-header p {
   margin: 5px 0 0;

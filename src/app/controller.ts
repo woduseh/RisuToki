@@ -3,6 +3,7 @@ import { createDocumentWorkbenchController } from './document-workbench-controll
 import { parseLuaSections, combineLuaSections, parseCssSections, combineCssSections } from '../lib/section-parser';
 import type { Section } from '../lib/section-parser';
 import type { Tab } from '../lib/tab-manager';
+import { editorTypography } from '../lib/editor-typography';
 import { registerActions } from '../lib/action-registry';
 import { useAppStore } from '../stores/app-store';
 import { useWorkbenchStore } from '../stores/workbench-store';
@@ -177,6 +178,7 @@ interface MonacoEditorInstance {
   revealLineInCenter?(lineNumber: number): void;
   focus?(): void;
   getDomNode(): HTMLElement | null;
+  getContainerDomNode(): HTMLElement;
   layout(dimension?: { width: number; height: number }): void;
   [key: string]: unknown;
 }
@@ -529,7 +531,10 @@ function flushPendingEditorActivation(): void {
 }
 
 function proseEditorOptions(simple: boolean, isLargeFile = false): Record<string, unknown> {
+  const { fontFamily, lineHeight } = editorTypography(simple ? 'prose' : 'code');
   return {
+    fontFamily,
+    lineHeight,
     minimap: { enabled: !simple && !isLargeFile },
     lineNumbers: simple ? 'off' : 'on',
     glyphMargin: !simple,
@@ -557,6 +562,7 @@ function updateEditorModeToggle(tabInfo: Tab): void {
   button.onclick = () => {
     tabInfo.editorView = tabInfo.editorView === 'simple' ? 'code' : 'simple';
     const simple = tabInfo.editorView === 'simple';
+    editorInstance?.getContainerDomNode().classList.toggle('prose-column', simple);
     editorInstance?.updateOptions(proseEditorOptions(simple, (editorInstance?.getValue().length ?? 0) > 100000));
     updateEditorModeToggle(tabInfo);
   };
@@ -689,13 +695,17 @@ function createOrSwitchEditor(tabInfo: Tab): void {
   const initialValue = tabInfo.getValue() as string;
   const isLargeFile = initialValue.length > 100000;
   const simpleProse = tabInfo.editorKind === 'prose' && (tabInfo.editorView ?? 'simple') === 'simple';
-  editorInstance = monaco.editor.create(container, {
+  const editorHost = document.createElement('div');
+  editorHost.className = 'editor-host';
+  editorHost.classList.toggle('prose-column', simpleProse);
+  container.appendChild(editorHost);
+  editorInstance = monaco.editor.create(editorHost, {
     // Use textarea input: native EditContext can double-delete with Windows IMEs.
     editContext: false,
     value: initialValue,
     language: tabInfo.language,
     theme: monacoThemeId,
-    fontSize: 14,
+    fontSize: editorTypography(simpleProse ? 'prose' : 'code').fontSize,
     wordWrap: 'on',
     automaticLayout: true,
     scrollBeyondLastLine: false,
@@ -2991,7 +3001,9 @@ export async function initMainRenderer(): Promise<void> {
       }
     },
     'zoom-reset': () => {
-      if (editorInstance) editorInstance.updateOptions({ fontSize: 14 });
+      if (!editorInstance) return;
+      const prose = editorInstance.getContainerDomNode().classList.contains('prose-column');
+      editorInstance.updateOptions({ fontSize: editorTypography(prose ? 'prose' : 'code').fontSize });
     },
     'preview-test': () => showPreviewPanel(),
     'preview-refresh': () => refreshCharacterPreview(),

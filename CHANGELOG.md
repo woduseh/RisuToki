@@ -9,6 +9,26 @@
 
 ---
 
+## [3.11.0] - 2026-11-19
+
+### Changed
+
+- Show Korean prose (descriptions, messages, lorebook content) in the Korean UI font with roomier line spacing and a centered 760px column in simple view; code fields keep a monospace font with an explicit Korean fallback instead of the wide legacy face Chromium picked.
+- Replace the accent-gradient title bars of the preview and form editors, the accent-filled output wizard button, and the avatar status bubble with neutral surfaces so the current task stays the most prominent element.
+- Align lorebook manager rows on fixed columns at 44px, reveal their move/rename/delete buttons on hover, focus, or selection, and line folder names up with entry titles; start every navigator section on the same 12px inset.
+- Label the regex editor in Korean (종류, 찾을 패턴, 바꿀 내용) and replace its unlabeled enable dot with the shared accessible switch.
+- Open lorebook properties by default so activation keys are visible, while remembering the open state per property kind.
+- Remove the always-shown preview simulation note and property-summary hint; the preview title tooltip keeps the simulation explanation.
+- Keep font sizes, corner radii, and gaps on a shared scale, enforced by a style test.
+
+### Fixed
+
+- Restore the navigator after a narrow window that closed it widens again.
+- Load KaTeX fonts in the sandboxed preview by embedding them, removing 59 blocked-resource errors per preview.
+- Keep the stacked preview at least 420px (or 70% of the workbench) tall and keep the regex find field from collapsing when space is short.
+- Fit the terminal avatar to the shelf height instead of cropping it behind the status bubble.
+- Reset editor zoom to the size of the current prose or code view.
+
 ## [3.10.3] - 2026-10-18
 
 ### Fixed

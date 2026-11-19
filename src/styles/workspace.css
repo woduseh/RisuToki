@@ -374,12 +374,6 @@ body.workspace-resizing iframe {
   position: relative;
   overflow: hidden;
 }
-.preview-simulation-note {
-  padding: 4px 12px;
-  color: var(--ui-text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
 #document-workbench.preview-open.preview-stacked {
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, var(--preview-edit-share)) 6px minmax(0, var(--preview-share));
@@ -414,6 +408,17 @@ body.workspace-resizing iframe {
   min-height: 0;
   background: var(--bg-secondary);
   border-radius: 0 0 var(--ui-radius-lg) var(--ui-radius-lg);
+}
+#editor-container > .editor-host {
+  width: 100%;
+  height: 100%;
+}
+#editor-container > .editor-host.prose-column {
+  padding-inline: max(16px, calc((100% - 760px) / 2));
+}
+#editor-container > .editor-host.prose-column .monaco-editor {
+  --vscode-editor-background: var(--bg-secondary);
+  --vscode-editorGutter-background: var(--bg-secondary);
 }
 
 #editor-properties {
@@ -462,7 +467,7 @@ body.workspace-resizing iframe {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
   align-items: start;
-  gap: 10px 14px;
+  gap: 10px 16px;
   padding: 0 14px 12px;
   overflow: visible;
 }
@@ -480,7 +485,7 @@ body.workspace-resizing iframe {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px 18px;
+  gap: 10px 16px;
   grid-column: 1 / -1;
   padding-top: 8px;
 }
@@ -498,7 +503,7 @@ body.workspace-resizing iframe {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  padding: 10px;
+  padding: 8px 12px;
   border-bottom: 1px solid var(--ui-border);
 }
 .navigator-heading {
@@ -506,7 +511,7 @@ body.workspace-resizing iframe {
   align-items: center;
   justify-content: space-between;
   min-height: 40px;
-  padding: 0 14px;
+  padding: 0 12px;
   color: var(--ui-text);
   font-size: 13px;
 }
@@ -519,17 +524,11 @@ body.workspace-resizing iframe {
 #terminal-header .momo-title {
   color: var(--ui-text);
 }
-#editor-properties > summary > span {
-  margin-left: 8px;
-  font-weight: 400;
-  font-size: 12px;
-  color: var(--ui-text-muted);
-}
 #navigator-workspaces button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   min-height: 32px;
   padding: 5px 8px;
   border: 1px solid transparent;
@@ -630,7 +629,7 @@ body.workspace-resizing iframe {
   font-weight: 750;
 }
 #sidebar-tree {
-  padding: 9px;
+  padding: 8px;
   overflow: auto;
 }
 #sidebar-tree > * {
@@ -653,7 +652,7 @@ body.workspace-resizing iframe {
 .sidebar-section-header {
   color: var(--ui-text-faint);
   border-color: var(--ui-border);
-  margin: 8px 4px 6px;
+  margin: 8px 4px 4px;
   font-size: 11px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -713,7 +712,7 @@ body.workspace-resizing iframe {
 .asset-manager-card {
   border-color: var(--ui-border) !important;
   background: var(--ui-control) !important;
-  border-radius: 9px !important;
+  border-radius: 8px !important;
   color: var(--ui-text) !important;
 }
 .right-manager-item:hover,
@@ -731,14 +730,14 @@ body.workspace-resizing iframe {
 }
 .asset-tree-children {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 .asset-tree-group > summary {
   min-height: 32px;
   padding: 0 8px;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   border-radius: 8px;
   color: var(--ui-text-muted);
   cursor: pointer;
@@ -751,7 +750,7 @@ body.workspace-resizing iframe {
 .asset-tree-group > summary small {
   margin-left: auto;
   color: var(--ui-text-faint);
-  font-size: 9px;
+  font-size: 10px;
 }
 .asset-tree-group > .asset-tree-children {
   margin-left: 12px;
@@ -767,7 +766,7 @@ body.workspace-resizing iframe {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: var(--ui-text-muted);
   background: transparent;
   text-align: left;
@@ -900,7 +899,7 @@ body.workspace-resizing iframe {
   border-radius: 999px;
   color: var(--ui-accent-strong);
   background: var(--ui-selected);
-  font-size: 8px;
+  font-size: 10px;
   line-height: 1;
 }
 
@@ -999,26 +998,21 @@ body.utility-resizing * {
 }
 #toki-avatar-display {
   width: 100%;
-  align-items: flex-start;
+  align-items: stretch;
 }
 #toki-avatar-display img {
   display: block;
   width: 100% !important;
-  height: auto !important;
+  height: 100% !important;
   max-width: none;
   object-fit: contain;
+  object-position: center bottom;
 }
 #toki-help-btn {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-}
-#toki-status {
-  background: linear-gradient(135deg, var(--accent), var(--pink));
-}
-#toki-status.working {
-  background: linear-gradient(135deg, var(--accent), var(--yellow));
 }
 #terminal-header {
   min-height: 36px;
@@ -1029,7 +1023,7 @@ body.utility-resizing * {
 .momo-header-left {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
 }
 .momo-header-right button {
   min-width: 30px;
@@ -1049,7 +1043,7 @@ body.utility-resizing * {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 5px;
+  gap: 6px;
   white-space: nowrap;
 }
 .momo-header-right .terminal-mode-control span {
@@ -1109,7 +1103,7 @@ body.utility-resizing * {
 .welcome-mark {
   width: 48px;
   height: 48px;
-  border-radius: 15px;
+  border-radius: 16px;
   object-fit: cover;
   border: 1px solid var(--ui-selected-border);
   box-shadow: 0 10px 26px color-mix(in srgb, var(--ui-accent) 30%, transparent);
@@ -1152,14 +1146,14 @@ body.utility-resizing * {
   margin-top: 36px;
   width: min(560px, 100%);
   display: grid;
-  gap: 5px;
+  gap: 6px;
   text-align: left;
 }
 .recent-heading {
   padding: 0 8px 7px;
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: 8px;
   color: var(--text-secondary);
   font-size: 11px;
   font-weight: 750;
@@ -1185,7 +1179,7 @@ body.utility-resizing * {
 .recent-work > button span {
   min-width: 0;
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 .recent-work > button strong,
 .recent-work > button small {
@@ -1221,7 +1215,7 @@ body.utility-resizing * {
   grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--border-color);
-  border-radius: 15px;
+  border-radius: 16px;
   box-shadow: 0 24px 70px rgba(2, 6, 23, 0.36);
 }
 body .settings-overlay .help-popup-header {

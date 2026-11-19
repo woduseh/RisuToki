@@ -2,10 +2,10 @@ import DOMPurify from 'dompurify';
 import hljs from 'highlight.js/lib/common';
 import highlightStyles from 'highlight.js/styles/atom-one-dark.min.css?inline';
 import katex from 'katex';
-import katexStyles from 'katex/dist/katex.min.css?inline';
 import MarkdownIt from 'markdown-it';
 import postcss, { type Rule } from 'postcss';
 import selectorParser from 'postcss-selector-parser';
+import { katexStyles } from './preview-katex-styles';
 
 export type PreviewRenderMode = 'normal' | 'back';
 

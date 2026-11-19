@@ -6,6 +6,12 @@ export interface SwitchControlOptions {
   onChange?: (checked: boolean) => void;
 }
 
+/** Updates a switch created by `createSwitchControl` without firing its change handler. */
+export function setSwitchChecked(button: HTMLButtonElement, checked: boolean): void {
+  button.classList.toggle('on', checked);
+  button.setAttribute('aria-checked', String(checked));
+}
+
 /** Shared accessible switch used for independent boolean settings. */
 export function createSwitchControl(options: SwitchControlOptions): HTMLButtonElement {
   const button = document.createElement('button');
@@ -15,15 +21,10 @@ export function createSwitchControl(options: SwitchControlOptions): HTMLButtonEl
   button.setAttribute('aria-label', options.label);
   button.disabled = !!options.disabled;
 
-  const setChecked = (checked: boolean): void => {
-    button.classList.toggle('on', checked);
-    button.setAttribute('aria-checked', String(checked));
-  };
-
-  setChecked(options.checked);
+  setSwitchChecked(button, options.checked);
   button.addEventListener('click', () => {
     const checked = button.getAttribute('aria-checked') !== 'true';
-    setChecked(checked);
+    setSwitchChecked(button, checked);
     options.onChange?.(checked);
   });
   return button;

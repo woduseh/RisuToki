@@ -209,5 +209,6 @@ export default defineConfig(({ command }) => ({
     globals: true,
     setupFiles: [pathToFileURL(resolve(process.cwd(), 'vitest.setup.ts')).href],
     include: ['src/**/*.{test,spec}.{ts,js}'],
+    css: { include: [/[\\/]katex[\\/]dist[\\/]katex\.min\.css/] },
   },
 }));

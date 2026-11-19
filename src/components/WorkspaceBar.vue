@@ -243,7 +243,7 @@ const showWizard = computed(
       <button
         v-if="showWizard"
         type="button"
-        class="workspace-primary-action"
+        class="workspace-tab workspace-wizard-action"
         title="출력식 마법사"
         aria-label="출력식 마법사"
         @click="$emit('action', 'asset-output-wizard')"
@@ -309,7 +309,7 @@ const showWizard = computed(
 .workspace-tabs {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -327,15 +327,14 @@ const showWizard = computed(
 }
 
 .workspace-tab,
-.workspace-pane-toggle,
-.workspace-primary-action {
+.workspace-pane-toggle {
   border: 0;
   min-height: 34px;
-  border-radius: 9px;
+  border-radius: 8px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 8px;
   white-space: nowrap;
   color: var(--ui-text-muted, #94a3b8);
   background: transparent;
@@ -458,23 +457,12 @@ const showWizard = computed(
   border-right: 1px solid var(--ui-border);
 }
 
-.workspace-primary-action {
-  padding: 0 12px;
-  color: #062a27;
-  background: var(--ui-accent, #2dd4bf);
-  font-weight: 750;
-}
-
-.workspace-primary-action:hover {
-  filter: brightness(1.08);
-}
-
 @media (max-width: 1100px) {
   .workspace-tab {
     padding: 0 9px;
   }
 
-  .workspace-primary-action span {
+  .workspace-wizard-action span {
     display: none;
   }
 }

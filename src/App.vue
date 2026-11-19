@@ -37,12 +37,20 @@ const workbenchElement = ref<HTMLElement | null>(null);
 const previewStacked = ref(window.innerWidth < 1100);
 let workbenchObserver: ResizeObserver | null = null;
 let stopPreviewResize: (() => void) | null = null;
+const workbenchHeight = ref(0);
+const STACKED_PREVIEW_MIN_HEIGHT = 420;
+const minPreviewSplit = computed(() =>
+  previewStacked.value && workbenchHeight.value > 0
+    ? Math.min(70, Math.max(30, Math.ceil((STACKED_PREVIEW_MIN_HEIGHT / workbenchHeight.value) * 100)))
+    : 30,
+);
+const effectivePreviewSplit = computed(() => Math.max(workbench.previewSplit, minPreviewSplit.value));
 const previewSplitStyle = computed(() => ({
-  '--preview-edit-share': `${100 - workbench.previewSplit}fr`,
-  '--preview-share': `${workbench.previewSplit}fr`,
+  '--preview-edit-share': `${100 - effectivePreviewSplit.value}fr`,
+  '--preview-share': `${effectivePreviewSplit.value}fr`,
 }));
 function setPreviewSplit(value: number) {
-  workbench.previewSplit = Math.min(70, Math.max(30, value));
+  workbench.previewSplit = Math.min(70, Math.max(minPreviewSplit.value, value));
 }
 function resizePreviewWithKeyboard(event: KeyboardEvent) {
   const decrease = previewStacked.value ? 'ArrowDown' : 'ArrowRight';
@@ -51,7 +59,7 @@ function resizePreviewWithKeyboard(event: KeyboardEvent) {
   event.preventDefault();
   if (event.key === 'Home') setPreviewSplit(30);
   else if (event.key === 'End') setPreviewSplit(70);
-  else setPreviewSplit(workbench.previewSplit + (event.key === increase ? 1 : -1) * (event.shiftKey ? 10 : 2));
+  else setPreviewSplit(effectivePreviewSplit.value + (event.key === increase ? 1 : -1) * (event.shiftKey ? 10 : 2));
 }
 function startPreviewResize(event: PointerEvent) {
   if (!workbenchElement.value) return;
@@ -98,11 +106,25 @@ const overlayReferences = ref(window.innerWidth < 1180);
 const drawerOpen = computed(
   () => (compact.value && store.navigatorVisible) || (overlayReferences.value && rightSidebarVisible.value),
 );
-const propertiesOpen = ref(false);
+const propertiesOpenByKind = ref<Partial<Record<string, boolean>>>({ lorebook: true });
+const propertiesOpen = computed(() => propertiesOpenByKind.value[store.inspectorContext.kind] ?? false);
+let navigatorClosedForCompact = false;
+watch(
+  () => store.navigatorVisible,
+  (visible) => {
+    if (visible) navigatorClosedForCompact = false;
+  },
+);
 function updateViewport() {
   viewportHeight.value = window.innerHeight;
   const next = window.innerWidth < 1020;
-  if (next && !compact.value && store.navigatorVisible) store.toggleNavigator();
+  if (next && !compact.value && store.navigatorVisible) {
+    store.toggleNavigator();
+    navigatorClosedForCompact = true;
+  } else if (!next && compact.value) {
+    if (navigatorClosedForCompact && !store.navigatorVisible) store.toggleNavigator();
+    navigatorClosedForCompact = false;
+  }
   compact.value = next;
   overlayReferences.value = window.innerWidth < 1180;
 }
@@ -110,10 +132,14 @@ onMounted(() => {
   if (typeof ResizeObserver !== 'undefined' && workbenchElement.value) {
     workbenchObserver = new ResizeObserver(([entry]) => {
       if (entry.contentRect.width > 0) previewStacked.value = entry.contentRect.width < 960;
+      workbenchHeight.value = entry.contentRect.height;
     });
     workbenchObserver.observe(workbenchElement.value);
   }
-  if (compact.value && store.navigatorVisible) store.toggleNavigator();
+  if (compact.value && store.navigatorVisible) {
+    store.toggleNavigator();
+    navigatorClosedForCompact = true;
+  }
   window.addEventListener('resize', updateViewport);
   window.addEventListener('keydown', dismissDrawer);
 });
@@ -461,9 +487,9 @@ function recentName(path: string) {
               v-else-if="store.hasInspectorContext"
               id="editor-properties"
               :open="propertiesOpen"
-              @toggle="propertiesOpen = ($event.target as HTMLDetailsElement).open"
+              @toggle="propertiesOpenByKind[store.inspectorContext.kind] = ($event.target as HTMLDetailsElement).open"
             >
-              <summary>{{ inspectorTabLabel }} <span>이 항목의 동작 조건과 정보를 편집해요</span></summary>
+              <summary>{{ inspectorTabLabel }}</summary>
               <ContextInspector />
             </details>
             <p v-if="store.fileData?._fileType === 'risup' && !store.activeTabId" class="navigator-empty">
@@ -523,10 +549,10 @@ function recentName(path: string) {
             role="separator"
             aria-label="미리보기 크기 조절"
             :aria-orientation="previewStacked ? 'horizontal' : 'vertical'"
-            aria-valuemin="30"
+            :aria-valuemin="minPreviewSplit"
             aria-valuemax="70"
-            :aria-valuenow="workbench.previewSplit"
-            :aria-valuetext="`미리보기 ${Math.round(workbench.previewSplit)}%`"
+            :aria-valuenow="effectivePreviewSplit"
+            :aria-valuetext="`미리보기 ${Math.round(effectivePreviewSplit)}%`"
             tabindex="0"
             @pointerdown="startPreviewResize"
             @keydown="resizePreviewWithKeyboard"

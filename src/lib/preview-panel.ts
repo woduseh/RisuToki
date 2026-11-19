@@ -147,7 +147,7 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
   const headerLeft = document.createElement('span');
   headerLeft.className = 'preview-header-title';
   headerLeft.textContent = `${charData.name} — 로컬 프리뷰`;
-  headerLeft.title = '실제 AI 모델 응답이 아닌 CBS·스크립트·메시지 표시 테스트입니다.';
+  headerLeft.title = '실제 AI 모델 응답이 아닌 CBS·스크립트·메시지 표시 테스트예요. 대화 모드는 모의 응답을 사용해요.';
   const headerBtns = document.createElement('div');
   headerBtns.className = 'preview-header-actions';
 
@@ -594,10 +594,6 @@ export function showPreviewPanel(container: HTMLElement, deps: PreviewPanelDeps)
 
   // ── Assemble ──
   panel.appendChild(header);
-  const localNotice = document.createElement('div');
-  localNotice.className = 'preview-simulation-note';
-  localNotice.textContent = '로컬 표시·스크립트 테스트예요. 대화 모드는 모의 응답을 사용해요.';
-  panel.appendChild(localNotice);
   panel.appendChild(statusBanner);
   panel.appendChild(errorBanner);
   panel.appendChild(workbench.toolbar);
