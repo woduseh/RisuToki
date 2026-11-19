@@ -1519,6 +1519,8 @@ body {
   min-height: 44px;
   padding: 6px 8px;
   cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 44px;
 }
 
 .manager-lore-row .manager-row-actions {

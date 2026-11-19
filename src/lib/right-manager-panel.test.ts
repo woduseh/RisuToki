@@ -101,6 +101,40 @@ describe('right-manager-panel', () => {
     ]);
   });
 
+  it('defers rebuilding a hidden manager until it becomes visible', () => {
+    let notify: ((entries: Array<{ target: Element }>) => void) | null = null;
+    const observed: Element[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: (entries: Array<{ target: Element }>) => void) {
+          notify = callback;
+        }
+        observe(target: Element) {
+          observed.push(target);
+        }
+        disconnect() {}
+      },
+    );
+    const lorePanel = document.getElementById('lore-manager-panel')!;
+    let visible = false;
+    lorePanel.getClientRects = () => (visible ? [new DOMRect(0, 0, 300, 400)] : []) as unknown as DOMRectList;
+    try {
+      initRightManagerPanel(makeDeps());
+      expect(lorePanel.querySelector('.manager-lore-row')).toBeNull();
+      expect(observed).toContain(lorePanel);
+
+      renderRightManagerPanel();
+      expect(lorePanel.querySelector('.manager-lore-row')).toBeNull();
+
+      visible = true;
+      notify!([{ target: lorePanel }]);
+      expect(lorePanel.querySelector('.manager-lore-row')).not.toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('supports drag ordering within and across expanded lorebook folders', () => {
     const reorderLorebook = vi.fn();
     const deps = makeDeps({ reorderLorebook });

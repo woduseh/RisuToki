@@ -1000,16 +1000,57 @@ export function initRightManagerPanel(deps: RightManagerPanelDeps): void {
   renderRightManagerPanel();
 }
 
+const managerPanelRenderers: Record<string, () => void> = {
+  'lore-manager-panel': () => {
+    const root = document.getElementById('lore-manager-panel');
+    if (root) renderPanelShell(depsRef!, root, '로어북 관리자', (body) => renderLorebookPanel(depsRef!, body));
+  },
+  'asset-manager-panel': () => {
+    const root = document.getElementById('asset-manager-panel');
+    const renderToken = ++assetRenderToken;
+    if (root) {
+      renderPanelShell(depsRef!, root, '에셋 관리자', (body) => void renderAssetPanel(depsRef!, body, renderToken));
+    }
+  },
+};
+const stalePanelIds = new Set<string>();
+let panelVisibilityObserver: ResizeObserver | null = null;
+
+function isHiddenPanel(root: HTMLElement): boolean {
+  return root.getClientRects().length === 0;
+}
+
+function watchPanelVisibility(root: HTMLElement): void {
+  if (!panelVisibilityObserver) {
+    panelVisibilityObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const panelId = (entry.target as HTMLElement).id;
+        if (!stalePanelIds.has(panelId) || isHiddenPanel(entry.target as HTMLElement) || !depsRef) continue;
+        stalePanelIds.delete(panelId);
+        managerPanelRenderers[panelId]();
+      }
+    });
+  }
+  panelVisibilityObserver.observe(root);
+}
+
+/**
+ * Re-renders the lorebook and asset managers. A manager that is not displayed
+ * (another workspace, collapsed navigator) is only marked stale and renders
+ * once it becomes visible, so document updates do not rebuild hidden lists.
+ */
 export function renderRightManagerPanel(): void {
   if (!depsRef) return;
-  const renderToken = ++assetRenderToken;
-  const loreRoot = document.getElementById('lore-manager-panel');
-  const assetRoot = document.getElementById('asset-manager-panel');
-  if (loreRoot) {
-    renderPanelShell(depsRef, loreRoot, '로어북 관리자', (body) => renderLorebookPanel(depsRef!, body));
-  }
-  if (assetRoot) {
-    renderPanelShell(depsRef, assetRoot, '에셋 관리자', (body) => void renderAssetPanel(depsRef!, body, renderToken));
+  for (const panelId of Object.keys(managerPanelRenderers)) {
+    const root = document.getElementById(panelId);
+    if (!root) continue;
+    if (typeof ResizeObserver !== 'undefined' && isHiddenPanel(root)) {
+      stalePanelIds.add(panelId);
+      watchPanelVisibility(root);
+      continue;
+    }
+    stalePanelIds.delete(panelId);
+    managerPanelRenderers[panelId]();
   }
 }
 

@@ -20,6 +20,7 @@
 - Open lorebook properties by default so activation keys are visible, while remembering the open state per property kind.
 - Remove the always-shown preview simulation note and property-summary hint; the preview title tooltip keeps the simulation explanation.
 - Keep font sizes, corner radii, and gaps on a shared scale, enforced by a style test.
+- Skip rebuilding the lorebook and asset managers while they are hidden and render them when they become visible, and let the browser skip layout for offscreen lorebook rows. With 3,000 lorebook entries an MCP lorebook edit no longer blocks the renderer while the manager is hidden (was 50–59 ms), a visible-manager edit drops from 393 ms to about 215 ms, and selecting a row with layout drops from 317 ms to 110 ms.
 
 ### Fixed
 
