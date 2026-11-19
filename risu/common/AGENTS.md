@@ -11,5 +11,6 @@
 | Restricted WYSIWYG HTML                  | `writing-restricted-wysiwyg-html` |
 | Structured/V2 triggers                   | `writing-trigger-scripts`         |
 | Standing-image prompts and Danbooru tags | `writing-standing-image-prompts`  |
+| Uimori as the runtime target             | `targeting-uimori`                |
 
 These are runtime and format references. Composition belongs to the corresponding bot, preset, module, or plugin route. Exact signatures and runtime behavior are version-bound; each syntax skill links to its detailed reference. Cross-layer ordering is documented in `skills/writing-trigger-scripts/RUNTIME_INTEROP.md`.

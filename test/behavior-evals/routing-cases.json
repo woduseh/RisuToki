@@ -133,5 +133,10 @@
     "prompt": "봇 설정을 비평해줘: 주인공은 모든 기억을 정확히 보존하지만 어제 받은 편지의 내용은 아무 이유 없이 잊는다. 이 모순을 작품의 특징으로 살릴 방법과 수정 우선순위를 알려줘.",
     "use": ["authoring-bots"],
     "exclude": ["writing-lorebooks"]
+  },
+  {
+    "prompt": "이 봇은 RisuAI 말고 Uimori에서 돌릴 거야. 로어북 제목을 Uimori 선별 방식에 맞게 정리하고 번역 지침도 카드에 넣어줘.",
+    "use": ["targeting-uimori"],
+    "exclude": ["file-structure-reference"]
   }
 ]

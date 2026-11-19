@@ -15,6 +15,7 @@ LLM-optimized skill bundles for reusable authoring domains.
 | [writing-restricted-wysiwyg-html](writing-restricted-wysiwyg-html/) | Target-aware HTML for sanitized paste editors              | `SKILL.md`, target profiles     |
 | [writing-trigger-scripts](writing-trigger-scripts/)                 | Trigger execution model and automation planning            | `SKILL.md`                      |
 | [writing-standing-image-prompts](writing-standing-image-prompts/)   | Standing-image prompt pipeline and Danbooru tag validation | `SKILL.md`, model profiles      |
+| [targeting-uimori](targeting-uimori/)                               | Uimori runtime differences and Uimori-only card data       | `SKILL.md`                      |
 
 ## Relationship to other skill locations
 

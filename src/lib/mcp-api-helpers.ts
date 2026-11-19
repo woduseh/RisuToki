@@ -22,6 +22,7 @@ import {
   type PromptItemModel,
 } from './risup-prompt-model';
 import { isRisupJsonTextFieldName, validateRisupJsonTextField } from './risup-json-fields';
+import { UIMORI_EXTENSION_TOP_LEVEL_FIELDS, validateChangedUimoriExtensions } from './uimori-extensions';
 import { getRisupPromptSnippetLibraryPath, type RisupPromptSnippet } from './risup-prompt-snippet-store';
 import { errorRecoveryMeta, normalizeMcpErrorEnvelope, type McpErrorInfo } from './mcp-response-envelope';
 import { cloneJson, normalizeLF } from './shared-utils';
@@ -676,12 +677,20 @@ export function setPointerValue(root: unknown, pointer: string, value: unknown, 
   (parent as Record<string, unknown>)[key] = value;
 }
 
-export function validateTouchedRisupJsonFields(data: Record<string, unknown>, touchedTopLevel: string[]): void {
-  if (data._fileType !== 'risup') return;
-  for (const fieldName of touchedTopLevel) {
-    if (!isRisupJsonTextFieldName(fieldName) || data[fieldName] === undefined) continue;
-    const error = validateRisupJsonTextField(fieldName, data[fieldName]);
-    if (error) throw new Error(`Invalid ${fieldName}: ${error}`);
+export function validateSurfaceMutation(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+  touchedTopLevel: string[],
+): void {
+  if (after._fileType === 'risup') {
+    for (const fieldName of touchedTopLevel) {
+      if (!isRisupJsonTextFieldName(fieldName) || after[fieldName] === undefined) continue;
+      const error = validateRisupJsonTextField(fieldName, after[fieldName]);
+      if (error) throw new Error(`Invalid ${fieldName}: ${error}`);
+    }
+  }
+  if (touchedTopLevel.some((field) => UIMORI_EXTENSION_TOP_LEVEL_FIELDS.includes(field))) {
+    validateChangedUimoriExtensions(before, after);
   }
 }
 

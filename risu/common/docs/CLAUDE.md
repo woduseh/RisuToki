@@ -18,6 +18,7 @@ RisuToki가 프로젝트 고유 안내가 없을 때 사용하는 기본 가이�
 | RisuAI HTML/CSS                     | `writing-html-css`                |
 | 외부 WYSIWYG HTML                   | `writing-restricted-wysiwyg-html` |
 | 이미지 프롬프트와 태그              | `writing-standing-image-prompts`  |
+| Uimori 실행 대상과 전용 카드 설정   | `targeting-uimori`                |
 | 파일 구조                           | `file-structure-reference`        |
 | 모듈                                | `writing-risum-modules`           |
 | 플러그인 v3                         | `writing-plugins-v3`              |

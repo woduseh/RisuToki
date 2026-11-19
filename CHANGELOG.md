@@ -14,6 +14,8 @@
 ### Added
 
 - Add a Uimori mode switch under Settings → 실행 대상, off by default. When it is on, AI assistants started afterwards are told that the artifact runs in Uimori: lorebook entries are chosen by a judgment model from their names and content instead of activation keys, the RisuAI directives, Lua APIs, and display features Uimori does not run are listed, and the Uimori-only `extensions.uimori` card and module settings are kept as they are. Assistants that are already running keep the prompt they started with.
+- Validate Uimori-only card and module data on MCP surface writes. A `patch_surface`, `replace_in_surface`, or external surface patch that changes `extensions.uimori` under `/_card/data/extensions/uimori` (`.charx`) or `/_moduleData/module/extensions/uimori` (`.risum`) is rejected when its `translationGuide` or `illustrationProfiles` breaks Uimori's shape or limits; existing values and unrelated edits are not checked, and other keys under `extensions.uimori` are kept.
+- Add the `targeting-uimori` skill with Uimori's lorebook selection (no activation keys), unsupported RisuAI features, and the `extensions.uimori` paths and limits; the Uimori mode prompt points to it, and `writing-translation-guides` explains how to convert a guide into Uimori's `translationGuide`.
 
 ## [3.11.0] - 2026-11-19
 

@@ -118,6 +118,7 @@ This map is for source navigation. It is not a full API reference.
 - `src/lib/lorebook-decorators.ts` — lorebook decorator parsing and rendering helpers
 - `src/lib/section-parser.ts` — canonical Lua/CSS section parsing shared by renderer, Electron main, and standalone MCP
 - `src/lib/risup-json-fields.ts` — shared validation/parsing contract for JSON-backed `.risup` text fields
+- `src/lib/uimori-extensions.ts` — Uimori `extensions.uimori` locations in card and module data and validation against Uimori's limits
 - `src/lib/asset-utils.ts` — shared asset file-name and `cardAssets`/`xMeta` reference synchronization
 - `src/lib/persona-store.ts` — bundled-default plus user-override RP persona persistence
 - `src/lib/trigger-script-model.ts` — trigger-script data model
