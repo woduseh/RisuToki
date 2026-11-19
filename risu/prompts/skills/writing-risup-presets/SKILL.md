@@ -26,7 +26,7 @@ canonical_sources:
 
 Use the risup-prompt facade for individual item reads and edits. Index-based operations carry current identity/type/preview guards. Export/import preserves item header metadata; keep CBS blocks self-contained within each item, and verify imported text with `analyze_content` action `verify_risup_prompt_import` using the same source.
 
-For Phēmē's generated variants, follow `prompt-family`: prepare the generator's field-write plans and apply them through MCP preview, then apply. Preserve preset fields outside those plans.
+For Phēmē's generated variants, follow `prompt-family` and the release workflow in Phēmē's own repository. Preserve preset fields outside the generator's plans.
 
 Chat item ranges determine which history is sent; split ranges need the intended coverage without accidental overlap. Assistant prefill belongs in a separate `plain`/`assistant`/`normal` item at the intended turn boundary. Provider-native prefill shapes can differ, and the current Claude models below reject a trailing prefill.
 

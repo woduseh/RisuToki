@@ -1620,7 +1620,7 @@ export async function runStandaloneFacadeDogfood(): Promise<void> {
       max_bytes: 4096,
     });
     assert.deepEqual(routedTools(guideRead), ['read_guide']);
-    assert.match(JSON.stringify(guideRead), /Phēmē Prompt Family Profile/);
+    assert.match(JSON.stringify(guideRead), /sole owner of Phēmē's design contract/);
 
     const externalInspect = await callJson(runtime, 'inspect_document', { target: externalTarget });
     assert.deepEqual(routedTools(externalInspect), ['inspect_external_file']);

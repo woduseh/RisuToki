@@ -105,7 +105,7 @@
     "exclude": []
   },
   {
-    "prompt": "Phēmē 소스 프롬프트가 바뀌었어. Gemini 변형 .risup 두 개에 같은 변경을 반영하고 드리프트 확인해줘.",
+    "prompt": "Phēmē 소스 프롬프트가 바뀌었어. RP·Novel·OOC 프리셋 세 개에 같은 변경을 반영하고 드리프트 확인해줘.",
     "use": ["prompt-family"],
     "exclude": []
   },
